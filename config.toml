@@ -25,7 +25,7 @@
 # Every output (Bellman cuts, volume trajectory, cut JSON, diagnostics) gets
 # the suffix "_<label>", and the market chain writes to results/<label>/ and
 # reads its Bellman inputs from the suffixed [midterm4] outputs automatically.
-label      = "Trinity"   # e.g. "NECP2035"
+label      = "2024"   # e.g. "NECP2035"
 empire_dir = "Data/2035/Trinity"   # EMPIRE run (Input/Tab + Output) - Ignore if label = "2024"
 period     = 2                            # EMPIRE period index: 2 = 2030-2035
 

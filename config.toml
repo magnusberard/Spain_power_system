@@ -435,6 +435,726 @@ gas_mw       = 2260.0
 waste_mw     =  730.0
 minihydro_mw =  420.0
 
+[chp.by_date."2024-07-01"]
+waste_mw     = 721.8
+minihydro_mw = 0.0
+
+[chp.by_date."2024-07-02"]
+waste_mw     = 701.8
+minihydro_mw = 585.6
+
+[chp.by_date."2024-07-03"]
+waste_mw     = 733.4
+minihydro_mw = 422.2
+
+[chp.by_date."2024-07-04"]
+waste_mw     = 750.7
+minihydro_mw = 664.1
+
+[chp.by_date."2024-07-05"]
+waste_mw     = 741.8
+minihydro_mw = 391.7
+
+[chp.by_date."2024-07-06"]
+waste_mw     = 729.5
+minihydro_mw = 547.4
+
+[chp.by_date."2024-07-07"]
+waste_mw     = 688.2
+minihydro_mw = 670.1
+
+[chp.by_date."2024-07-09"]
+waste_mw     = 720.6
+minihydro_mw = 443.2
+
+[chp.by_date."2024-07-10"]
+waste_mw     = 708.9
+minihydro_mw = 868.8
+
+[chp.by_date."2024-07-11"]
+waste_mw     = 722.2
+minihydro_mw = 527.6
+
+[chp.by_date."2024-07-12"]
+waste_mw     = 685.2
+minihydro_mw = 991.7
+
+[chp.by_date."2024-07-13"]
+waste_mw     = 701.7
+minihydro_mw = 827.2
+
+[chp.by_date."2024-07-14"]
+waste_mw     = 744.0
+minihydro_mw = 459.4
+
+[chp.by_date."2024-07-15"]
+waste_mw     = 792.5
+minihydro_mw = 635.3
+
+[chp.by_date."2024-07-16"]
+waste_mw     = 806.0
+minihydro_mw = 690.5
+
+[chp.by_date."2024-07-17"]
+waste_mw     = 799.0
+minihydro_mw = 355.1
+
+[chp.by_date."2024-07-18"]
+waste_mw     = 780.8
+minihydro_mw = 1015.3
+
+[chp.by_date."2024-07-19"]
+waste_mw     = 749.3
+minihydro_mw = 491.1
+
+[chp.by_date."2024-07-20"]
+waste_mw     = 734.6
+minihydro_mw = 790.8
+
+[chp.by_date."2024-07-21"]
+waste_mw     = 685.4
+minihydro_mw = 416.7
+
+[chp.by_date."2024-07-22"]
+waste_mw     = 721.6
+minihydro_mw = 413.2
+
+[chp.by_date."2024-07-23"]
+waste_mw     = 708.0
+minihydro_mw = 420.1
+
+[chp.by_date."2024-07-24"]
+waste_mw     = 673.4
+minihydro_mw = 571.0
+
+[chp.by_date."2024-07-25"]
+waste_mw     = 694.7
+minihydro_mw = 400.7
+
+[chp.by_date."2024-07-26"]
+waste_mw     = 715.5
+minihydro_mw = 344.7
+
+[chp.by_date."2024-07-27"]
+waste_mw     = 680.3
+minihydro_mw = 551.8
+
+[chp.by_date."2024-07-28"]
+waste_mw     = 652.2
+minihydro_mw = 336.8
+
+[chp.by_date."2024-07-29"]
+waste_mw     = 669.8
+minihydro_mw = 655.8
+
+[chp.by_date."2024-07-30"]
+waste_mw     = 644.5
+minihydro_mw = 104.5
+
+[chp.by_date."2024-07-31"]
+waste_mw     = 643.1
+minihydro_mw = 647.0
+
+[chp.by_date."2024-08-01"]
+waste_mw     = 645.2
+minihydro_mw = 208.1
+
+[chp.by_date."2024-08-02"]
+waste_mw     = 595.2
+minihydro_mw = 153.2
+
+[chp.by_date."2024-08-03"]
+waste_mw     = 594.3
+minihydro_mw = 427.4
+
+[chp.by_date."2024-08-04"]
+waste_mw     = 615.4
+minihydro_mw = 258.2
+
+[chp.by_date."2024-08-05"]
+waste_mw     = 680.8
+minihydro_mw = 293.0
+
+[chp.by_date."2024-08-06"]
+waste_mw     = 689.6
+minihydro_mw = 426.9
+
+[chp.by_date."2024-08-07"]
+waste_mw     = 673.8
+minihydro_mw = 322.5
+
+[chp.by_date."2024-08-08"]
+waste_mw     = 644.8
+minihydro_mw = 338.1
+
+[chp.by_date."2024-08-09"]
+waste_mw     = 697.1
+minihydro_mw = 485.8
+
+[chp.by_date."2024-08-10"]
+waste_mw     = 684.5
+minihydro_mw = 430.5
+
+[chp.by_date."2024-08-11"]
+waste_mw     = 684.6
+minihydro_mw = 106.4
+
+[chp.by_date."2024-08-12"]
+waste_mw     = 688.1
+minihydro_mw = 281.5
+
+[chp.by_date."2024-08-13"]
+waste_mw     = 681.5
+minihydro_mw = 243.9
+
+[chp.by_date."2024-08-14"]
+waste_mw     = 687.0
+minihydro_mw = 496.3
+
+[chp.by_date."2024-08-15"]
+waste_mw     = 654.6
+minihydro_mw = 392.2
+
+[chp.by_date."2024-08-16"]
+waste_mw     = 686.5
+minihydro_mw = 362.7
+
+[chp.by_date."2024-08-17"]
+waste_mw     = 681.1
+minihydro_mw = 262.4
+
+[chp.by_date."2024-08-18"]
+waste_mw     = 642.0
+minihydro_mw = 669.0
+
+[chp.by_date."2024-08-19"]
+waste_mw     = 616.0
+minihydro_mw = 228.5
+
+[chp.by_date."2024-08-20"]
+waste_mw     = 602.1
+minihydro_mw = 957.2
+
+[chp.by_date."2024-08-21"]
+waste_mw     = 601.6
+minihydro_mw = 675.0
+
+[chp.by_date."2024-08-22"]
+waste_mw     = 635.7
+minihydro_mw = 245.3
+
+[chp.by_date."2024-08-23"]
+waste_mw     = 616.8
+minihydro_mw = 99.8
+
+[chp.by_date."2024-08-24"]
+waste_mw     = 607.0
+minihydro_mw = 385.8
+
+[chp.by_date."2024-08-25"]
+waste_mw     = 602.9
+minihydro_mw = 207.0
+
+[chp.by_date."2024-08-26"]
+waste_mw     = 612.6
+minihydro_mw = 566.5
+
+[chp.by_date."2024-08-27"]
+waste_mw     = 576.8
+minihydro_mw = 658.0
+
+[chp.by_date."2024-08-28"]
+waste_mw     = 573.9
+minihydro_mw = 312.4
+
+[chp.by_date."2024-08-29"]
+waste_mw     = 615.0
+minihydro_mw = 0.0
+
+[chp.by_date."2024-08-30"]
+waste_mw     = 630.6
+minihydro_mw = 0.0
+
+[chp.by_date."2024-08-31"]
+waste_mw     = 709.0
+minihydro_mw = 0.0
+
+[chp.by_date."2024-09-01"]
+waste_mw     = 697.5
+minihydro_mw = 0.0
+
+[chp.by_date."2024-09-02"]
+waste_mw     = 706.8
+minihydro_mw = 244.7
+
+[chp.by_date."2024-09-03"]
+waste_mw     = 656.7
+minihydro_mw = 443.0
+
+[chp.by_date."2024-09-04"]
+waste_mw     = 652.8
+minihydro_mw = 115.7
+
+[chp.by_date."2024-09-05"]
+waste_mw     = 633.7
+minihydro_mw = 689.0
+
+[chp.by_date."2024-09-06"]
+waste_mw     = 606.4
+minihydro_mw = 588.6
+
+[chp.by_date."2024-09-07"]
+waste_mw     = 569.1
+minihydro_mw = 716.7
+
+[chp.by_date."2024-09-08"]
+waste_mw     = 560.4
+minihydro_mw = 0.0
+
+[chp.by_date."2024-09-09"]
+waste_mw     = 592.8
+minihydro_mw = 84.3
+
+[chp.by_date."2024-09-10"]
+waste_mw     = 578.7
+minihydro_mw = 150.0
+
+[chp.by_date."2024-09-11"]
+waste_mw     = 560.0
+minihydro_mw = 154.2
+
+[chp.by_date."2024-09-12"]
+waste_mw     = 587.0
+minihydro_mw = 283.2
+
+[chp.by_date."2024-09-13"]
+waste_mw     = 609.7
+minihydro_mw = 284.4
+
+[chp.by_date."2024-09-14"]
+waste_mw     = 571.6
+minihydro_mw = 213.3
+
+[chp.by_date."2024-09-15"]
+waste_mw     = 534.0
+minihydro_mw = 182.9
+
+[chp.by_date."2024-09-16"]
+waste_mw     = 494.2
+minihydro_mw = 288.5
+
+[chp.by_date."2024-09-17"]
+waste_mw     = 513.7
+minihydro_mw = 201.1
+
+[chp.by_date."2024-09-18"]
+waste_mw     = 529.2
+minihydro_mw = 269.3
+
+[chp.by_date."2024-09-19"]
+waste_mw     = 598.7
+minihydro_mw = 267.3
+
+[chp.by_date."2024-09-20"]
+waste_mw     = 571.8
+minihydro_mw = 297.1
+
+[chp.by_date."2024-09-21"]
+waste_mw     = 525.6
+minihydro_mw = 127.0
+
+[chp.by_date."2024-09-22"]
+waste_mw     = 526.8
+minihydro_mw = 485.3
+
+[chp.by_date."2024-09-23"]
+waste_mw     = 527.2
+minihydro_mw = 145.7
+
+[chp.by_date."2024-09-24"]
+waste_mw     = 507.2
+minihydro_mw = 720.2
+
+[chp.by_date."2024-09-25"]
+waste_mw     = 480.7
+minihydro_mw = 690.6
+
+[chp.by_date."2024-09-26"]
+waste_mw     = 446.7
+minihydro_mw = 634.4
+
+[chp.by_date."2024-09-27"]
+waste_mw     = 485.6
+minihydro_mw = 578.8
+
+[chp.by_date."2024-09-28"]
+waste_mw     = 441.2
+minihydro_mw = 463.1
+
+[chp.by_date."2024-09-29"]
+waste_mw     = 421.0
+minihydro_mw = 72.9
+
+[chp.by_date."2024-09-30"]
+waste_mw     = 434.8
+minihydro_mw = 0.0
+
+[chp.by_date."2024-10-01"]
+waste_mw     = 542.8
+minihydro_mw = 0.0
+
+[chp.by_date."2024-10-02"]
+waste_mw     = 514.8
+minihydro_mw = 0.0
+
+[chp.by_date."2024-10-03"]
+waste_mw     = 423.9
+minihydro_mw = 553.9
+
+[chp.by_date."2024-10-04"]
+waste_mw     = 498.9
+minihydro_mw = 403.9
+
+[chp.by_date."2024-10-05"]
+waste_mw     = 513.8
+minihydro_mw = 473.0
+
+[chp.by_date."2024-10-06"]
+waste_mw     = 495.7
+minihydro_mw = 188.7
+
+[chp.by_date."2024-10-07"]
+waste_mw     = 494.7
+minihydro_mw = 643.4
+
+[chp.by_date."2024-10-08"]
+waste_mw     = 449.1
+minihydro_mw = 679.5
+
+[chp.by_date."2024-10-09"]
+waste_mw     = 435.5
+minihydro_mw = 794.2
+
+[chp.by_date."2024-10-10"]
+waste_mw     = 506.0
+minihydro_mw = 688.6
+
+[chp.by_date."2024-10-11"]
+waste_mw     = 556.1
+minihydro_mw = 576.4
+
+[chp.by_date."2024-10-12"]
+waste_mw     = 517.1
+minihydro_mw = 724.5
+
+[chp.by_date."2024-10-13"]
+waste_mw     = 490.6
+minihydro_mw = 320.2
+
+[chp.by_date."2024-10-14"]
+waste_mw     = 506.5
+minihydro_mw = 395.3
+
+[chp.by_date."2024-10-15"]
+waste_mw     = 519.3
+minihydro_mw = 287.6
+
+[chp.by_date."2024-10-16"]
+waste_mw     = 442.5
+minihydro_mw = 297.5
+
+[chp.by_date."2024-10-17"]
+waste_mw     = 434.9
+minihydro_mw = 462.4
+
+[chp.by_date."2024-10-18"]
+waste_mw     = 419.7
+minihydro_mw = 643.6
+
+[chp.by_date."2024-10-19"]
+waste_mw     = 424.9
+minihydro_mw = 917.7
+
+[chp.by_date."2024-10-20"]
+waste_mw     = 416.8
+minihydro_mw = 574.8
+
+[chp.by_date."2024-10-21"]
+waste_mw     = 425.2
+minihydro_mw = 78.8
+
+[chp.by_date."2024-10-22"]
+waste_mw     = 463.6
+minihydro_mw = 371.0
+
+[chp.by_date."2024-10-23"]
+waste_mw     = 543.0
+minihydro_mw = 66.9
+
+[chp.by_date."2024-10-24"]
+waste_mw     = 534.5
+minihydro_mw = 157.9
+
+[chp.by_date."2024-10-25"]
+waste_mw     = 566.0
+minihydro_mw = 1047.9
+
+[chp.by_date."2024-10-26"]
+waste_mw     = 578.2
+minihydro_mw = 1049.7
+
+[chp.by_date."2024-10-27"]
+waste_mw     = 600.4
+minihydro_mw = 816.5
+
+[chp.by_date."2024-10-28"]
+waste_mw     = 610.7
+minihydro_mw = 252.9
+
+[chp.by_date."2024-10-29"]
+waste_mw     = 603.6
+minihydro_mw = 956.1
+
+[chp.by_date."2024-10-30"]
+waste_mw     = 568.4
+minihydro_mw = 703.3
+
+[chp.by_date."2024-10-31"]
+waste_mw     = 600.9
+minihydro_mw = 217.7
+
+[chp.by_date."2024-11-01"]
+waste_mw     = 595.5
+minihydro_mw = 550.3
+
+[chp.by_date."2024-11-02"]
+waste_mw     = 667.3
+minihydro_mw = 550.1
+
+[chp.by_date."2024-11-03"]
+waste_mw     = 607.5
+minihydro_mw = 273.3
+
+[chp.by_date."2024-11-04"]
+waste_mw     = 639.4
+minihydro_mw = 110.3
+
+[chp.by_date."2024-11-05"]
+waste_mw     = 655.3
+minihydro_mw = 398.6
+
+[chp.by_date."2024-11-06"]
+waste_mw     = 659.8
+minihydro_mw = 160.1
+
+[chp.by_date."2024-11-07"]
+waste_mw     = 647.8
+minihydro_mw = 306.8
+
+[chp.by_date."2024-11-08"]
+waste_mw     = 643.0
+minihydro_mw = 642.9
+
+[chp.by_date."2024-11-09"]
+waste_mw     = 622.3
+minihydro_mw = 237.0
+
+[chp.by_date."2024-11-10"]
+waste_mw     = 585.9
+minihydro_mw = 459.6
+
+[chp.by_date."2024-11-11"]
+waste_mw     = 545.2
+minihydro_mw = 246.2
+
+[chp.by_date."2024-11-12"]
+waste_mw     = 533.4
+minihydro_mw = 350.1
+
+[chp.by_date."2024-11-13"]
+waste_mw     = 549.4
+minihydro_mw = 882.8
+
+[chp.by_date."2024-11-14"]
+waste_mw     = 582.3
+minihydro_mw = 710.9
+
+[chp.by_date."2024-11-15"]
+waste_mw     = 596.9
+minihydro_mw = 453.4
+
+[chp.by_date."2024-11-16"]
+waste_mw     = 612.4
+minihydro_mw = 555.4
+
+[chp.by_date."2024-11-17"]
+waste_mw     = 622.9
+minihydro_mw = 385.5
+
+[chp.by_date."2024-11-18"]
+waste_mw     = 616.4
+minihydro_mw = 0.0
+
+[chp.by_date."2024-11-19"]
+waste_mw     = 587.4
+minihydro_mw = 290.2
+
+[chp.by_date."2024-11-20"]
+waste_mw     = 560.5
+minihydro_mw = 550.2
+
+[chp.by_date."2024-11-21"]
+waste_mw     = 560.5
+minihydro_mw = 858.0
+
+[chp.by_date."2024-11-22"]
+waste_mw     = 571.1
+minihydro_mw = 832.5
+
+[chp.by_date."2024-11-23"]
+waste_mw     = 603.7
+minihydro_mw = 836.7
+
+[chp.by_date."2024-11-24"]
+waste_mw     = 535.8
+minihydro_mw = 612.0
+
+[chp.by_date."2024-11-25"]
+waste_mw     = 591.4
+minihydro_mw = 861.1
+
+[chp.by_date."2024-11-26"]
+waste_mw     = 613.3
+minihydro_mw = 216.8
+
+[chp.by_date."2024-11-27"]
+waste_mw     = 635.9
+minihydro_mw = 156.3
+
+[chp.by_date."2024-11-28"]
+waste_mw     = 647.5
+minihydro_mw = 313.3
+
+[chp.by_date."2024-11-29"]
+waste_mw     = 646.9
+minihydro_mw = 466.4
+
+[chp.by_date."2024-11-30"]
+waste_mw     = 671.4
+minihydro_mw = 318.9
+
+[chp.by_date."2024-12-01"]
+waste_mw     = 634.0
+minihydro_mw = 738.5
+
+[chp.by_date."2024-12-03"]
+waste_mw     = 640.7
+minihydro_mw = 305.8
+
+[chp.by_date."2024-12-04"]
+waste_mw     = 612.0
+minihydro_mw = 246.1
+
+[chp.by_date."2024-12-05"]
+waste_mw     = 679.1
+minihydro_mw = 148.8
+
+[chp.by_date."2024-12-06"]
+waste_mw     = 680.8
+minihydro_mw = 806.2
+
+[chp.by_date."2024-12-07"]
+waste_mw     = 577.5
+minihydro_mw = 514.3
+
+[chp.by_date."2024-12-08"]
+waste_mw     = 549.5
+minihydro_mw = 495.4
+
+[chp.by_date."2024-12-09"]
+waste_mw     = 601.0
+minihydro_mw = 831.7
+
+[chp.by_date."2024-12-10"]
+waste_mw     = 603.7
+minihydro_mw = 539.6
+
+[chp.by_date."2024-12-11"]
+waste_mw     = 632.4
+minihydro_mw = 944.7
+
+[chp.by_date."2024-12-12"]
+waste_mw     = 661.1
+minihydro_mw = 756.4
+
+[chp.by_date."2024-12-13"]
+waste_mw     = 674.4
+minihydro_mw = 416.5
+
+[chp.by_date."2024-12-14"]
+waste_mw     = 685.5
+minihydro_mw = 411.5
+
+[chp.by_date."2024-12-15"]
+waste_mw     = 660.8
+minihydro_mw = 350.7
+
+[chp.by_date."2024-12-16"]
+waste_mw     = 648.6
+minihydro_mw = 177.0
+
+[chp.by_date."2024-12-17"]
+waste_mw     = 649.2
+minihydro_mw = 127.8
+
+[chp.by_date."2024-12-18"]
+waste_mw     = 672.3
+minihydro_mw = 464.7
+
+[chp.by_date."2024-12-19"]
+waste_mw     = 636.9
+minihydro_mw = 876.9
+
+[chp.by_date."2024-12-20"]
+waste_mw     = 652.5
+minihydro_mw = 0.0
+
+[chp.by_date."2024-12-21"]
+waste_mw     = 646.8
+minihydro_mw = 521.3
+
+[chp.by_date."2024-12-22"]
+waste_mw     = 640.5
+minihydro_mw = 940.2
+
+[chp.by_date."2024-12-23"]
+waste_mw     = 605.5
+minihydro_mw = 132.3
+
+[chp.by_date."2024-12-24"]
+waste_mw     = 637.5
+minihydro_mw = 117.5
+
+[chp.by_date."2024-12-25"]
+waste_mw     = 629.8
+minihydro_mw = 167.0
+
+[chp.by_date."2024-12-26"]
+waste_mw     = 627.5
+minihydro_mw = 0.0
+
+[chp.by_date."2024-12-27"]
+waste_mw     = 636.6
+minihydro_mw = 110.1
+
+[chp.by_date."2024-12-28"]
+waste_mw     = 600.3
+minihydro_mw = 288.3
+
+[chp.by_date."2024-12-29"]
+waste_mw     = 591.7
+minihydro_mw = 139.6
+
 [chp.by_date."2024-12-02"]
 gas_mw       = 2920.0
 waste_mw     =  650.0

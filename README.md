@@ -31,8 +31,10 @@ a run reads and writes:
 
 ### 1. The 2024 validation case
 
-Reproduces the observed 2024 Spanish market on two representative days
-(8 July, 2 December) — this is the validation case for the market chain.
+Reproduces the observed 2024 Spanish market. `TARGET_DAYS` in
+`run_market_chain.jl` covers **2024-07-01 to 2024-12-29** (182 days); the
+original two hand-validated reference days (8 July, 2 December) remain the
+ones to check new results against.
 
 ```bash
 # in config.toml: [scenario] label = "2024",  [weeks] enabled = false
@@ -43,6 +45,12 @@ Writes `results/` — `da_dispatch.csv` … `bal_dispatch.csv` for the five mark
 stages, `gen_dispatch.csv` and `branch_flows.csv` for the redispatch, and
 `summary.csv` with one row per hour. Compare against `Data/OMIE/` with
 `plotting/paper_figures_2024.py`.
+
+Coverage stops at 29 December and does not go back before 1 July — see
+[`docs/method_omie_full_year_conversion.md`](docs/method_omie_full_year_conversion.md)
+for why, how the extended range's data was derived and validated, and what's
+still known-imperfect (unit-mapping coverage away from mid-2024, the CHP
+`gas_mw` calibration).
 
 ### 2. Mid-term SDDP (hydro water values)
 
@@ -127,7 +135,7 @@ empty for this reason.
 | ---- | ---- |
 | `Data/Bus_Data.csv`, `lines.csv`, `transformers_reactance.csv` | bus-level network topology |
 | `Data/Generation.csv`, `Storage.csv`, `power_unit_tech_params.csv` | unit fleet, ramp rates, tech parameters |
-| `Data/ES_old/{Solar,Wind,load}/` | 2024 MW baselines; column `-12` is the day-ahead vintage |
+| `Data/ES_old/{Solar,Wind,load}/` | 2024 MW baselines; column `-12` is the day-ahead vintage. 182 days (2024-07-01 to 2024-12-29) plus the original 2 reference days — see `docs/method_omie_full_year_conversion.md` |
 | `Data/ES/{Solar,Wind Onshore,load}/` | per-gate forecast-deviation factors (`DA,ID2,ID3,CID,BE`), 363 days of 2024 |
 | `Data/ts/EDF__*-ES__*.csv` | EDF load factors and hydro coefficients, 37 climate years 1982–2018. The climate years these files share define the SDDP's scenario set. Run-of-river drives the ES RoR units; inflow is used only when `[midterm4].es_inflow_source = "edf"`. The wind and PV load-factor files are read for the climate-year set only — availability comes from the EMPIRE series below |
 | `Data/ts/Profile-Iberia.csv` | ES load shape for the SDDP |
@@ -158,6 +166,18 @@ branch.
 - The reinforcement sizing assumes symmetric thermal limits, and is only
   meaningful once the binding mechanism has been confirmed thermal rather than
   voltage — see step 2 of the method doc.
+- **No day before 2024-07-02 can run yet.** `[bellman].bgn_date` indexes the
+  hydro water-value cuts from that date; an earlier study day needs
+  `midterm_sddp4.jl` re-run with `bgn_date = "2024-01-01"` first.
+- **CHP `gas_mw` uses the global default for every day except the two
+  reference days.** The per-day value computed from ENTSO-E generation data
+  consistently disagrees with the reference days' hand-derived figures by
+  ~1.8–2.4×, for a reason not yet identified — see
+  `docs/method_omie_full_year_conversion.md`.
+- **Unit-to-technology mapping for the OMIE data pipeline degrades with
+  distance from the available snapshot dates** (all mid-2024 onward);
+  negligible within the generated Jul–Dec range, much larger before June
+  2024 — see the same doc.
 
 ---
 

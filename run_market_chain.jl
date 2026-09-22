@@ -478,7 +478,14 @@ RD_ONLY != "" &&
 #   scale_factor: stage column (DA/ID2/ID3/CID) from the new ES/ files (0–1 range)
 # DA scale factors are always 1.0, so DA profiles equal the ES_old -12 baseline.
 # Stages modelled: DA → ID2 → ID3 → CID → Balancing (BE) → Redispatch.
-TARGET_DAYS = ["2024-07-08", "2024-12-02"]
+
+# 2024-07-01 .. 2024-12-29: the range covered by the OMIE/ENTSO-E full-year
+# data-conversion pipeline (omie_conversion/). Excludes 2024-01-01 through
+# 2024-06-30 (no day before 2024-07-02 can run at all -- [bellman].bgn_date
+# indexes from that date) and 2024-12-30/31 (missing [ES] forecast-update
+# factors, never regenerated). To go back to just the two hand-validated
+# days, use: TARGET_DAYS = ["2024-07-08", "2024-12-02"]
+TARGET_DAYS = [Dates.format(d, "yyyy-mm-dd") for d in Date(2024, 7, 1):Day(1):Date(2024, 12, 29)]
 # [weeks]: sampled multi-week horizon (week_sampling.jl).  The persisted (or
 # freshly drawn, when resample = true) week sample replaces the two fixed 2024
 # study days; each sampled week is 7 SDDP-calendar days, so the Bellman

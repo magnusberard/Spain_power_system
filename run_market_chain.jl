@@ -485,7 +485,7 @@ RD_ONLY != "" &&
 # indexes from that date) and 2024-12-30/31 (missing [ES] forecast-update
 # factors, never regenerated). To go back to just the two hand-validated
 # days, use: TARGET_DAYS = ["2024-07-08", "2024-12-02"]
-TARGET_DAYS = [Dates.format(d, "yyyy-mm-dd") for d in Date(2024, 7, 1):Day(1):Date(2024, 12, 29)]
+TARGET_DAYS = [Dates.format(d, "yyyy-mm-dd") for d in Date(2024, 9, 15):Day(1):Date(2024, 9, 21)]
 # [weeks]: sampled multi-week horizon (week_sampling.jl).  The persisted (or
 # freshly drawn, when resample = true) week sample replaces the two fixed 2024
 # study days; each sampled week is 7 SDDP-calendar days, so the Bellman

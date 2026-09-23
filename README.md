@@ -31,10 +31,13 @@ a run reads and writes:
 
 ### 1. The 2024 validation case
 
-Reproduces the observed 2024 Spanish market. `TARGET_DAYS` in
-`run_market_chain.jl` covers **2024-07-01 to 2024-12-29** (182 days); the
-original two hand-validated reference days (8 July, 2 December) remain the
-ones to check new results against.
+Reproduces the observed 2024 Spanish market. The per-day input data (unit
+mapping, cross-border exchange, nuclear/coal/CHP calibration) is prepared for
+**2024-07-01 to 2024-12-29** (182 days), but `TARGET_DAYS` in
+`run_market_chain.jl` is currently set to a narrower test window
+(**2024-08-01 to 2024-08-31**) while that month is validated before running
+the full 182 days in one go. The original two hand-validated reference days
+(8 July, 2 December) remain the ones to check new results against.
 
 ```bash
 # in config.toml: [scenario] label = "2024",  [weeks] enabled = false
@@ -168,12 +171,23 @@ branch.
   voltage — see step 2 of the method doc.
 - **No day before 2024-07-02 can run yet.** `[bellman].bgn_date` indexes the
   hydro water-value cuts from that date; an earlier study day needs
-  `midterm_sddp4.jl` re-run with `bgn_date = "2024-01-01"` first.
+  `midterm_sddp4.jl` re-run with `bgn_date = "2024-01-01"` first. A retrain
+  attempt for this is in progress on the `full_year_sddp` branch — it shifts
+  the weekly SDDP stage every study day reads its cuts from, so the two
+  reference days need re-validating against the new cuts before that branch
+  is trusted for anything else.
 - **CHP `gas_mw` uses the global default for every day except the two
   reference days.** The per-day value computed from ENTSO-E generation data
   consistently disagrees with the reference days' hand-derived figures by
-  ~1.8–2.4×, for a reason not yet identified — see
-  `docs/method_omie_full_year_conversion.md`.
+  ~1.8–2.4×. Likely cause, identified but not yet fully resolved: the
+  formula nets OMIE's **day-ahead cleared** CCGT output against ENTSO-E's
+  **actual delivered** national gas generation — for CCGT, a highly flexible
+  marginal technology, those two can differ by an order of magnitude on a
+  given day (e.g. 8 July: 0.39 GWh cleared day-ahead vs. ~58 GWh actually
+  delivered by the same named plants, per ENTSO-E's per-unit report), so the
+  "leftover" attributed to CHP absorbs real CCGT output that just never
+  cleared day-ahead. See `docs/method_omie_full_year_conversion.md` for the
+  full investigation.
 - **Unit-to-technology mapping for the OMIE data pipeline degrades with
   distance from the available snapshot dates** (all mid-2024 onward);
   negligible within the generated Jul–Dec range, much larger before June
@@ -284,7 +298,11 @@ nuclear_availability = 0.85          # default for unlisted days
 
 The two 2024 figures are taken from the OMIE cleared programme against the
 7 408 MW nameplate in `Data/generations.csv`. (TOML requires the sub-table to
-come after every scalar key of `[da]`.)
+come after every scalar key of `[da]`.) `[da.coal_availability_by_date]`
+follows the identical pattern against the 2 900 MW coal nameplate. Both
+tables are now populated the same way for all 182 days in the generated
+range (`omie_conversion/add_nuclear_coal_calibration.py`), not just the two
+reference days shown above.
 
 ## Storage (pumped hydro and Li-Ion BESS)
 

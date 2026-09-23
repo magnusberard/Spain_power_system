@@ -5,9 +5,11 @@ originally covered only the two hand-validated study days (8 July, 2
 December 2024). The pipeline in `omie_conversion/` and `entsoe_download/`
 reproduces those two days' data **exactly** from bulk-downloadable public
 sources (OMIE + ENTSO-E), and extends coverage to every day from
-**2024-07-01 to 2024-12-29** (182 days). `TARGET_DAYS` in
-`run_market_chain.jl` now covers that range instead of the original two
-dates.
+**2024-07-01 to 2024-12-29** (182 days). `run_market_chain.jl`'s `TARGET_DAYS`
+can cover that whole range, but is currently set to a narrower test window
+(2024-08-01 to 2024-08-31) while it's validated month-by-month before running
+the full 182 days in one go — see the "Rolling out beyond the two reference
+days" note below.
 
 This note records the formula, what was validated against what, and what is
 still known-imperfect, so a future run knows exactly how much to trust each
@@ -21,12 +23,33 @@ piece.
   the unit-technology mapping (below) also degrades sharply for dates far
   from the nearest snapshot, and the nearest ones we have are all mid-2024
   onward — so this range would need both the Bellman recalculation *and*
-  more unit-list snapshots before it's worth generating.
+  more unit-list snapshots before it's worth generating. Retraining
+  `midterm_sddp4.jl` with `bgn_date = "2024-01-01"` is being attempted on the
+  `full_year_sddp` branch, kept separate from the validated `full_year`
+  branch because retraining shifts which weekly SDDP stage every day
+  (including the already-validated 182) reads its cuts from — the two
+  reference days need to be re-checked against the new cuts before that
+  branch's results are trusted for anything.
 - **2024-12-30, 2024-12-31, 2024-01-01**: excluded on purpose.
   `Data/ES/{load,Solar,Wind Onshore}/` (the per-gate forecast-deviation
   factors) is missing exactly these 3 days, and the method used to generate
   them (a per-gate regression, see the paper's Section 2.5) has no
   reproducing script in this repo.
+
+## Rolling out beyond the two reference days
+
+All the per-day input data below is generated for the full 182-day range, but
+`run_market_chain.jl`'s `TARGET_DAYS` is being rolled out gradually rather
+than run all at once: 7 days first (15–21 September), then one full month
+(August) as a wider check. Running August surfaced a real gap — the
+nuclear/coal per-day calibration (below) had only ever been written for the
+two original reference days, so every other day was silently falling back to
+the flat annual default instead of its own computed availability, which
+produced `LOCALLY_INFEASIBLE` hours on 2024-08-05. That has since been
+backfilled for all 182 days by re-running
+`add_nuclear_coal_calibration.py`; whether it fully explains that specific
+day's infeasibility (vs. some other factor) hadn't yet been re-checked as of
+this note.
 
 ## The reconstruction formula
 
@@ -118,11 +141,36 @@ growing label dictionary; `crossborder.jl` and
     calculation check out independently against other known-correct figures
     (ENTSO-E Fossil Gas confirmed twice via two different fetch methods;
     OMIE CCGT matches an already-documented reference value), so the gap is
-    in the *method* or its original data source, not in this
-    reproduction — unresolved. `gas_mw` is therefore **left unset** per day,
-    which falls back to `[chp].gas_mw`'s global default (2,600 MW) rather
-    than writing a value known to disagree with the two reference days.
-    Revisit with whoever built the original calibration.
+    in the *method*, not in this reproduction.
+
+    **Likely cause, identified but not yet fully resolved:** the formula nets
+    OMIE's **day-ahead cleared** CCGT output against ENTSO-E's **actual
+    delivered** national Fossil Gas total. `pdbf` is strictly what cleared in
+    the day-ahead auction; CCGT is the most flexible, most heavily
+    intraday/balancing/redispatch-adjusted technology on the system, so the
+    two can diverge by a large, day-dependent margin. Checked directly via
+    ENTSO-E's per-generation-unit report (documentType `A73`) for the named
+    CCGT plants on both reference days:
+
+    | | OMIE day-ahead CCGT | ENTSO-E actual CCGT (named units) |
+    |---|---|---|
+    | 8 July | 0.39 GWh | 57.59 GWh |
+    | 2 Dec | 123.05 GWh | 244.51 GWh |
+
+    Re-deriving `gas_mw` against the *actual* CCGT total instead of the
+    day-ahead one brings both days to a consistent ~70% of the reference
+    value (1,632 MW / 1,993 MW vs. 2,260 MW / 2,920 MW) — a much steadier
+    ratio than the original 1.8–2.4×, though not an exact match, likely
+    because ENTSO-E's per-unit report only lists units above a size
+    threshold and so still undercounts true actual CCGT output. Ruled out
+    along the way: a unit-technology misclassification (every named plant
+    that *is* in the unit map is correctly tagged `Ciclo Combinado`) and an
+    OMIE-visible-cogeneration double-count (real, but a smaller effect than
+    the day-ahead/actual gap). `gas_mw` is therefore still **left unset** per
+    day, which falls back to `[chp].gas_mw`'s global default (2,600 MW)
+    rather than writing a value known to disagree with the two reference
+    days. Revisit with whoever built the original calibration before
+    deciding whether to apply the actual-CCGT-based re-derivation instead.
 
 ## Known gaps in `load`
 

@@ -7,7 +7,10 @@
 # the market clearing that preceded redispatch.
 #
 # crossborder.csv columns:
-#   Day      : "8_Jul" / "2_Dec"        -> study date
+#   Day      : "yyyy-mm-dd"             -> study date, used directly (no label
+#                                          lookup -- scales to any number of
+#                                          days; older data used "8_Jul"/"2_Dec"
+#                                          labels via XB_DAY_MAP, since removed)
 #   Time     : "HH:00 - HH:00"          -> delivery hour (start hour, 0..23)
 #   to_PT,   from_PT                    : Spain->PT export, PT->Spain import [MW]
 #   from_FR, to_FR                      : FR->Spain import, Spain->FR export [MW]
@@ -25,17 +28,13 @@
 
 using CSV, DataFrames, Dates
 
-# "Day" label in crossborder.csv -> study date used everywhere else.
-const XB_DAY_MAP = Dict("8_Jul" => "2024-07-08", "2_Dec" => "2024-12-02")
-
 # Read the cross-border schedule into date => hour => (FR=net, PT=net) in MW,
 # where net = import into Spain − export from Spain.
 function load_crossborder()::Dict{String,Dict{Int,@NamedTuple{FR::Float64, PT::Float64}}}
     df = CSV.read(joinpath(DATA, "crossborder.csv"), DataFrame)
     data = Dict{String,Dict{Int,@NamedTuple{FR::Float64, PT::Float64}}}()
     for row in eachrow(df)
-        haskey(XB_DAY_MAP, string(row.Day)) || continue
-        date_str = XB_DAY_MAP[string(row.Day)]
+        date_str = string(row.Day)
         hour     = parse(Int, split(strip(string(row.Time)), ":")[1])   # start hour
         net_fr   = Float64(row.from_FR) - Float64(row.to_FR)
         net_pt   = Float64(row.from_PT) - Float64(row.to_PT)

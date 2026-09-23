@@ -100,8 +100,7 @@ def load_capacities():
 def actual_exchange():
     """Observed hourly net exchange, import into Spain positive [MW]."""
     xb = pd.read_csv(ROOT / "Data" / "crossborder.csv")
-    day_map = {"8_Jul": "2024-07-08", "2_Dec": "2024-12-02"}
-    xb["date"] = xb["Day"].map(day_map)
+    xb["date"] = xb["Day"]  # "Day" is a plain ISO date string ("2024-07-08")
     xb["hour"] = xb["Time"].str.split(":").str[0].astype(int)
     xb["FR"] = xb["from_FR"] - xb["to_FR"]
     xb["PT"] = xb["from_PT"] - xb["to_PT"]

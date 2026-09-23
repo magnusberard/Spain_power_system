@@ -31,8 +31,15 @@ a run reads and writes:
 
 ### 1. The 2024 validation case
 
-Reproduces the observed 2024 Spanish market on two representative days
-(8 July, 2 December) — this is the validation case for the market chain.
+Reproduces the observed 2024 Spanish market. The per-day input data
+(load/Wind/Solar, cross-border exchange, nuclear/coal/CHP calibration) is
+prepared for **2024-01-03 to 2024-12-29** (363 days — every day of 2024
+except 1–2 January and 30–31 December, see "Known limitations"), but
+`TARGET_DAYS` in `run_market_chain.jl` is currently set to a narrower test
+window (**2024-04-08 to 2024-04-14**) while the rollout is validated
+week-by-week and month-by-month before running the full range in one go. The
+original two hand-validated reference days (8 July, 2 December) remain the
+ones to check new results against.
 
 ```bash
 # in config.toml: [scenario] label = "2024",  [weeks] enabled = false
@@ -43,6 +50,12 @@ Writes `results/` — `da_dispatch.csv` … `bal_dispatch.csv` for the five mark
 stages, `gen_dispatch.csv` and `branch_flows.csv` for the redispatch, and
 `summary.csv` with one row per hour. Compare against `Data/OMIE/` with
 `plotting/paper_figures_2024.py`.
+
+Coverage stops at 29 December and does not go back before 3 January — see
+[`docs/method_omie_full_year_conversion.md`](docs/method_omie_full_year_conversion.md)
+for why, how the extended range's data was derived and validated, and what's
+still known-imperfect (the CHP `gas_mw` calibration; a missing coal
+minimum-generation floor).
 
 ### 2. Mid-term SDDP (hydro water values)
 
@@ -66,10 +79,13 @@ julia --project=. midterm_sddp4.jl
 ```
 
 78 weekly stages, 4 zones (ES/PT/FR/EU), 3 reservoir states, 37 climate-year
-scenarios. Takes roughly 40 minutes per scenario. Writes
-`Data/BellmanValuesOUT_sddp4_<label>.csv` plus the volume, turbine and exchange
-schedules, and `Data/midterm4_effective_inputs_<label>.csv` — the merged
-capacity/cost table actually used, worth inspecting.
+scenarios. For the 2024 case, `[bellman].bgn_date = "2024-01-03"` (moved back
+from the original 2024-07-02 to cover the full year; see the method doc for
+why it isn't 2024-01-01), ~16 minutes at 60 iterations on this machine —
+scenario runs may take longer. Writes `Data/BellmanValuesOUT_sddp4_<label>.csv`
+plus the volume, turbine and exchange schedules, and
+`Data/midterm4_effective_inputs_<label>.csv` — the merged capacity/cost table
+actually used, worth inspecting.
 
 ### 3. Market chain for 2035
 
@@ -127,7 +143,7 @@ empty for this reason.
 | ---- | ---- |
 | `Data/Bus_Data.csv`, `lines.csv`, `transformers_reactance.csv` | bus-level network topology |
 | `Data/Generation.csv`, `Storage.csv`, `power_unit_tech_params.csv` | unit fleet, ramp rates, tech parameters |
-| `Data/ES_old/{Solar,Wind,load}/` | 2024 MW baselines; column `-12` is the day-ahead vintage |
+| `Data/ES_old/{Solar,Wind,load}/` | 2024 MW baselines; column `-12` is the day-ahead vintage. 363 days (2024-01-03 to 2024-12-29, all of 2024 except 4 excluded days) — see `docs/method_omie_full_year_conversion.md` |
 | `Data/ES/{Solar,Wind Onshore,load}/` | per-gate forecast-deviation factors (`DA,ID2,ID3,CID,BE`), 363 days of 2024 |
 | `Data/ts/EDF__*-ES__*.csv` | EDF load factors and hydro coefficients, 37 climate years 1982–2018. The climate years these files share define the SDDP's scenario set. Run-of-river drives the ES RoR units; inflow is used only when `[midterm4].es_inflow_source = "edf"`. The wind and PV load-factor files are read for the climate-year set only — availability comes from the EMPIRE series below |
 | `Data/ts/Profile-Iberia.csv` | ES load shape for the SDDP |
@@ -158,6 +174,48 @@ branch.
 - The reinforcement sizing assumes symmetric thermal limits, and is only
   meaningful once the binding mechanism has been confirmed thermal rather than
   voltage — see step 2 of the method doc.
+- **No day before 2024-01-03 can run.** `[bellman].bgn_date` indexes the
+  hydro water-value cuts from that date; `midterm_sddp4.jl` has been
+  re-trained with `bgn_date = "2024-01-03"` (not 2024-01-01 — the MIBGAS gas
+  price and EUA carbon price series both start one/two days later, so the
+  first day or two of January have no fuel-cost quote to price the mid-term
+  model's gas plants with). Re-validated against both reference days after
+  retraining: 2 December matched exactly, 8 July within ~1.4% on price and
+  ~5–15% on hydro dispatch magnitude (same shape, small shift from
+  retraining against a different weekly-stage alignment) — see the method
+  doc for the full comparison.
+- **CHP `gas_mw` uses the global default for every day except the two
+  reference days.** The per-day value computed from ENTSO-E generation data
+  consistently disagrees with the reference days' hand-derived figures by
+  ~1.8–2.4×. Likely cause, identified but not yet fully resolved: the
+  formula nets OMIE's **day-ahead cleared** CCGT output against ENTSO-E's
+  **actual delivered** national gas generation — for CCGT, a highly flexible
+  marginal technology, those two can differ by an order of magnitude on a
+  given day (e.g. 8 July: 0.39 GWh cleared day-ahead vs. ~58 GWh actually
+  delivered by the same named plants, per ENTSO-E's per-unit report), so the
+  "leftover" attributed to CHP absorbs real CCGT output that just never
+  cleared day-ahead. See `docs/method_omie_full_year_conversion.md` for the
+  full investigation.
+- **Coal has no technical minimum-generation floor, unlike nuclear**
+  (`[da].nuclear_min_gen_frac`). Checked against real OMIE data for the
+  8–14 April 2024 test week: real coal ran a small, consistent ~245 MW
+  overnight (00:00–02:00) every night and zero the rest of the day — a
+  pattern consistent with 1–2 units held at a technical minimum rather than
+  cycling off — while the model dispatched zero coal for the entire week.
+  The per-day coal *availability* calibration itself checks out (244 MW
+  computed vs. ~245 MW real peak); it's the dispatch logic, not the
+  capacity figure, that's missing this constraint. Not yet fixed — flagged
+  for a decision on whether to add a `coal_min_gen_frac` mirroring the
+  nuclear one.
+- **The AC redispatch has a small, structural non-convergence rate**,
+  independent of input data quality: 5 of 168 hours (~3%) in the April test
+  week reported `LOCALLY_INFEASIBLE` — confirmed via the Ipopt logs to be
+  the solver getting stuck at a point of local infeasibility on a genuinely
+  hard nonconvex instance (steep evening solar-to-demand ramp hours
+  recurred among the failures), not a real capacity shortfall. Re-running
+  the same week after a full data-pipeline rewrite (see below) reproduced
+  the identical 5 failing hours, confirming this is a solver
+  characteristic, not a data problem.
 
 ---
 
@@ -264,7 +322,11 @@ nuclear_availability = 0.85          # default for unlisted days
 
 The two 2024 figures are taken from the OMIE cleared programme against the
 7 408 MW nameplate in `Data/generations.csv`. (TOML requires the sub-table to
-come after every scalar key of `[da]`.)
+come after every scalar key of `[da]`.) `[da.coal_availability_by_date]`
+follows the identical pattern against the 2 900 MW coal nameplate. Both
+tables are now populated the same way for all 363 days in the generated
+range (`omie_conversion/add_nuclear_coal_calibration.py`), not just the two
+reference days shown above.
 
 ## Storage (pumped hydro and Li-Ion BESS)
 

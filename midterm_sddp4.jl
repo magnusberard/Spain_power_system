@@ -539,10 +539,16 @@ for z in ("FR", "PT", "EU")
     EMP_VRE[z] = m
 end
 
-# calendar mapping (no Feb 29 in the Jul-2024..Dec-2025 window)
+# calendar mapping. The annual profiles (EDF climate years, EMPIRE series)
+# have no Feb-29 row, so every real date is re-stamped onto the non-leap
+# reference year 2023 to read a day-of-year off them; a real leap day (29
+# Feb, only reachable once bgn_date is moved into or before a leap year —
+# 2024 itself, here) has no such date in 2023, so it folds onto 28 Feb's
+# profile row instead of erroring.
 function profile_row(res::Symbol, k::Int)::Int
     dt  = DateTime(BGN_DATE) + Hour(k)
-    doy = dayofyear(Date(2023, month(dt), day(dt)))
+    (m, dy) = (month(dt) == 2 && day(dt) == 29) ? (2, 28) : (month(dt), day(dt))
+    doy = dayofyear(Date(2023, m, dy))
     res == :hourly && return (doy - 1) * 24 + hour(dt) + 1
     res == :daily  && return doy
     return min(div(doy - 1, 7) + 1, 53)

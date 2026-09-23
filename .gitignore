@@ -30,3 +30,5 @@ scripts/logs/
 __pycache__/
 *.pyc
 test_*.toml
+.DS_Store
+.claude/

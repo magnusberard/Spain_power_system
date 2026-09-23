@@ -99,46 +99,72 @@ def to_24(values_by_hour, n):
     raise ValueError(f"unexpected {n} hours in pdbf file")
 
 
-def reconstruct_day(d, unit_map):
+# OMIE's own "Energía horaria por tecnologías" report (INT_PBC_TECNOLOGIAS_H,
+# fetched by fetch_omie_technology.py into OMIE_data/tecnologias/) gives the
+# national total per technology, per hour, already aggregated by OMIE itself
+# -- no per-unit lookup needed. Column names map 1:1 onto TECH_GROUPS; the 3
+# columns not listed here (FUEL-GAS, AUTOPRODUCTOR, ALMACENAMIENTO) are the
+# same 3 categories the reconstruction formula already excludes as
+# unmodeled/negligible (see "Known gaps in load" in the method doc) -- and
+# the two import columns aren't used here either, since the load formula's
+# import term comes from ENTSO-E's day-ahead scheduled exchange, not OMIE's.
+TECH_REPORT_COLUMNS = {
+    "coal":     "CARBÓN",
+    "nuclear":  "NUCLEAR",
+    "ccgt":     "CICLO COMBINADO",
+    "hydro":    "HIDRÁULICA",
+    "wind":     "EÓLICA",
+    "solar_th": "SOLAR TÉRMICA",
+    "solar_pv": "SOLAR FOTOVOLTAICA",
+    "cogen":    "COGENERACIÓN/RESIDUOS/MINI HIDRA",
+}
+TECH_REPORT_DIR = os.path.join(OMIE_DATA, "tecnologias")
+
+
+def tech_report_path(d):
+    return os.path.join(TECH_REPORT_DIR, f"tecnologias_{d.year}{d.month:02d}{d.day:02d}.txt")
+
+
+def _es_number(x):
+    x = x.strip()
+    if x == "":
+        return 0.0
+    return float(x.replace(".", "").replace(",", "."))
+
+
+def reconstruct_day(d, unit_map=None):
     """Returns (group_totals, unmapped_mw, n_unmapped) for one date.
-    group_totals: {group_name: [24 hourly MW]}"""
-    path = pdbf_path(d)
-    net = defaultdict(float)  # (hour, unit) -> MW
-    max_hour = 0
+    group_totals: {group_name: [24 hourly MW]}.
+
+    Sourced from OMIE's own pre-aggregated technology report -- exact match
+    (0.0000 MW) verified against Data/OMIE/actual_generation_July_8.csv, all
+    24 hours, all 13 columns (see project chat history). unmapped_mw/
+    n_unmapped are always (0.0, 0) here: there's no per-unit lookup step for
+    this method to fail on. `unit_map` is accepted but unused, kept only so
+    existing callers don't need updating.
+    """
+    path = tech_report_path(d)
     with open(path, encoding="latin-1") as f:
-        next(f)  # "PDBF;" header line
-        for line in f:
-            parts = line.strip().split(";")
-            if len(parts) < 6:
-                continue
-            try:
-                hour = int(parts[3])
-                value = float(parts[5])
-            except ValueError:
-                continue
-            net[(hour, parts[4])] += value
-            if hour > max_hour:
-                max_hour = hour
+        lines = [ln.rstrip("\n").rstrip("\r") for ln in f]
+    header = lines[2].split(";")
+    col_idx = {name: i for i, name in enumerate(header)}
 
-    by_group_hour = defaultdict(lambda: defaultdict(float))
-    unmapped_mw = 0.0
-    unmapped_units = set()
-    for (hour, unit), val in net.items():
-        info = unit_map.get(unit)
-        if info is None:
-            unmapped_mw += abs(val)
-            unmapped_units.add(unit)
+    by_group_hour = defaultdict(dict)
+    max_hour = 0
+    for line in lines[3:]:
+        parts = line.split(";")
+        if len(parts) < 3 or parts[1].strip() == "":
             continue
-        zone, tech = info
-        if zone != "ZONA ESPAÑOLA":
-            continue
-        group = TECH_TO_GROUP.get(tech.replace("\n", " "))
-        if group is None:
-            continue  # not one of the 8 categories (e.g. Comercializador) -- excluded by design
-        by_group_hour[group][hour] += val
+        hour = int(parts[1])
+        if hour > max_hour:
+            max_hour = hour
+        for group, col_name in TECH_REPORT_COLUMNS.items():
+            idx = col_idx.get(col_name)
+            val = _es_number(parts[idx]) if idx is not None and idx < len(parts) else 0.0
+            by_group_hour[group][hour] = val
 
-    group_totals = {g: to_24(by_group_hour.get(g, {}), max_hour) for g in TECH_GROUPS}
-    return group_totals, unmapped_mw, len(unmapped_units)
+    group_totals = {g: to_24(by_group_hour.get(g, {}), max_hour) for g in TECH_REPORT_COLUMNS}
+    return group_totals, 0.0, 0
 
 
 def build_series(d, unit_map, exchange):

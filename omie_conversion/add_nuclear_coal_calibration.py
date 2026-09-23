@@ -57,14 +57,43 @@ def insert_entries(config_text, table_name, entries):
     return config_text[:m.start()] + block + new_lines + sep + config_text[m.end():]
 
 
+# The two original, hand-derived reference days -- never touched by --force,
+# even though this script's own formula reproduces them (see config.toml's
+# [da] comments: these ARE the source of that formula, not a check on it).
+PROTECTED_DATES = {"2024-07-08", "2024-12-02"}
+
+
+def remove_dates_in_range(config_text, table_name, from_date, to_date):
+    """Strip existing '"yyyy-mm-dd" = value' lines for a table, for dates
+    inside [from_date, to_date] -- used by --force to let a date be
+    recomputed instead of silently skipped as 'already present'."""
+    def repl(m):
+        if m.group(1) in PROTECTED_DATES:
+            return m.group(0)
+        return "" if from_date <= m.group(1) <= to_date else m.group(0)
+    m = re.search(rf"^\[da\.{re.escape(table_name)}\](.*?)(?=\n\[|\Z)", config_text, re.S | re.M)
+    if not m:
+        return config_text
+    block = re.sub(r'\n"(\d{4}-\d{2}-\d{2})"\s*=\s*[0-9.]+', repl, m.group(1))
+    return config_text[:m.start(1)] + block + config_text[m.end(1):]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--from-date", required=True)
     ap.add_argument("--to-date", required=True)
+    ap.add_argument("--force", action="store_true",
+                     help="recompute and replace dates already present in the range "
+                          "(instead of skipping them)")
     args = ap.parse_args()
 
     unit_map = c.load_unit_map()
     config_text = open(CONFIG_PATH, encoding="utf-8").read()
+    if args.force:
+        config_text = remove_dates_in_range(config_text, "nuclear_availability_by_date",
+                                             args.from_date, args.to_date)
+        config_text = remove_dates_in_range(config_text, "coal_availability_by_date",
+                                             args.from_date, args.to_date)
     have_nuclear = existing_dates(config_text, "nuclear_availability_by_date")
     have_coal = existing_dates(config_text, "coal_availability_by_date")
 

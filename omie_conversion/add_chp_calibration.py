@@ -69,15 +69,40 @@ def existing_chp_dates(config_text):
     return set(re.findall(r'\[chp\.by_date\."(\d{4}-\d{2}-\d{2})"\]', config_text))
 
 
+# The two original, hand-derived reference days -- their [chp.by_date] blocks
+# carry the actual hand-derived gas_mw (2260/2920) this whole project's
+# gas_mw investigation was measured against. Never touched by --force.
+PROTECTED_DATES = {"2024-07-08", "2024-12-02"}
+
+
+def remove_block(config_text, d_str):
+    """Strip one whole [chp.by_date."d_str"] block (header + its key=value
+    lines), for --force to let it be recomputed instead of skipped."""
+    pattern = rf'\n?\[chp\.by_date\."{re.escape(d_str)}"\]\n(?:[^\[\n][^\n]*\n)*'
+    return re.sub(pattern, "", config_text)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--from-date", required=True)
     ap.add_argument("--to-date", required=True)
+    ap.add_argument("--force", action="store_true",
+                     help="recompute and replace dates already present in the range "
+                          "(instead of skipping them); never touches the two protected "
+                          "hand-derived reference days regardless")
     args = ap.parse_args()
 
     unit_map = c.load_unit_map()
     entsoe_chp = load_entsoe_chp()
     config_text = open(CONFIG_PATH, encoding="utf-8").read()
+    if args.force:
+        d = date.fromisoformat(args.from_date)
+        end = date.fromisoformat(args.to_date)
+        while d <= end:
+            d_str = d.isoformat()
+            if d_str not in PROTECTED_DATES:
+                config_text = remove_block(config_text, d_str)
+            d += timedelta(days=1)
     have = existing_chp_dates(config_text)
 
     d = date.fromisoformat(args.from_date)

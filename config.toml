@@ -264,7 +264,7 @@ renewable_power_factor = 0.95
 #     hours so reservoir hydro is allocated against the cost-to-go;
 #   • the redispatch uses either the binding constant water value or the full
 #     cuts, selected by [redispatch].water_value.
-bgn_date     = "2024-07-02"          # start date of the long-term model
+bgn_date     = "2024-01-03"          # start date of the long-term model
 ssv_step     = 168                   # stage length in hours (1 week)
 # In-house 4-node SDDP ([midterm4], midterm_sddp4.jl) rather than the external
 # SMS++ output.  The SMS++ trajectory (BellmanValuesOUT.csv /

@@ -54,8 +54,8 @@ stages, `gen_dispatch.csv` and `branch_flows.csv` for the redispatch, and
 Coverage stops at 29 December and does not go back before 3 January — see
 [`docs/method_omie_full_year_conversion.md`](docs/method_omie_full_year_conversion.md)
 for why, how the extended range's data was derived and validated, and what's
-still known-imperfect (the CHP `gas_mw` calibration; a missing coal
-minimum-generation floor).
+still known-imperfect (the CHP gas/mini-hydro split on wet days; a missing
+coal minimum-generation floor).
 
 ### 2. Mid-term SDDP (hydro water values)
 
@@ -184,18 +184,15 @@ branch.
   ~5–15% on hydro dispatch magnitude (same shape, small shift from
   retraining against a different weekly-stage alignment) — see the method
   doc for the full comparison.
-- **CHP `gas_mw` uses the global default for every day except the two
-  reference days.** The per-day value computed from ENTSO-E generation data
-  consistently disagrees with the reference days' hand-derived figures by
-  ~1.8–2.4×. Likely cause, identified but not yet fully resolved: the
-  formula nets OMIE's **day-ahead cleared** CCGT output against ENTSO-E's
-  **actual delivered** national gas generation — for CCGT, a highly flexible
-  marginal technology, those two can differ by an order of magnitude on a
-  given day (e.g. 8 July: 0.39 GWh cleared day-ahead vs. ~58 GWh actually
-  delivered by the same named plants, per ENTSO-E's per-unit report), so the
-  "leftover" attributed to CHP absorbs real CCGT output that just never
-  cleared day-ahead. See `docs/method_omie_full_year_conversion.md` for the
-  full investigation.
+- **CHP gas and mini-hydro split is uncertain on wet days.** Per-day
+  `gas_mw` is the remainder of OMIE's cogeneration/waste/mini-hydro group
+  after the waste and mini-hydro blocks, which reproduces both reference
+  days (2,260 / 2,920 MW) and keeps the group total exact on every day. But
+  mini-hydro (ENTSO-E hydro − OMIE hydro) is only an upper bound, so on wet
+  spring days it runs high and gas runs correspondingly low — 13 days below
+  1,500 MW, down to 30 MW on 2024-04-06. Prices are barely affected; the
+  gas/hydro split, flexibility below the 22 EUR/MWh gas offer and CO₂
+  accounting are. See `docs/method_omie_full_year_conversion.md`.
 - **Coal has no technical minimum-generation floor, unlike nuclear**
   (`[da].nuclear_min_gen_frac`). Checked against real OMIE data for the
   8–14 April 2024 test week: real coal ran a small, consistent ~245 MW

@@ -192,65 +192,66 @@ containing, not just the new part.
   switch, since this was a redo, not a gap-fill) — the two original
   hand-derived reference days are hard-coded as protected and are never
   touched by `--force`.
-- **`[chp.by_date]`**: three-way split derived from ENTSO-E generation by
-  fuel type minus the OMIE-cleared equivalent (see the `[chp]` comments in
-  `config.toml` for the full derivation).
+- **`[chp.by_date]`**: three-way split of OMIE's cogeneration/waste/
+  mini-hydro group — waste and mini-hydro from ENTSO-E generation by fuel
+  type (minus the OMIE-cleared equivalent for mini-hydro), gas CHP as the
+  remainder of the group (see the `[chp]` comments in `config.toml`).
   - `waste_mw` and `minihydro_mw` reproduce both reference days almost
     exactly (within ~1%) and are computed per-day for the full range.
-  - `gas_mw` does **not** reproduce — it comes out consistently ~1.8–2.4×
-    higher than the reference days' hand-derived values (e.g. 8 July:
-    4,015 MW computed vs. 2,260 MW documented). Both inputs to that
-    calculation check out independently against other known-correct figures
-    (ENTSO-E Fossil Gas confirmed twice via two different fetch methods;
-    OMIE CCGT matches an already-documented reference value), so the gap is
-    in the *method*, not in this reproduction.
+  - `gas_mw` is the **remainder of the OMIE group** once the other two
+    blocks are taken out:
 
-    **Likely cause, identified but not yet fully resolved:** the formula nets
-    OMIE's **day-ahead cleared** CCGT output against ENTSO-E's **actual
-    delivered** national Fossil Gas total. Both are still day-ahead numbers
-    regardless of which reconstruction method reads them (see above), so
-    switching to the technology report changed nothing about this
-    discrepancy. CCGT is the most flexible, most heavily
-    intraday/balancing/redispatch-adjusted technology on the system, so the
-    two can diverge by a large, day-dependent margin. Checked directly via
-    ENTSO-E's per-generation-unit report (documentType `A73`) for the named
-    CCGT plants on both reference days:
+    ```
+    gas_mw = OMIE "COGENERACIÓN/RESIDUOS/MINI HIDRA" daily mean − waste_mw − minihydro_mw
+    ```
+
+    This reproduces both reference days (8 July: 3,410.5 − 730 − 420 =
+    2,260.5 MW vs. 2,260; 2 December: 3,918.6 − 650 − 350 = 2,918.6 MW vs.
+    2,920) and the paper's 54 / 70 GWh/day (Spanish model paper, §5.1.1).
+    It is consistent with the paper's own validation: the model clears "the
+    cogeneration group 81.8 against 81.9" GWh on 8 July, which only holds
+    if the three blocks were sized to add up to the group (2,260 + 730 +
+    420 MW × 24 h = 81.8 GWh). Written for every day by
+    `add_chp_calibration.py --gas-from-config`, from the `waste_mw` /
+    `minihydro_mw` already in `config.toml`; the two reference days keep
+    their hand-derived values.
+
+    **Caveat — the paper's wording.** §5.1.1 describes the split as "taking
+    differences against the OMIE programme" for each ENTSO-E category, which
+    read literally for gas would be ENTSO-E Fossil Gas − OMIE cleared CCGT.
+    That formula does not reproduce the paper's own numbers (see below);
+    the remainder of the group does. The method was therefore recovered
+    from the numbers, not from the prose — worth confirming with Ehsan.
+
+    **Why "ENTSO-E Fossil Gas − OMIE cleared CCGT" fails.** It came out
+    consistently ~1.8–2.4× too high (8 July: 4,015 MW; 2 December:
+    7,053 MW), with both inputs independently verified. It nets OMIE's
+    **day-ahead cleared** CCGT against ENTSO-E's **actual delivered** Fossil
+    Gas, and in Spain much of the CCGT output is committed after the
+    day-ahead, so that output stays in the remainder and is mislabelled as
+    cogeneration. ENTSO-E's per-generation-unit report (documentType `A73`)
+    for the named CCGT plants shows the size of the gap:
 
     | | OMIE day-ahead CCGT | ENTSO-E actual CCGT (named units) |
     |---|---|---|
     | 8 July | 0.39 GWh | 57.59 GWh |
     | 2 Dec | 123.05 GWh | 244.51 GWh |
 
-    Re-deriving `gas_mw` against the *actual* CCGT total instead of the
-    day-ahead one brings both days to a consistent ~70% of the reference
-    value (1,632 MW / 1,993 MW vs. 2,260 MW / 2,920 MW) — a much steadier
-    ratio than the original 1.8–2.4×, though not an exact match, likely
-    because ENTSO-E's per-unit report only lists units above a size
-    threshold and so still undercounts true actual CCGT output. Ruled out
-    along the way: a unit-technology misclassification (every named plant
-    that *is* in the unit map is correctly tagged `Ciclo Combinado`) and an
-    OMIE-visible-cogeneration double-count (real, but a smaller effect than
-    the day-ahead/actual gap).
-
-    Explored further, not yet built: whether OMIE's own **intraday** market
-    results (a session-based technology breakdown, analogous to the
-    day-ahead report above) could narrow this further, since intraday
-    trading is OMIE's own data rather than needing to lean on ENTSO-E's
-    actual-generation numbers. A likely report code wasn't found (a few
-    guesses by analogy to the day-ahead pattern all 404'd, and OMIE's own
-    file-access listing doesn't show an obvious match either), and Spain's
-    intraday market restructured around the EU's Single Intraday Coupling
-    (SIDC) in June 2024 — before which local numbered auction sessions
-    dominated, after which continuous trading took over a lot of that
-    volume — which is *after* both reference days, so a session-based
-    report might only capture part of the picture for them even if found.
-    Parked, not pursued further as of this note.
-
-    `gas_mw` is therefore still **left unset** per day, which falls back to
-    `[chp].gas_mw`'s global default (2,600 MW) rather than writing a value
-    known to disagree with the two reference days. Revisit with whoever
-    built the original calibration before deciding whether to apply the
-    actual-CCGT-based re-derivation instead.
+    **Full-year spread.** Over the 363 days `gas_mw` has a median of
+    2,277 MW and a mean of 2,293 MW (the flat 2,600 MW default it replaces
+    sat above most of the year), with monthly means from 1,761 MW (April) to
+    ~2,620 MW (November–December). Gas, waste and mini-hydro add up to the
+    OMIE group on every day (within 0.1 MW). The low tail comes from the
+    mini-hydro upper bound, not the gas formula: on wet spring days
+    "ENTSO-E Hydro − OMIE Hydropower" also picks up hydro traded after the
+    day-ahead and reaches 1,200–1,900 MW, and gas, as the remainder, drops
+    accordingly — 13 days fall below 1,500 MW, the lowest being 2024-04-06
+    (30.5 MW, mini-hydro 1,927 MW) and 2024-04-09 (444 MW). On 24 days
+    mini-hydro is 0 and gas is correspondingly a little high. Accepted as
+    is: the group total, and therefore the cheap supply the market sees, is
+    exact; only the gas/hydro split (flexibility below the 22 EUR/MWh gas
+    offer, and CO₂ accounting) is affected on those days. Per-day figures:
+    `results/chp_gas_mw_report.csv` from the script's report.
 
 ## Known gaps in `load`
 
@@ -338,6 +339,9 @@ python3 omie_conversion/convert_omie_to_model_data.py --all --from-date 2024-01-
 #    dates instead of skipping them; the two reference days are always protected)
 python3 omie_conversion/add_nuclear_coal_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --force
 python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --force
+#    gas_mw alone, from the waste/minihydro already in config.toml (needs only
+#    OMIE_data/tecnologias/; add --dry-run to just write the report)
+python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-02 --to-date 2024-12-29 --gas-from-config
 
 # 8. Retrain the mid-term SDDP model to cover the new range
 #    (edit [bellman].bgn_date in config.toml first)

@@ -1110,13 +1110,19 @@ ramp_limits = true
 # cover ~3.5 GW of real supply with CCGTs, which is most of its CCGT error.
 #
 # Sizing comes from splitting the OMIE group against ENTSO-E's fuel-based
-# metering on the two study days (see Paper section 5.1):
-#   gas CHP   = ENTSO-E Fossil Gas − OMIE cleared CCGT   → 54 / 70 GWh/day
+# metering (see Paper section 5.1); figures are for the two study days:
 #   waste     = ENTSO-E Biomass + Waste                  → 17.6 / 15.5 GWh/day
 #   minihydro = ENTSO-E Hydro(+pump) − OMIE Hydropower   → 10.1 / 8.3 GWh/day
-# Divided by 24 h these give the MW blocks below.  The mini-hydro figure is an
-# upper bound: that residual also absorbs intraday hydro adjustment, which is
-# why it comes out (implausibly) larger in July than in December.
+#   gas CHP   = OMIE group − waste − minihydro           → 54 / 70 GWh/day
+# Divided by 24 h these give the MW blocks below, so the three blocks always
+# add up to the OMIE group.  Gas CHP is NOT "ENTSO-E Fossil Gas − OMIE cleared
+# CCGT": ENTSO-E's gas is actual output and includes the CCGTs committed after
+# the day-ahead, which comes out 1.8–2.4× too high on both study days.  The
+# mini-hydro figure is an upper bound: that residual also absorbs intraday
+# hydro adjustment, which is why it comes out (implausibly) larger in July than
+# in December — and gas CHP, as the remainder, inherits that error (e.g.
+# 30 MW on 2024-04-06, when mini-hydro comes out at 1 927 MW).
+# Per-day values: omie_conversion/add_chp_calibration.py.
 enabled = true
 
 # National block sizes [MW] for any day without a [chp.by_date] entry.
@@ -1158,1446 +1164,1807 @@ waste_mw     =  730.0
 minihydro_mw =  420.0
 
 [chp.by_date."2024-01-02"]
+gas_mw       = 1315.4
 waste_mw     = 493.7
 minihydro_mw = 1243.4
 
 [chp.by_date."2024-01-03"]
+gas_mw       = 2265.1
 waste_mw     = 509.9
 minihydro_mw = 500.7
 
 [chp.by_date."2024-01-04"]
+gas_mw       = 2383.1
 waste_mw     = 554.0
 minihydro_mw = 586.8
 
 [chp.by_date."2024-01-05"]
+gas_mw       = 2117.9
 waste_mw     = 557.1
 minihydro_mw = 850.3
 
 [chp.by_date."2024-01-06"]
+gas_mw       = 1344.0
 waste_mw     = 542.2
 minihydro_mw = 1299.2
 
 [chp.by_date."2024-01-07"]
+gas_mw       = 1669.4
 waste_mw     = 589.5
 minihydro_mw = 932.0
 
 [chp.by_date."2024-01-08"]
+gas_mw       = 2031.2
 waste_mw     = 628.9
 minihydro_mw = 923.3
 
 [chp.by_date."2024-01-09"]
+gas_mw       = 2251.2
 waste_mw     = 628.9
 minihydro_mw = 874.7
 
 [chp.by_date."2024-01-10"]
+gas_mw       = 2624.3
 waste_mw     = 631.0
 minihydro_mw = 590.0
 
 [chp.by_date."2024-01-11"]
+gas_mw       = 3088.6
 waste_mw     = 613.8
 minihydro_mw = 161.2
 
 [chp.by_date."2024-01-12"]
+gas_mw       = 3234.6
 waste_mw     = 656.3
 minihydro_mw = 0.0
 
 [chp.by_date."2024-01-13"]
+gas_mw       = 2223.6
 waste_mw     = 675.9
 minihydro_mw = 864.1
 
 [chp.by_date."2024-01-14"]
+gas_mw       = 1963.7
 waste_mw     = 640.3
 minihydro_mw = 1137.0
 
 [chp.by_date."2024-01-15"]
+gas_mw       = 2261.0
 waste_mw     = 633.0
 minihydro_mw = 1042.6
 
 [chp.by_date."2024-01-16"]
+gas_mw       = 2520.7
 waste_mw     = 637.4
 minihydro_mw = 641.2
 
 [chp.by_date."2024-01-17"]
+gas_mw       = 1513.8
 waste_mw     = 500.8
 minihydro_mw = 1558.7
 
 [chp.by_date."2024-01-18"]
+gas_mw       = 2081.0
 waste_mw     = 515.2
 minihydro_mw = 1013.3
 
 [chp.by_date."2024-01-19"]
+gas_mw       = 1882.4
 waste_mw     = 568.7
 minihydro_mw = 1381.2
 
 [chp.by_date."2024-01-20"]
+gas_mw       = 2033.4
 waste_mw     = 592.1
 minihydro_mw = 1047.6
 
 [chp.by_date."2024-01-21"]
+gas_mw       = 2001.7
 waste_mw     = 571.5
 minihydro_mw = 1093.6
 
 [chp.by_date."2024-01-22"]
+gas_mw       = 2699.3
 waste_mw     = 536.3
 minihydro_mw = 599.3
 
 [chp.by_date."2024-01-23"]
+gas_mw       = 2789.3
 waste_mw     = 571.4
 minihydro_mw = 491.1
 
 [chp.by_date."2024-01-24"]
+gas_mw       = 3081.5
 waste_mw     = 558.9
 minihydro_mw = 241.1
 
 [chp.by_date."2024-01-25"]
+gas_mw       = 3166.8
 waste_mw     = 555.9
 minihydro_mw = 127.8
 
 [chp.by_date."2024-01-26"]
+gas_mw       = 3045.2
 waste_mw     = 555.6
 minihydro_mw = 272.7
 
 [chp.by_date."2024-01-27"]
+gas_mw       = 3225.2
 waste_mw     = 550.2
 minihydro_mw = 41.7
 
 [chp.by_date."2024-01-28"]
+gas_mw       = 2905.6
 waste_mw     = 542.8
 minihydro_mw = 265.5
 
 [chp.by_date."2024-01-29"]
+gas_mw       = 2939.3
 waste_mw     = 552.3
 minihydro_mw = 267.1
 
 [chp.by_date."2024-01-30"]
+gas_mw       = 3049.7
 waste_mw     = 644.8
 minihydro_mw = 192.2
 
 [chp.by_date."2024-01-31"]
+gas_mw       = 3193.2
 waste_mw     = 678.2
 minihydro_mw = 82.5
 
 [chp.by_date."2024-02-01"]
+gas_mw       = 2980.2
 waste_mw     = 674.5
 minihydro_mw = 65.0
 
 [chp.by_date."2024-02-02"]
+gas_mw       = 2498.1
 waste_mw     = 705.3
 minihydro_mw = 561.5
 
 [chp.by_date."2024-02-03"]
+gas_mw       = 2359.8
 waste_mw     = 704.9
 minihydro_mw = 511.3
 
 [chp.by_date."2024-02-04"]
+gas_mw       = 2504.1
 waste_mw     = 682.7
 minihydro_mw = 348.7
 
 [chp.by_date."2024-02-05"]
+gas_mw       = 1858.3
 waste_mw     = 685.2
 minihydro_mw = 1026.3
 
 [chp.by_date."2024-02-06"]
+gas_mw       = 2893.7
 waste_mw     = 632.6
 minihydro_mw = 197.6
 
 [chp.by_date."2024-02-07"]
+gas_mw       = 2495.6
 waste_mw     = 538.2
 minihydro_mw = 610.2
 
 [chp.by_date."2024-02-08"]
+gas_mw       = 1900.6
 waste_mw     = 489.3
 minihydro_mw = 1143.4
 
 [chp.by_date."2024-02-09"]
+gas_mw       = 2065.4
 waste_mw     = 498.2
 minihydro_mw = 907.2
 
 [chp.by_date."2024-02-10"]
+gas_mw       = 1735.5
 waste_mw     = 392.9
 minihydro_mw = 929.6
 
 [chp.by_date."2024-02-11"]
+gas_mw       = 1848.4
 waste_mw     = 426.0
 minihydro_mw = 725.2
 
 [chp.by_date."2024-02-12"]
+gas_mw       = 2763.9
 waste_mw     = 472.4
 minihydro_mw = 161.3
 
 [chp.by_date."2024-02-13"]
+gas_mw       = 3147.2
 waste_mw     = 577.3
 minihydro_mw = 0.0
 
 [chp.by_date."2024-02-14"]
+gas_mw       = 2865.7
 waste_mw     = 591.4
 minihydro_mw = 330.8
 
 [chp.by_date."2024-02-15"]
+gas_mw       = 2951.9
 waste_mw     = 597.5
 minihydro_mw = 188.1
 
 [chp.by_date."2024-02-16"]
+gas_mw       = 2638.8
 waste_mw     = 596.4
 minihydro_mw = 487.7
 
 [chp.by_date."2024-02-17"]
+gas_mw       = 2815.8
 waste_mw     = 588.0
 minihydro_mw = 236.7
 
 [chp.by_date."2024-02-18"]
+gas_mw       = 2550.4
 waste_mw     = 580.9
 minihydro_mw = 479.7
 
 [chp.by_date."2024-02-19"]
+gas_mw       = 2755.7
 waste_mw     = 581.8
 minihydro_mw = 307.5
 
 [chp.by_date."2024-02-20"]
+gas_mw       = 3029.6
 waste_mw     = 609.3
 minihydro_mw = 0.0
 
 [chp.by_date."2024-02-21"]
+gas_mw       = 2388.1
 waste_mw     = 639.8
 minihydro_mw = 574.9
 
 [chp.by_date."2024-02-22"]
+gas_mw       = 1969.3
 waste_mw     = 544.1
 minihydro_mw = 962.4
 
 [chp.by_date."2024-02-23"]
+gas_mw       = 2198.4
 waste_mw     = 450.6
 minihydro_mw = 573.9
 
 [chp.by_date."2024-02-24"]
+gas_mw       = 1938.6
 waste_mw     = 469.5
 minihydro_mw = 523.9
 
 [chp.by_date."2024-02-25"]
+gas_mw       = 1622.4
 waste_mw     = 461.2
 minihydro_mw = 802.7
 
 [chp.by_date."2024-02-26"]
+gas_mw       = 1520.0
 waste_mw     = 415.3
 minihydro_mw = 1192.7
 
 [chp.by_date."2024-02-27"]
+gas_mw       = 1853.1
 waste_mw     = 448.0
 minihydro_mw = 944.6
 
 [chp.by_date."2024-02-28"]
+gas_mw       = 2516.3
 waste_mw     = 496.3
 minihydro_mw = 282.2
 
 [chp.by_date."2024-02-29"]
+gas_mw       = 2799.3
 waste_mw     = 531.0
 minihydro_mw = 0.0
 
 [chp.by_date."2024-03-01"]
+gas_mw       = 2582.0
 waste_mw     = 520.8
 minihydro_mw = 10.5
 
 [chp.by_date."2024-03-02"]
+gas_mw       = 1295.2
 waste_mw     = 511.7
 minihydro_mw = 1218.6
 
 [chp.by_date."2024-03-03"]
+gas_mw       = 784.0
 waste_mw     = 479.0
 minihydro_mw = 1377.7
 
 [chp.by_date."2024-03-04"]
+gas_mw       = 1413.4
 waste_mw     = 430.9
 minihydro_mw = 1386.0
 
 [chp.by_date."2024-03-05"]
+gas_mw       = 1837.8
 waste_mw     = 553.3
 minihydro_mw = 1106.5
 
 [chp.by_date."2024-03-06"]
+gas_mw       = 2785.3
 waste_mw     = 543.9
 minihydro_mw = 494.5
 
 [chp.by_date."2024-03-07"]
+gas_mw       = 2325.6
 waste_mw     = 527.5
 minihydro_mw = 684.3
 
 [chp.by_date."2024-03-08"]
+gas_mw       = 2105.1
 waste_mw     = 535.1
 minihydro_mw = 768.5
 
 [chp.by_date."2024-03-09"]
+gas_mw       = 1810.3
 waste_mw     = 528.3
 minihydro_mw = 780.7
 
 [chp.by_date."2024-03-10"]
+gas_mw       = 1804.9
 waste_mw     = 529.5
 minihydro_mw = 169.1
 
 [chp.by_date."2024-03-11"]
+gas_mw       = 2556.6
 waste_mw     = 524.3
 minihydro_mw = 87.7
 
 [chp.by_date."2024-03-12"]
+gas_mw       = 2902.2
 waste_mw     = 543.2
 minihydro_mw = 187.6
 
 [chp.by_date."2024-03-13"]
+gas_mw       = 2984.7
 waste_mw     = 585.6
 minihydro_mw = 186.9
 
 [chp.by_date."2024-03-14"]
+gas_mw       = 2787.5
 waste_mw     = 592.4
 minihydro_mw = 473.0
 
 [chp.by_date."2024-03-15"]
+gas_mw       = 2957.5
 waste_mw     = 604.9
 minihydro_mw = 354.2
 
 [chp.by_date."2024-03-16"]
+gas_mw       = 2736.7
 waste_mw     = 639.5
 minihydro_mw = 305.1
 
 [chp.by_date."2024-03-17"]
+gas_mw       = 2692.9
 waste_mw     = 615.2
 minihydro_mw = 312.6
 
 [chp.by_date."2024-03-18"]
+gas_mw       = 3261.2
 waste_mw     = 601.2
 minihydro_mw = 0.0
 
 [chp.by_date."2024-03-19"]
+gas_mw       = 3199.2
 waste_mw     = 607.8
 minihydro_mw = 108.9
 
 [chp.by_date."2024-03-20"]
+gas_mw       = 3089.6
 waste_mw     = 585.6
 minihydro_mw = 205.7
 
 [chp.by_date."2024-03-21"]
+gas_mw       = 3274.1
 waste_mw     = 560.9
 minihydro_mw = 0.0
 
 [chp.by_date."2024-03-22"]
+gas_mw       = 3342.9
 waste_mw     = 601.5
 minihydro_mw = 0.0
 
 [chp.by_date."2024-03-23"]
+gas_mw       = 2132.4
 waste_mw     = 618.1
 minihydro_mw = 439.5
 
 [chp.by_date."2024-03-24"]
+gas_mw       = 2244.4
 waste_mw     = 662.5
 minihydro_mw = 0.0
 
 [chp.by_date."2024-03-25"]
+gas_mw       = 2184.8
 waste_mw     = 651.7
 minihydro_mw = 799.4
 
 [chp.by_date."2024-03-26"]
+gas_mw       = 2719.2
 waste_mw     = 606.3
 minihydro_mw = 256.2
 
 [chp.by_date."2024-03-27"]
+gas_mw       = 2119.7
 waste_mw     = 587.3
 minihydro_mw = 644.6
 
 [chp.by_date."2024-03-28"]
+gas_mw       = 2163.3
 waste_mw     = 619.8
 minihydro_mw = 511.6
 
 [chp.by_date."2024-03-29"]
+gas_mw       = 1378.1
 waste_mw     = 635.4
 minihydro_mw = 1202.2
 
 [chp.by_date."2024-03-30"]
+gas_mw       = 2195.7
 waste_mw     = 615.5
 minihydro_mw = 408.3
 
 [chp.by_date."2024-03-31"]
+gas_mw       = 1650.2
 waste_mw     = 588.5
 minihydro_mw = 784.1
 
 [chp.by_date."2024-04-01"]
+gas_mw       = 1828.8
 waste_mw     = 581.2
 minihydro_mw = 276.9
 
 [chp.by_date."2024-04-02"]
+gas_mw       = 1748.7
 waste_mw     = 566.8
 minihydro_mw = 850.7
 
 [chp.by_date."2024-04-03"]
+gas_mw       = 1963.0
 waste_mw     = 530.4
 minihydro_mw = 847.6
 
 [chp.by_date."2024-04-04"]
+gas_mw       = 1773.6
 waste_mw     = 565.0
 minihydro_mw = 837.9
 
 [chp.by_date."2024-04-05"]
+gas_mw       = 1604.8
 waste_mw     = 558.4
 minihydro_mw = 772.8
 
 [chp.by_date."2024-04-06"]
+gas_mw       = 30.5
 waste_mw     = 573.0
 minihydro_mw = 1927.3
 
 [chp.by_date."2024-04-07"]
+gas_mw       = 1109.6
 waste_mw     = 538.6
 minihydro_mw = 930.7
 
 [chp.by_date."2024-04-08"]
+gas_mw       = 1702.6
 waste_mw     = 555.1
 minihydro_mw = 465.2
 
 [chp.by_date."2024-04-09"]
+gas_mw       = 444.1
 waste_mw     = 527.0
 minihydro_mw = 1640.9
 
 [chp.by_date."2024-04-10"]
+gas_mw       = 2492.3
 waste_mw     = 484.9
 minihydro_mw = 3.9
 
 [chp.by_date."2024-04-11"]
+gas_mw       = 2362.1
 waste_mw     = 503.2
 minihydro_mw = 248.4
 
 [chp.by_date."2024-04-12"]
+gas_mw       = 2125.3
 waste_mw     = 520.0
 minihydro_mw = 417.8
 
 [chp.by_date."2024-04-13"]
+gas_mw       = 1870.6
 waste_mw     = 527.3
 minihydro_mw = 252.2
 
 [chp.by_date."2024-04-14"]
+gas_mw       = 1308.3
 waste_mw     = 530.4
 minihydro_mw = 496.2
 
 [chp.by_date."2024-04-15"]
+gas_mw       = 1856.8
 waste_mw     = 467.2
 minihydro_mw = 297.7
 
 [chp.by_date."2024-04-16"]
+gas_mw       = 2088.6
 waste_mw     = 472.1
 minihydro_mw = 0.0
 
 [chp.by_date."2024-04-17"]
+gas_mw       = 1868.7
 waste_mw     = 488.9
 minihydro_mw = 306.5
 
 [chp.by_date."2024-04-18"]
+gas_mw       = 1666.9
 waste_mw     = 540.8
 minihydro_mw = 490.5
 
 [chp.by_date."2024-04-19"]
+gas_mw       = 2352.3
 waste_mw     = 542.4
 minihydro_mw = 0.0
 
 [chp.by_date."2024-04-20"]
+gas_mw       = 1904.6
 waste_mw     = 530.6
 minihydro_mw = 272.1
 
 [chp.by_date."2024-04-21"]
+gas_mw       = 1912.5
 waste_mw     = 511.3
 minihydro_mw = 0.0
 
 [chp.by_date."2024-04-22"]
+gas_mw       = 2000.1
 waste_mw     = 533.2
 minihydro_mw = 0.0
 
 [chp.by_date."2024-04-23"]
+gas_mw       = 1968.9
 waste_mw     = 564.7
 minihydro_mw = 174.0
 
 [chp.by_date."2024-04-24"]
+gas_mw       = 1960.3
 waste_mw     = 563.4
 minihydro_mw = 355.3
 
 [chp.by_date."2024-04-25"]
+gas_mw       = 1876.7
 waste_mw     = 587.8
 minihydro_mw = 537.1
 
 [chp.by_date."2024-04-26"]
+gas_mw       = 2438.6
 waste_mw     = 659.7
 minihydro_mw = 219.3
 
 [chp.by_date."2024-04-27"]
+gas_mw       = 1070.6
 waste_mw     = 643.7
 minihydro_mw = 1384.8
 
 [chp.by_date."2024-04-28"]
+gas_mw       = 1013.2
 waste_mw     = 663.3
 minihydro_mw = 1563.9
 
 [chp.by_date."2024-04-29"]
+gas_mw       = 1858.9
 waste_mw     = 640.8
 minihydro_mw = 933.4
 
 [chp.by_date."2024-04-30"]
+gas_mw       = 2637.3
 waste_mw     = 646.4
 minihydro_mw = 83.9
 
 [chp.by_date."2024-05-01"]
+gas_mw       = 1740.2
 waste_mw     = 532.0
 minihydro_mw = 803.5
 
 [chp.by_date."2024-05-02"]
+gas_mw       = 2021.6
 waste_mw     = 535.9
 minihydro_mw = 739.7
 
 [chp.by_date."2024-05-03"]
+gas_mw       = 2526.1
 waste_mw     = 554.4
 minihydro_mw = 368.0
 
 [chp.by_date."2024-05-04"]
+gas_mw       = 2280.5
 waste_mw     = 541.0
 minihydro_mw = 364.0
 
 [chp.by_date."2024-05-05"]
+gas_mw       = 1958.7
 waste_mw     = 560.6
 minihydro_mw = 758.6
 
 [chp.by_date."2024-05-06"]
+gas_mw       = 1500.4
 waste_mw     = 544.7
 minihydro_mw = 1515.7
 
 [chp.by_date."2024-05-07"]
+gas_mw       = 2413.4
 waste_mw     = 592.9
 minihydro_mw = 560.1
 
 [chp.by_date."2024-05-08"]
+gas_mw       = 1828.4
 waste_mw     = 593.5
 minihydro_mw = 1230.5
 
 [chp.by_date."2024-05-09"]
+gas_mw       = 1932.9
 waste_mw     = 596.0
 minihydro_mw = 969.9
 
 [chp.by_date."2024-05-10"]
+gas_mw       = 2333.0
 waste_mw     = 599.2
 minihydro_mw = 550.6
 
 [chp.by_date."2024-05-11"]
+gas_mw       = 1753.4
 waste_mw     = 615.3
 minihydro_mw = 808.3
 
 [chp.by_date."2024-05-12"]
+gas_mw       = 1845.5
 waste_mw     = 610.2
 minihydro_mw = 620.9
 
 [chp.by_date."2024-05-13"]
+gas_mw       = 2128.4
 waste_mw     = 579.4
 minihydro_mw = 560.2
 
 [chp.by_date."2024-05-14"]
+gas_mw       = 1831.2
 waste_mw     = 540.0
 minihydro_mw = 754.8
 
 [chp.by_date."2024-05-15"]
+gas_mw       = 1827.9
 waste_mw     = 603.5
 minihydro_mw = 921.1
 
 [chp.by_date."2024-05-16"]
+gas_mw       = 1711.4
 waste_mw     = 585.2
 minihydro_mw = 1228.9
 
 [chp.by_date."2024-05-17"]
+gas_mw       = 2185.8
 waste_mw     = 587.8
 minihydro_mw = 818.9
 
 [chp.by_date."2024-05-18"]
+gas_mw       = 1958.0
 waste_mw     = 620.6
 minihydro_mw = 773.0
 
 [chp.by_date."2024-05-19"]
+gas_mw       = 1956.1
 waste_mw     = 634.5
 minihydro_mw = 855.9
 
 [chp.by_date."2024-05-20"]
+gas_mw       = 1815.6
 waste_mw     = 613.2
 minihydro_mw = 1188.8
 
 [chp.by_date."2024-05-21"]
+gas_mw       = 1821.8
 waste_mw     = 645.2
 minihydro_mw = 1111.7
 
 [chp.by_date."2024-05-22"]
+gas_mw       = 1933.0
 waste_mw     = 674.0
 minihydro_mw = 945.1
 
 [chp.by_date."2024-05-23"]
+gas_mw       = 2341.8
 waste_mw     = 702.7
 minihydro_mw = 594.6
 
 [chp.by_date."2024-05-24"]
+gas_mw       = 2539.3
 waste_mw     = 731.2
 minihydro_mw = 382.9
 
 [chp.by_date."2024-05-25"]
+gas_mw       = 2052.1
 waste_mw     = 679.5
 minihydro_mw = 868.9
 
 [chp.by_date."2024-05-26"]
+gas_mw       = 1813.8
 waste_mw     = 670.0
 minihydro_mw = 807.5
 
 [chp.by_date."2024-05-27"]
+gas_mw       = 1637.7
 waste_mw     = 637.2
 minihydro_mw = 1293.5
 
 [chp.by_date."2024-05-28"]
+gas_mw       = 2038.7
 waste_mw     = 639.9
 minihydro_mw = 761.1
 
 [chp.by_date."2024-05-29"]
+gas_mw       = 1808.5
 waste_mw     = 683.2
 minihydro_mw = 1039.9
 
 [chp.by_date."2024-05-30"]
+gas_mw       = 1922.9
 waste_mw     = 659.7
 minihydro_mw = 816.1
 
 [chp.by_date."2024-05-31"]
+gas_mw       = 2270.4
 waste_mw     = 590.8
 minihydro_mw = 406.7
 
 [chp.by_date."2024-06-01"]
+gas_mw       = 1963.7
 waste_mw     = 612.8
 minihydro_mw = 209.3
 
 [chp.by_date."2024-06-02"]
+gas_mw       = 1705.3
 waste_mw     = 580.5
 minihydro_mw = 341.0
 
 [chp.by_date."2024-06-03"]
+gas_mw       = 2021.6
 waste_mw     = 549.5
 minihydro_mw = 549.5
 
 [chp.by_date."2024-06-04"]
+gas_mw       = 2370.1
 waste_mw     = 618.5
 minihydro_mw = 492.2
 
 [chp.by_date."2024-06-05"]
+gas_mw       = 2494.0
 waste_mw     = 623.3
 minihydro_mw = 470.9
 
 [chp.by_date."2024-06-06"]
+gas_mw       = 2606.8
 waste_mw     = 651.6
 minihydro_mw = 346.6
 
 [chp.by_date."2024-06-07"]
+gas_mw       = 2060.3
 waste_mw     = 667.6
 minihydro_mw = 1010.0
 
 [chp.by_date."2024-06-08"]
+gas_mw       = 2335.3
 waste_mw     = 666.5
 minihydro_mw = 636.1
 
 [chp.by_date."2024-06-09"]
+gas_mw       = 2160.4
 waste_mw     = 655.6
 minihydro_mw = 617.8
 
 [chp.by_date."2024-06-10"]
+gas_mw       = 1810.2
 waste_mw     = 671.0
 minihydro_mw = 1136.7
 
 [chp.by_date."2024-06-11"]
+gas_mw       = 2324.6
 waste_mw     = 663.8
 minihydro_mw = 610.6
 
 [chp.by_date."2024-06-12"]
+gas_mw       = 2428.5
 waste_mw     = 669.1
 minihydro_mw = 517.4
 
 [chp.by_date."2024-06-13"]
+gas_mw       = 2641.8
 waste_mw     = 649.0
 minihydro_mw = 318.2
 
 [chp.by_date."2024-06-14"]
+gas_mw       = 2215.8
 waste_mw     = 648.8
 minihydro_mw = 637.4
 
 [chp.by_date."2024-06-15"]
+gas_mw       = 2283.7
 waste_mw     = 679.4
 minihydro_mw = 187.6
 
 [chp.by_date."2024-06-16"]
+gas_mw       = 1821.5
 waste_mw     = 660.1
 minihydro_mw = 543.7
 
 [chp.by_date."2024-06-17"]
+gas_mw       = 2181.9
 waste_mw     = 675.7
 minihydro_mw = 580.3
 
 [chp.by_date."2024-06-18"]
+gas_mw       = 1825.4
 waste_mw     = 736.7
 minihydro_mw = 1038.1
 
 [chp.by_date."2024-06-19"]
+gas_mw       = 2156.5
 waste_mw     = 729.3
 minihydro_mw = 739.3
 
 [chp.by_date."2024-06-20"]
+gas_mw       = 2480.0
 waste_mw     = 763.4
 minihydro_mw = 302.7
 
 [chp.by_date."2024-06-21"]
+gas_mw       = 2340.1
 waste_mw     = 768.7
 minihydro_mw = 533.2
 
 [chp.by_date."2024-06-22"]
+gas_mw       = 2320.5
 waste_mw     = 747.5
 minihydro_mw = 507.9
 
 [chp.by_date."2024-06-23"]
+gas_mw       = 2221.4
 waste_mw     = 687.8
 minihydro_mw = 337.3
 
 [chp.by_date."2024-06-24"]
+gas_mw       = 2061.4
 waste_mw     = 678.3
 minihydro_mw = 728.2
 
 [chp.by_date."2024-06-25"]
+gas_mw       = 2383.4
 waste_mw     = 673.5
 minihydro_mw = 568.7
 
 [chp.by_date."2024-06-26"]
+gas_mw       = 2491.3
 waste_mw     = 696.0
 minihydro_mw = 535.7
 
 [chp.by_date."2024-06-27"]
+gas_mw       = 1885.0
 waste_mw     = 746.0
 minihydro_mw = 962.7
 
 [chp.by_date."2024-06-28"]
+gas_mw       = 1958.9
 waste_mw     = 761.0
 minihydro_mw = 929.9
 
 [chp.by_date."2024-06-29"]
+gas_mw       = 2040.8
 waste_mw     = 761.0
 minihydro_mw = 679.8
 
 [chp.by_date."2024-06-30"]
+gas_mw       = 2517.3
 waste_mw     = 755.2
 minihydro_mw = 94.8
 
 [chp.by_date."2024-07-01"]
+gas_mw       = 2822.7
 waste_mw     = 721.8
 minihydro_mw = 0.0
 
 [chp.by_date."2024-07-02"]
+gas_mw       = 2206.5
 waste_mw     = 701.8
 minihydro_mw = 585.6
 
 [chp.by_date."2024-07-03"]
+gas_mw       = 2338.2
 waste_mw     = 733.4
 minihydro_mw = 422.2
 
 [chp.by_date."2024-07-04"]
+gas_mw       = 1889.9
 waste_mw     = 750.7
 minihydro_mw = 664.1
 
 [chp.by_date."2024-07-05"]
+gas_mw       = 2436.9
 waste_mw     = 741.8
 minihydro_mw = 391.7
 
 [chp.by_date."2024-07-06"]
+gas_mw       = 1907.4
 waste_mw     = 729.5
 minihydro_mw = 547.4
 
 [chp.by_date."2024-07-07"]
+gas_mw       = 1526.4
 waste_mw     = 688.2
 minihydro_mw = 670.1
 
 [chp.by_date."2024-07-09"]
+gas_mw       = 2384.1
 waste_mw     = 720.6
 minihydro_mw = 443.2
 
 [chp.by_date."2024-07-10"]
+gas_mw       = 2083.9
 waste_mw     = 708.9
 minihydro_mw = 868.8
 
 [chp.by_date."2024-07-11"]
+gas_mw       = 2432.3
 waste_mw     = 722.2
 minihydro_mw = 527.6
 
 [chp.by_date."2024-07-12"]
+gas_mw       = 1883.5
 waste_mw     = 685.2
 minihydro_mw = 991.7
 
 [chp.by_date."2024-07-13"]
+gas_mw       = 1772.0
 waste_mw     = 701.7
 minihydro_mw = 827.2
 
 [chp.by_date."2024-07-14"]
+gas_mw       = 1951.3
 waste_mw     = 744.0
 minihydro_mw = 459.4
 
 [chp.by_date."2024-07-15"]
+gas_mw       = 1939.5
 waste_mw     = 792.5
 minihydro_mw = 635.3
 
 [chp.by_date."2024-07-16"]
+gas_mw       = 2023.2
 waste_mw     = 806.0
 minihydro_mw = 690.5
 
 [chp.by_date."2024-07-17"]
+gas_mw       = 2387.3
 waste_mw     = 799.0
 minihydro_mw = 355.1
 
 [chp.by_date."2024-07-18"]
+gas_mw       = 1842.0
 waste_mw     = 780.8
 minihydro_mw = 1015.3
 
 [chp.by_date."2024-07-19"]
+gas_mw       = 2396.7
 waste_mw     = 749.3
 minihydro_mw = 491.1
 
 [chp.by_date."2024-07-20"]
+gas_mw       = 1751.1
 waste_mw     = 734.6
 minihydro_mw = 790.8
 
 [chp.by_date."2024-07-21"]
+gas_mw       = 1858.4
 waste_mw     = 685.4
 minihydro_mw = 416.7
 
 [chp.by_date."2024-07-22"]
+gas_mw       = 2261.2
 waste_mw     = 721.6
 minihydro_mw = 413.2
 
 [chp.by_date."2024-07-23"]
+gas_mw       = 2314.6
 waste_mw     = 708.0
 minihydro_mw = 420.1
 
 [chp.by_date."2024-07-24"]
+gas_mw       = 2305.3
 waste_mw     = 673.4
 minihydro_mw = 571.0
 
 [chp.by_date."2024-07-25"]
+gas_mw       = 2425.1
 waste_mw     = 694.7
 minihydro_mw = 400.7
 
 [chp.by_date."2024-07-26"]
+gas_mw       = 2578.4
 waste_mw     = 715.5
 minihydro_mw = 344.7
 
 [chp.by_date."2024-07-27"]
+gas_mw       = 2118.8
 waste_mw     = 680.3
 minihydro_mw = 551.8
 
 [chp.by_date."2024-07-28"]
+gas_mw       = 2042.5
 waste_mw     = 652.2
 minihydro_mw = 336.8
 
 [chp.by_date."2024-07-29"]
+gas_mw       = 2189.2
 waste_mw     = 669.8
 minihydro_mw = 655.8
 
 [chp.by_date."2024-07-30"]
+gas_mw       = 2751.3
 waste_mw     = 644.5
 minihydro_mw = 104.5
 
 [chp.by_date."2024-07-31"]
+gas_mw       = 2206.2
 waste_mw     = 643.1
 minihydro_mw = 647.0
 
 [chp.by_date."2024-08-01"]
+gas_mw       = 2673.4
 waste_mw     = 645.2
 minihydro_mw = 208.1
 
 [chp.by_date."2024-08-02"]
+gas_mw       = 2707.2
 waste_mw     = 595.2
 minihydro_mw = 153.2
 
 [chp.by_date."2024-08-03"]
+gas_mw       = 2269.0
 waste_mw     = 594.3
 minihydro_mw = 427.4
 
 [chp.by_date."2024-08-04"]
+gas_mw       = 2166.4
 waste_mw     = 615.4
 minihydro_mw = 258.2
 
 [chp.by_date."2024-08-05"]
+gas_mw       = 2407.7
 waste_mw     = 680.8
 minihydro_mw = 293.0
 
 [chp.by_date."2024-08-06"]
+gas_mw       = 2324.2
 waste_mw     = 689.6
 minihydro_mw = 426.9
 
 [chp.by_date."2024-08-07"]
+gas_mw       = 2454.2
 waste_mw     = 673.8
 minihydro_mw = 322.5
 
 [chp.by_date."2024-08-08"]
+gas_mw       = 2437.4
 waste_mw     = 644.8
 minihydro_mw = 338.1
 
 [chp.by_date."2024-08-09"]
+gas_mw       = 2277.3
 waste_mw     = 697.1
 minihydro_mw = 485.8
 
 [chp.by_date."2024-08-10"]
+gas_mw       = 2027.4
 waste_mw     = 684.5
 minihydro_mw = 430.5
 
 [chp.by_date."2024-08-11"]
+gas_mw       = 2079.0
 waste_mw     = 684.6
 minihydro_mw = 106.4
 
 [chp.by_date."2024-08-12"]
+gas_mw       = 2324.3
 waste_mw     = 688.1
 minihydro_mw = 281.5
 
 [chp.by_date."2024-08-13"]
+gas_mw       = 2393.5
 waste_mw     = 681.5
 minihydro_mw = 243.9
 
 [chp.by_date."2024-08-14"]
+gas_mw       = 2097.3
 waste_mw     = 687.0
 minihydro_mw = 496.3
 
 [chp.by_date."2024-08-15"]
+gas_mw       = 2028.7
 waste_mw     = 654.6
 minihydro_mw = 392.2
 
 [chp.by_date."2024-08-16"]
+gas_mw       = 2012.3
 waste_mw     = 686.5
 minihydro_mw = 362.7
 
 [chp.by_date."2024-08-17"]
+gas_mw       = 2009.4
 waste_mw     = 681.1
 minihydro_mw = 262.4
 
 [chp.by_date."2024-08-18"]
+gas_mw       = 1477.7
 waste_mw     = 642.0
 minihydro_mw = 669.0
 
 [chp.by_date."2024-08-19"]
+gas_mw       = 2400.9
 waste_mw     = 616.0
 minihydro_mw = 228.5
 
 [chp.by_date."2024-08-20"]
+gas_mw       = 1833.4
 waste_mw     = 602.1
 minihydro_mw = 957.2
 
 [chp.by_date."2024-08-21"]
+gas_mw       = 2018.9
 waste_mw     = 601.6
 minihydro_mw = 675.0
 
 [chp.by_date."2024-08-22"]
+gas_mw       = 2535.5
 waste_mw     = 635.7
 minihydro_mw = 245.3
 
 [chp.by_date."2024-08-23"]
+gas_mw       = 2693.4
 waste_mw     = 616.8
 minihydro_mw = 99.8
 
 [chp.by_date."2024-08-24"]
+gas_mw       = 2070.7
 waste_mw     = 607.0
 minihydro_mw = 385.8
 
 [chp.by_date."2024-08-25"]
+gas_mw       = 1923.5
 waste_mw     = 602.9
 minihydro_mw = 207.0
 
 [chp.by_date."2024-08-26"]
+gas_mw       = 2095.9
 waste_mw     = 612.6
 minihydro_mw = 566.5
 
 [chp.by_date."2024-08-27"]
+gas_mw       = 2120.5
 waste_mw     = 576.8
 minihydro_mw = 658.0
 
 [chp.by_date."2024-08-28"]
+gas_mw       = 2480.8
 waste_mw     = 573.9
 minihydro_mw = 312.4
 
 [chp.by_date."2024-08-29"]
+gas_mw       = 2824.4
 waste_mw     = 615.0
 minihydro_mw = 0.0
 
 [chp.by_date."2024-08-30"]
+gas_mw       = 2703.0
 waste_mw     = 630.6
 minihydro_mw = 0.0
 
 [chp.by_date."2024-08-31"]
+gas_mw       = 2564.4
 waste_mw     = 709.0
 minihydro_mw = 0.0
 
 [chp.by_date."2024-09-01"]
+gas_mw       = 2580.1
 waste_mw     = 697.5
 minihydro_mw = 0.0
 
 [chp.by_date."2024-09-02"]
+gas_mw       = 2492.0
 waste_mw     = 706.8
 minihydro_mw = 244.7
 
 [chp.by_date."2024-09-03"]
+gas_mw       = 2349.5
 waste_mw     = 656.7
 minihydro_mw = 443.0
 
 [chp.by_date."2024-09-04"]
+gas_mw       = 2677.7
 waste_mw     = 652.8
 minihydro_mw = 115.7
 
 [chp.by_date."2024-09-05"]
+gas_mw       = 2162.8
 waste_mw     = 633.7
 minihydro_mw = 689.0
 
 [chp.by_date."2024-09-06"]
+gas_mw       = 2347.6
 waste_mw     = 606.4
 minihydro_mw = 588.6
 
 [chp.by_date."2024-09-07"]
+gas_mw       = 2042.9
 waste_mw     = 569.1
 minihydro_mw = 716.6
 
 [chp.by_date."2024-09-08"]
+gas_mw       = 2667.7
 waste_mw     = 560.4
 minihydro_mw = 0.0
 
 [chp.by_date."2024-09-09"]
+gas_mw       = 2830.4
 waste_mw     = 592.8
 minihydro_mw = 84.3
 
 [chp.by_date."2024-09-10"]
+gas_mw       = 2786.5
 waste_mw     = 578.7
 minihydro_mw = 150.0
 
 [chp.by_date."2024-09-11"]
+gas_mw       = 2704.5
 waste_mw     = 560.0
 minihydro_mw = 154.2
 
 [chp.by_date."2024-09-12"]
+gas_mw       = 2512.2
 waste_mw     = 587.0
 minihydro_mw = 283.2
 
 [chp.by_date."2024-09-13"]
+gas_mw       = 2417.0
 waste_mw     = 609.7
 minihydro_mw = 284.4
 
 [chp.by_date."2024-09-14"]
+gas_mw       = 2321.3
 waste_mw     = 571.6
 minihydro_mw = 213.3
 
 [chp.by_date."2024-09-15"]
+gas_mw       = 2030.5
 waste_mw     = 534.0
 minihydro_mw = 182.9
 
 [chp.by_date."2024-09-16"]
+gas_mw       = 2215.1
 waste_mw     = 494.2
 minihydro_mw = 288.4
 
 [chp.by_date."2024-09-17"]
+gas_mw       = 2116.3
 waste_mw     = 513.7
 minihydro_mw = 201.1
 
 [chp.by_date."2024-09-18"]
+gas_mw       = 2240.6
 waste_mw     = 529.2
 minihydro_mw = 269.3
 
 [chp.by_date."2024-09-19"]
+gas_mw       = 2515.1
 waste_mw     = 598.7
 minihydro_mw = 267.3
 
 [chp.by_date."2024-09-20"]
+gas_mw       = 2621.9
 waste_mw     = 571.8
 minihydro_mw = 297.1
 
 [chp.by_date."2024-09-21"]
+gas_mw       = 2640.5
 waste_mw     = 525.6
 minihydro_mw = 127.0
 
 [chp.by_date."2024-09-22"]
+gas_mw       = 2205.0
 waste_mw     = 526.8
 minihydro_mw = 485.3
 
 [chp.by_date."2024-09-23"]
+gas_mw       = 2803.7
 waste_mw     = 527.2
 minihydro_mw = 145.7
 
 [chp.by_date."2024-09-24"]
+gas_mw       = 2313.3
 waste_mw     = 507.2
 minihydro_mw = 720.2
 
 [chp.by_date."2024-09-25"]
+gas_mw       = 2173.6
 waste_mw     = 480.7
 minihydro_mw = 690.6
 
 [chp.by_date."2024-09-26"]
+gas_mw       = 2045.9
 waste_mw     = 446.7
 minihydro_mw = 634.4
 
 [chp.by_date."2024-09-27"]
+gas_mw       = 1865.6
 waste_mw     = 485.6
 minihydro_mw = 578.8
 
 [chp.by_date."2024-09-28"]
+gas_mw       = 2019.0
 waste_mw     = 441.2
 minihydro_mw = 463.1
 
 [chp.by_date."2024-09-29"]
+gas_mw       = 2182.3
 waste_mw     = 421.0
 minihydro_mw = 72.9
 
 [chp.by_date."2024-09-30"]
+gas_mw       = 2755.2
 waste_mw     = 434.8
 minihydro_mw = 0.0
 
 [chp.by_date."2024-10-01"]
+gas_mw       = 2694.3
 waste_mw     = 542.8
 minihydro_mw = 0.0
 
 [chp.by_date."2024-10-02"]
+gas_mw       = 2728.9
 waste_mw     = 514.8
 minihydro_mw = 0.0
 
 [chp.by_date."2024-10-03"]
+gas_mw       = 2197.8
 waste_mw     = 423.9
 minihydro_mw = 553.9
 
 [chp.by_date."2024-10-04"]
+gas_mw       = 2476.5
 waste_mw     = 498.9
 minihydro_mw = 403.9
 
 [chp.by_date."2024-10-05"]
+gas_mw       = 2242.1
 waste_mw     = 513.8
 minihydro_mw = 473.0
 
 [chp.by_date."2024-10-06"]
+gas_mw       = 2120.6
 waste_mw     = 495.7
 minihydro_mw = 188.7
 
 [chp.by_date."2024-10-07"]
+gas_mw       = 1969.0
 waste_mw     = 494.7
 minihydro_mw = 643.3
 
 [chp.by_date."2024-10-08"]
+gas_mw       = 1857.5
 waste_mw     = 449.1
 minihydro_mw = 679.5
 
 [chp.by_date."2024-10-09"]
+gas_mw       = 1721.8
 waste_mw     = 435.5
 minihydro_mw = 794.2
 
 [chp.by_date."2024-10-10"]
+gas_mw       = 2056.0
 waste_mw     = 506.0
 minihydro_mw = 688.6
 
 [chp.by_date."2024-10-11"]
+gas_mw       = 2423.5
 waste_mw     = 556.1
 minihydro_mw = 576.4
 
 [chp.by_date."2024-10-12"]
+gas_mw       = 2052.1
 waste_mw     = 517.1
 minihydro_mw = 724.5
 
 [chp.by_date."2024-10-13"]
+gas_mw       = 2365.6
 waste_mw     = 490.6
 minihydro_mw = 320.2
 
 [chp.by_date."2024-10-14"]
+gas_mw       = 2635.4
 waste_mw     = 506.5
 minihydro_mw = 395.3
 
 [chp.by_date."2024-10-15"]
+gas_mw       = 2690.1
 waste_mw     = 519.3
 minihydro_mw = 287.6
 
 [chp.by_date."2024-10-16"]
+gas_mw       = 2513.3
 waste_mw     = 442.5
 minihydro_mw = 297.5
 
 [chp.by_date."2024-10-17"]
+gas_mw       = 2348.4
 waste_mw     = 434.9
 minihydro_mw = 462.4
 
 [chp.by_date."2024-10-18"]
+gas_mw       = 2116.4
 waste_mw     = 419.7
 minihydro_mw = 643.5
 
 [chp.by_date."2024-10-19"]
+gas_mw       = 1788.0
 waste_mw     = 424.9
 minihydro_mw = 917.7
 
 [chp.by_date."2024-10-20"]
+gas_mw       = 2015.4
 waste_mw     = 416.8
 minihydro_mw = 574.8
 
 [chp.by_date."2024-10-21"]
+gas_mw       = 3081.7
 waste_mw     = 425.2
 minihydro_mw = 78.8
 
 [chp.by_date."2024-10-22"]
+gas_mw       = 2744.4
 waste_mw     = 463.6
 minihydro_mw = 371.0
 
 [chp.by_date."2024-10-23"]
+gas_mw       = 3046.4
 waste_mw     = 543.0
 minihydro_mw = 66.9
 
 [chp.by_date."2024-10-24"]
+gas_mw       = 2777.6
 waste_mw     = 534.5
 minihydro_mw = 157.9
 
 [chp.by_date."2024-10-25"]
+gas_mw       = 1979.5
 waste_mw     = 566.0
 minihydro_mw = 1047.9
 
 [chp.by_date."2024-10-26"]
+gas_mw       = 1626.1
 waste_mw     = 578.2
 minihydro_mw = 1049.7
 
 [chp.by_date."2024-10-27"]
+gas_mw       = 1665.9
 waste_mw     = 600.4
 minihydro_mw = 816.5
 
 [chp.by_date."2024-10-28"]
+gas_mw       = 2526.6
 waste_mw     = 610.7
 minihydro_mw = 252.9
 
 [chp.by_date."2024-10-29"]
+gas_mw       = 1993.2
 waste_mw     = 603.6
 minihydro_mw = 956.1
 
 [chp.by_date."2024-10-30"]
+gas_mw       = 2366.7
 waste_mw     = 568.4
 minihydro_mw = 703.3
 
 [chp.by_date."2024-10-31"]
+gas_mw       = 2802.8
 waste_mw     = 600.9
 minihydro_mw = 217.7
 
 [chp.by_date."2024-11-01"]
+gas_mw       = 2297.3
 waste_mw     = 595.5
 minihydro_mw = 550.3
 
 [chp.by_date."2024-11-02"]
+gas_mw       = 2276.3
 waste_mw     = 667.3
 minihydro_mw = 550.1
 
 [chp.by_date."2024-11-03"]
+gas_mw       = 2537.8
 waste_mw     = 607.5
 minihydro_mw = 273.3
 
 [chp.by_date."2024-11-04"]
+gas_mw       = 2986.8
 waste_mw     = 639.4
 minihydro_mw = 110.3
 
 [chp.by_date."2024-11-05"]
+gas_mw       = 2729.6
 waste_mw     = 655.3
 minihydro_mw = 398.6
 
 [chp.by_date."2024-11-06"]
+gas_mw       = 3072.8
 waste_mw     = 659.8
 minihydro_mw = 160.1
 
 [chp.by_date."2024-11-07"]
+gas_mw       = 2937.2
 waste_mw     = 647.8
 minihydro_mw = 306.8
 
 [chp.by_date."2024-11-08"]
+gas_mw       = 2597.7
 waste_mw     = 643.0
 minihydro_mw = 642.9
 
 [chp.by_date."2024-11-09"]
+gas_mw       = 2732.7
 waste_mw     = 622.3
 minihydro_mw = 237.0
 
 [chp.by_date."2024-11-10"]
+gas_mw       = 2534.9
 waste_mw     = 585.9
 minihydro_mw = 459.6
 
 [chp.by_date."2024-11-11"]
+gas_mw       = 2855.0
 waste_mw     = 545.2
 minihydro_mw = 246.2
 
 [chp.by_date."2024-11-12"]
+gas_mw       = 2578.7
 waste_mw     = 533.4
 minihydro_mw = 350.1
 
 [chp.by_date."2024-11-13"]
+gas_mw       = 2187.7
 waste_mw     = 549.4
 minihydro_mw = 882.8
 
 [chp.by_date."2024-11-14"]
+gas_mw       = 2469.9
 waste_mw     = 582.3
 minihydro_mw = 710.9
 
 [chp.by_date."2024-11-15"]
+gas_mw       = 2773.2
 waste_mw     = 596.9
 minihydro_mw = 453.4
 
 [chp.by_date."2024-11-16"]
+gas_mw       = 2616.6
 waste_mw     = 612.4
 minihydro_mw = 555.4
 
 [chp.by_date."2024-11-17"]
+gas_mw       = 2641.3
 waste_mw     = 622.9
 minihydro_mw = 385.5
 
 [chp.by_date."2024-11-18"]
+gas_mw       = 3113.0
 waste_mw     = 616.4
 minihydro_mw = 0.0
 
 [chp.by_date."2024-11-19"]
+gas_mw       = 2729.8
 waste_mw     = 587.4
 minihydro_mw = 290.2
 
 [chp.by_date."2024-11-20"]
+gas_mw       = 2447.6
 waste_mw     = 560.5
 minihydro_mw = 550.2
 
 [chp.by_date."2024-11-21"]
+gas_mw       = 2096.1
 waste_mw     = 560.5
 minihydro_mw = 858.0
 
 [chp.by_date."2024-11-22"]
+gas_mw       = 2251.4
 waste_mw     = 571.1
 minihydro_mw = 832.5
 
 [chp.by_date."2024-11-23"]
+gas_mw       = 2089.4
 waste_mw     = 603.7
 minihydro_mw = 836.7
 
 [chp.by_date."2024-11-24"]
+gas_mw       = 2090.6
 waste_mw     = 535.8
 minihydro_mw = 612.0
 
 [chp.by_date."2024-11-25"]
+gas_mw       = 2121.3
 waste_mw     = 591.4
 minihydro_mw = 861.1
 
 [chp.by_date."2024-11-26"]
+gas_mw       = 3144.5
 waste_mw     = 613.3
 minihydro_mw = 216.8
 
 [chp.by_date."2024-11-27"]
+gas_mw       = 3126.4
 waste_mw     = 635.9
 minihydro_mw = 156.3
 
 [chp.by_date."2024-11-28"]
+gas_mw       = 2954.1
 waste_mw     = 647.5
 minihydro_mw = 313.3
 
 [chp.by_date."2024-11-29"]
+gas_mw       = 2815.8
 waste_mw     = 646.9
 minihydro_mw = 466.4
 
 [chp.by_date."2024-11-30"]
+gas_mw       = 2842.6
 waste_mw     = 671.4
 minihydro_mw = 318.9
 
 [chp.by_date."2024-12-01"]
+gas_mw       = 2422.9
 waste_mw     = 634.0
 minihydro_mw = 738.5
 
 [chp.by_date."2024-12-03"]
+gas_mw       = 2960.8
 waste_mw     = 640.7
 minihydro_mw = 305.8
 
 [chp.by_date."2024-12-04"]
+gas_mw       = 3081.8
 waste_mw     = 612.0
 minihydro_mw = 246.1
 
 [chp.by_date."2024-12-05"]
+gas_mw       = 3119.1
 waste_mw     = 679.1
 minihydro_mw = 148.8
 
 [chp.by_date."2024-12-06"]
+gas_mw       = 2259.3
 waste_mw     = 680.8
 minihydro_mw = 806.2
 
 [chp.by_date."2024-12-07"]
+gas_mw       = 2148.2
 waste_mw     = 577.5
 minihydro_mw = 514.3
 
 [chp.by_date."2024-12-08"]
+gas_mw       = 2004.2
 waste_mw     = 549.5
 minihydro_mw = 495.4
 
 [chp.by_date."2024-12-09"]
+gas_mw       = 1943.1
 waste_mw     = 601.0
 minihydro_mw = 831.7
 
 [chp.by_date."2024-12-10"]
+gas_mw       = 2773.1
 waste_mw     = 603.7
 minihydro_mw = 539.6
 
 [chp.by_date."2024-12-11"]
+gas_mw       = 2316.3
 waste_mw     = 632.4
 minihydro_mw = 944.7
 
 [chp.by_date."2024-12-12"]
+gas_mw       = 2446.7
 waste_mw     = 661.1
 minihydro_mw = 756.4
 
 [chp.by_date."2024-12-13"]
+gas_mw       = 2837.1
 waste_mw     = 674.4
 minihydro_mw = 416.5
 
 [chp.by_date."2024-12-14"]
+gas_mw       = 2693.1
 waste_mw     = 685.5
 minihydro_mw = 411.5
 
 [chp.by_date."2024-12-15"]
+gas_mw       = 2768.2
 waste_mw     = 660.8
 minihydro_mw = 350.7
 
 [chp.by_date."2024-12-16"]
+gas_mw       = 2970.0
 waste_mw     = 648.6
 minihydro_mw = 177.0
 
 [chp.by_date."2024-12-17"]
+gas_mw       = 3010.0
 waste_mw     = 649.2
 minihydro_mw = 127.8
 
 [chp.by_date."2024-12-18"]
+gas_mw       = 2740.0
 waste_mw     = 672.3
 minihydro_mw = 464.7
 
 [chp.by_date."2024-12-19"]
+gas_mw       = 2313.8
 waste_mw     = 636.9
 minihydro_mw = 876.9
 
 [chp.by_date."2024-12-20"]
+gas_mw       = 3359.3
 waste_mw     = 652.5
 minihydro_mw = 0.0
 
 [chp.by_date."2024-12-21"]
+gas_mw       = 2621.1
 waste_mw     = 646.8
 minihydro_mw = 521.3
 
 [chp.by_date."2024-12-22"]
+gas_mw       = 1846.3
 waste_mw     = 640.5
 minihydro_mw = 940.2
 
 [chp.by_date."2024-12-23"]
+gas_mw       = 2646.5
 waste_mw     = 605.5
 minihydro_mw = 132.3
 
 [chp.by_date."2024-12-24"]
+gas_mw       = 2472.3
 waste_mw     = 637.5
 minihydro_mw = 117.5
 
 [chp.by_date."2024-12-25"]
+gas_mw       = 2256.0
 waste_mw     = 629.8
 minihydro_mw = 167.0
 
 [chp.by_date."2024-12-26"]
+gas_mw       = 2847.8
 waste_mw     = 627.5
 minihydro_mw = 0.0
 
 [chp.by_date."2024-12-27"]
+gas_mw       = 2910.7
 waste_mw     = 636.6
 minihydro_mw = 110.1
 
 [chp.by_date."2024-12-28"]
+gas_mw       = 2691.9
 waste_mw     = 600.3
 minihydro_mw = 288.3
 
 [chp.by_date."2024-12-29"]
+gas_mw       = 2835.0
 waste_mw     = 591.7
 minihydro_mw = 139.6
 

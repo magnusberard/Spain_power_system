@@ -188,7 +188,7 @@ def gas_from_config(args, config_text):
             continue
         config_text = set_block_gas(config_text, r["date"], r["gas"])
         n_set += 1
-    open(CONFIG_PATH, "w", encoding="utf-8").write(config_text)
+    open(CONFIG_PATH, "w", encoding="utf-8", newline="").write(config_text)
     print(f"Set gas_mw in {n_set} [chp.by_date] blocks "
           f"({len(PROTECTED_DATES)} protected reference days left as they are)")
 
@@ -211,7 +211,9 @@ def main():
                      help="per-day report CSV (default results/chp_gas_mw_report.csv)")
     args = ap.parse_args()
 
-    config_text = open(CONFIG_PATH, encoding="utf-8").read()
+    # newline="": keep config.toml's LF line endings as they are -- text-mode
+    # defaults on Windows would rewrite every line as CRLF.
+    config_text = open(CONFIG_PATH, encoding="utf-8", newline="").read()
     if args.gas_from_config:
         gas_from_config(args, config_text)
         return
@@ -263,7 +265,7 @@ def main():
         raise RuntimeError("Could not find any [chp.by_date...] block to anchor after")
     insert_at = m.end()
     config_text = config_text[:insert_at] + "".join(new_blocks) + config_text[insert_at:]
-    open(CONFIG_PATH, "w", encoding="utf-8").write(config_text)
+    open(CONFIG_PATH, "w", encoding="utf-8", newline="").write(config_text)
 
     print(f"Added {n_done} [chp.by_date] blocks ({n_skipped} already had one, "
           f"{n_missing} missing ENTSO-E data, skipped)")

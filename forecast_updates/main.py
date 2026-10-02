@@ -591,8 +591,9 @@ def main(config, dates: pd.DatetimeIndex, plotting_flag: bool = False, lead_time
                 if True:
                     
                     for date in dates:
-                        if (date.day, date.month) not in [(8, 7), (2, 12)]:
-                            continue
+                        # [Spain_power_system] upstream skipped every day but
+                        # 2024-07-08 / 2024-12-02 here and stopped at a
+                        # breakpoint(); both were debugging leftovers.
                         try:
                             gate_forecasts = compile_gate_forecasts(
                                 y_pred=y_pred,
@@ -600,7 +601,6 @@ def main(config, dates: pd.DatetimeIndex, plotting_flag: bool = False, lead_time
                                 forecast_series=y_pred.loc[:, y_pred.columns.astype(int).max()],
                                 date=date,
                             )
-                            breakpoint()
                         except KeyError as e:
                             print(f"KeyError for date {date} in zone {zone}, error_type {error_type}: {e}")
                             continue

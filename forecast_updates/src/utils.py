@@ -5,6 +5,11 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 def get_api_key():
+    # [Spain_power_system] Prefer ENTSOE_TOKEN from the environment, the same
+    # variable the repo's entsoe_download/ scripts use, so the token never has
+    # to live in a file. Upstream's api_key.venv / ENTSOE_API_KEY still works.
+    if os.getenv('ENTSOE_TOKEN'):
+        return os.getenv('ENTSOE_TOKEN')
     load_dotenv('api_key.venv')
     api_key = os.getenv('ENTSOE_API_KEY')
     return api_key

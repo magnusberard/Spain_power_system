@@ -14,7 +14,8 @@ from .utils import make_dir
 from .load_config import Config
 from .forecast_data_handling import save_data
 from .algorithms.get_algorithm import ForecastingModel, get_forecasting_model
-from .algorithms.linear_nn import LinearNNModel
+# [Spain_power_system] unused here, and it pulls in TensorFlow at import time
+# from .algorithms.linear_nn import LinearNNModel
 from .algorithms.linear import LinearMultiStepModel
 from .create_multivariate_input import create_supervised_dataset, StructuredDataForForecasting
 

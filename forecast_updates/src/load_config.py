@@ -1,10 +1,14 @@
 
+import os  # [Spain_power_system]
 import yaml
 
 class Config:
     def __init__(self, yaml_file_name):
         self.yaml_file_name = yaml_file_name
-        self.config_file_path = 'configs/' + yaml_file_name
+        # [Spain_power_system] Resolve configs/ next to this package, not the
+        # working directory: run_spain.py works from a data folder outside the repo.
+        self.config_file_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'configs', yaml_file_name)
         
         with open(self.config_file_path) as f:
             config = yaml.safe_load(f)

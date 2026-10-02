@@ -54,7 +54,14 @@ def load_omie_data(error_type: str, day: int, month: int, year: int) -> pd.Serie
 
 
     # --- Load the OMIE CSV file ---
-    df = pd.read_csv(f"omie_data/{day}-{month}-{year}.csv", sep=";", decimal=",", skiprows=2)
+    # [Spain_power_system] Read the OMIE "Energía horaria por tecnologías"
+    # report (INT_PBC_TECNOLOGIAS_H) that omie_conversion/fetch_omie_technology.py
+    # already caches as OMIE_data/tecnologias/tecnologias_YYYYMMDD.txt (same
+    # layout as upstream's omie_data/<d>-<m>-<y>.csv). OMIE serves it in latin-1.
+    import os
+    omie_dir = os.environ.get("OMIE_TECH_DIR", "omie_data")
+    path = os.path.join(omie_dir, f"tecnologias_{year}{month:02d}{day:02d}.txt")
+    df = pd.read_csv(path, sep=";", decimal=",", skiprows=2, encoding="latin-1")
     
     # --- Replace missing or empty values with 0 ---
     df = df.fillna(0)

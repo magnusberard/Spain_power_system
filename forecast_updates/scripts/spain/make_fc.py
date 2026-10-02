@@ -7,7 +7,7 @@ from make_forecasts import make_forecast_loop
 config_file = 'spain.yaml'
 config = Config(config_file)
 config.run_id = sys.argv[1] if len(sys.argv) > 1 else "default_run"
-breakpoint()
+# [Spain_power_system] removed a debugging breakpoint() here
 # config.error_types = ['Solar', 'load', ]
 # config.zones_error_types.pop("Wind Onshore")
 # config.use_observed_values = False

@@ -3,11 +3,22 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 
-from .lstm import LSTMModel
+# [Spain_power_system] LSTM and LINEAR_NN need TensorFlow, which the LINEAR
+# model used for Spain does not -- and TensorFlow does not install on the
+# Python versions some of us run. Import those two only when selected.
 from .arx import ARXModel
 # from .arx_sep import ARXSepModel
-from .linear_nn import LinearNNModel
 from .linear import LinearMultiStepModel
+
+
+def LSTMModel(*args, **kwargs):  # [Spain_power_system] lazy TensorFlow import
+    from .lstm import LSTMModel as _LSTMModel
+    return _LSTMModel(*args, **kwargs)
+
+
+def LinearNNModel(*args, **kwargs):  # [Spain_power_system] lazy TensorFlow import
+    from .linear_nn import LinearNNModel as _LinearNNModel
+    return _LinearNNModel(*args, **kwargs)
 
 
 class ForecastingModel(ABC):

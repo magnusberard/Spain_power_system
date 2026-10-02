@@ -40,8 +40,7 @@ def load_generation_data(years, zone, folder="data/input_entsoe", carrier='Wind 
     target_series = pd.concat([
         pd.read_csv(f'{folder}/generation/{zone}/{year}.csv', index_col=0, parse_dates=True, dtype=float)[carrier] 
         for year in years], axis=0)
-    if carrier == "Solar":
-        breakpoint()
+    # [Spain_power_system] removed a debugging breakpoint() for carrier == "Solar"
     wind_forecast_series =  pd.concat([
         pd.read_csv(f'{folder}/generation_forecasts/{carrier}/{zone}/{year}.csv', index_col=0, parse_dates=True, dtype=float)[carrier] 
         for year in years], axis=0)

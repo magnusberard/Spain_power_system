@@ -32,3 +32,10 @@ __pycache__/
 test_*.toml
 .DS_Store
 .claude/
+
+# ENTSO-E download scripts are tracked; their downloads and caches live in the
+# entsoe_download/ folder NEXT TO the repo ($ENTSOE_DIR).  Safety net in case
+# ENTSOE_DIR is ever pointed inside the repo.
+entsoe_download/raw/
+entsoe_download/out/
+entsoe_download/*.csv

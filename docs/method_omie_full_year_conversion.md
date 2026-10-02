@@ -309,7 +309,11 @@ modelling gap, not a data gap, pending a decision on whether to add a
 Raw data lives in `OMIE_data/` and `entsoe_download/`, both **outside** this
 repo (siblings of it) — they're too large to commit (hundreds of MB) and are
 fully re-derivable from public sources, so only the small pipeline scripts
-and their (small) output land in git.
+and their (small) output land in git. The ENTSO-E download scripts are in
+this repo's own `entsoe_download/` folder, and write their CSVs and `raw/`
+cache to the sibling data folder (`../entsoe_download/` from the repo root,
+or `$ENTSOE_DIR` if set) — the same place `omie_conversion/` reads from.
+They import pandas.
 
 ```bash
 # 1. OMIE's technology-breakdown report (no login needed, one file per day,
@@ -349,7 +353,7 @@ julia --project=. midterm_sddp4.jl
 ```
 
 All the `entsoe_download/*.py` scripts read `ENTSOE_TOKEN` from the
-environment (never from a file) and cache raw API responses in
-`entsoe_download/raw/`, so a rerun after an interruption doesn't re-hit the
+environment (never from a file) and cache raw API responses in the data
+folder's `raw/` (`../entsoe_download/raw/`), so a rerun after an interruption doesn't re-hit the
 API for days already fetched. `fetch_omie_technology.py` caches similarly in
 `OMIE_data/tecnologias/` and needs no token at all.

@@ -1,0 +1,41 @@
+run_id: 
+generation_error_types: 
+    - Wind Onshore
+    
+get_load_error_flag: True
+zones_error_types: 
+    Wind Onshore:
+        - NO_1
+        - NO_2
+        - NO_3
+        - NO_4
+        # - DK_1
+    load:
+        - NO_1
+        - NO_2
+        - NO_3
+        - NO_4
+        - NO_5
+    
+years:
+    - 2022
+    - 2023
+    - 2024
+    
+forecasting_model: LINEAR  # options: ARX, LINEAR_NN, LSTM
+forecasting_model_static: LINEAR
+
+# training_params:  # training params must be tailored to the specific model used. 
+#     separate_by_hour: true
+#     min_samples_per_hour: 10
+    # loss: mse  # options: "mse", "mae", "quantile-XX" (e.g. "quantile-40" specifies the 40% quantile)
+#     lstm_activation: tanh
+#     lstm_units: 32
+#     epochs: 30
+#     learning_rate: 0.001
+
+
+fitting_function: asymptotic
+train_test_split: 0.66
+n_lags: 5
+max_lead_time: 24

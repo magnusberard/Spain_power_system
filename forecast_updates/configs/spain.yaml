@@ -1,0 +1,26 @@
+
+run_id: spain
+generation_error_types: 
+    - Wind Onshore
+    - Solar
+    
+get_load_error_flag: True
+zones_error_types: 
+    Wind Onshore:
+        - ES
+    Solar:
+        - ES
+    load:
+        - ES
+    
+years:
+    - 2022
+    - 2023
+    - 2024
+    
+forecasting_model: LINEAR  # options: ARX, LINEAR_NN, LSTM
+forecasting_model_static: LINEAR
+fitting_function: asymptotic
+train_test_split: 0.66
+n_lags: 5
+max_lead_time: 24

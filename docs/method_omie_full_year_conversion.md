@@ -5,11 +5,11 @@ originally covered only the two hand-validated study days (8 July, 2
 December 2024). The pipeline in `omie_conversion/` and `entsoe_download/`
 reproduces those two days' data **exactly** from bulk-downloadable public
 sources (OMIE + ENTSO-E), and extends coverage to every day from
-**2024-01-03 to 2024-12-29** (363 days — all of 2024 except 4 excluded days,
-see "Why not all 366 days"). `run_market_chain.jl`'s `TARGET_DAYS` can cover
-that whole range, but is currently set to a narrower test window
-(2024-04-08 to 2024-04-14) while it's rolled out gradually and checked at
-each step — see "Rolling out beyond the two reference days" below.
+**2024-01-02 to 2024-12-29** (363 days — all of 2024 except 1 January and
+30–31 December, see "Why not all 366 days"). `run_market_chain.jl`'s
+`TARGET_DAYS` can cover that whole range, but is currently set to the two
+reference days while it's rolled out gradually and checked at each step —
+see "Rolling out beyond the two reference days" below.
 
 This note records the formula, what was validated against what, and what is
 still known-imperfect, so a future run knows exactly how much to trust each
@@ -17,21 +17,23 @@ piece.
 
 ## Why not all 366 days
 
-- **2024-01-01 and 2024-01-02**: excluded because `[bellman].bgn_date` (the
-  start of the mid-term hydro model's 78-week horizon) is `2024-01-03`, not
-  `2024-01-01`. It isn't 1 January either, because of two separate one-day
-  data gaps right at the start of the year: `Data/MIBGAS_Data_2024.csv`'s
-  earliest usable gas-price delivery day is 2 January (its first trading
-  day, 1 Jan, prices *delivery* on 2 Jan under the D+1 convention), and
-  `Data/Carbon Emissions Price.csv`'s earliest EUA settlement is also
-  2 January (carbon markets don't trade on New Year's Day). Since
-  `gas_srmc(d)` needs the carbon price for `d − 1`, the first day that has
-  both a gas price *and* a carbon price for the day before it is 3 January.
-- **2024-12-30, 2024-12-31**: excluded on purpose. `Data/ES/{load,Solar,Wind
-  Onshore}/` (the per-gate forecast-deviation factors) is missing exactly
-  these days (plus 1 Jan), and the method used to generate them (a per-gate
-  regression, see the paper's Section 2.5) has no reproducing script in this
-  repo.
+- **2024-01-02 now has every input** (2026-10-02). It used to be blocked
+  with 1 January because the gas SRMC needs that day's MIBGAS quote and the
+  previous day's EUA settlement, and both price files started on 2 January.
+  The December 2023 quotes were added (MIBGAS trading day 31/12/2023
+  GDAES_D+1 "Last Price" 31.18 EUR/MWh from MIBGAS's 2023 file; EUA
+  29/12/2023 77.98 EUR/t, the same Investing.com series), and
+  `[bellman].bgn_date` moved to `2024-01-01` with the SDDP retrained.
+- **2024-01-01**: prices and SDDP cover it now, but it still has no
+  `Data/ES_old` baseline, no nuclear/coal/CHP calibration and no `Data/ES`
+  forecast factors (excluded in `convert_omie_to_model_data.EXCLUDED_DATES`).
+  All three can now be generated: OMIE + ENTSO-E data cover the day, and
+  the factors come from `forecast_updates/run_spain.py` with a window
+  starting on 2023-12-31 (the code skips the first day of its window, see
+  `forecast_updates/UPSTREAM.md`).
+- **2024-12-30, 2024-12-31**: no input data generated; the forecast factors
+  also need ENTSO-E data into January 2025 (the window's last day is
+  skipped the same way).
 - A separate, now-resolved blocker used to also stand in the way of January
   onward: `midterm_sddp4.jl` also hits a real leap-day bug (`profile_row`
   re-stamps every date onto the non-leap reference year 2023 to read an
@@ -55,7 +57,13 @@ re-validated → the reconstruction method itself rewritten (below) → a second
 - **The mid-term SDDP model was retrained** with `bgn_date = "2024-01-03"`
   (was `2024-07-02`) to cover the whole year — see `README.md`'s "Mid-term
   SDDP" workflow and "Known limitations" for the retrain's validation
-  result against the two reference days.
+  result against the two reference days. Retrained again on 2026-10-02 with
+  `bgn_date = "2024-01-01"`: DA, ID2 and ID3 prices on both reference days
+  unchanged; on 8 July CID/BAL rise from ~33 to ~47 EUR/MWh because the
+  day's start volume (8.95 TWh) falls on a different step of the binding-cut
+  water value (52.9 instead of 36.8 EUR/MWh). The old and new cut curves
+  have nearly the same steps; with 60 iterations they are coarse, so the
+  water value at a given volume can jump between retrains.
 - **The April week surfaced a real, structural finding, not a data bug**:
   5 of 168 hours (~3%) failed with `LOCALLY_INFEASIBLE` in the AC
   redispatch. Checked directly in the Ipopt logs — both inspected failures
@@ -253,6 +261,65 @@ containing, not just the new part.
     offer, and CO₂ accounting) is affected on those days. Per-day figures:
     `results/chp_gas_mw_report.csv` from the script's report.
 
+## Forecast-update factors (`Data/ES`)
+
+`Data/ES/{load,Solar,Wind Onshore}/<d>_<m>_<yyyy>.csv` hold, per hour, a
+factor per market gate (`DA, ID2, ID3, CID, BE`); the chain multiplies the
+`Data/ES_old` day-ahead baseline by it. They come from Wouter Koks'
+forecast-update model (Spanish model paper §3.5; vendored in
+`forecast_updates/`, see `UPSTREAM.md`): a linear regression trained on
+2022–2024 ENTSO-E data predicts, at each gate time, the coming hours from the
+day-ahead forecast, the last five observed values and their forecast errors,
+and time features; `BE` is the realised value.
+
+**Regenerated 2026-10-04** (`forecast_updates/run_spain.py`, train on
+2022–2024, gates 2024-01-01..2024-12-30, normalize 2024-01-02..2024-12-29),
+replacing the files shipped with the repo:
+
+- **Reproduction check first.** Re-running upstream's own method
+  (`--method ratio`, UTC days) matches the shipped files to 0.03 % (load) –
+  0.5 % (wind, solar) of the baseline MW on average; exact equality is not
+  possible (ENTSO-E revises its data; package versions).
+- **Spanish local time.** 361 of the 363 shipped files were indexed in UTC
+  (only 8 July and 2 December in local time), but the chain reads the 24 rows
+  as local hours, so their factors sat 1 h (winter) / 2 h (summer) early. The
+  regenerated files are local days; clock-change days are mapped to 24 rows
+  with the `to_24` rule above.
+- **No division by a near-zero forecast (`--method floor`).** Upstream divides
+  each gate by the model's own DA-gate forecast. When that is close to zero
+  the factor explodes: on 2024-04-28 13:00 the DA-gate wind forecast was
+  35 MW, the BE factor 15, and the chain's 2 022 MW baseline became the whole
+  30 434 MW fleet. The factor is now
+  `1 + (gate − DA) / max(DA, 5 % of installed capacity)` (installed capacity
+  from ENTSO-E for the year): identical to upstream wherever DA is above 5 %
+  of capacity (97 % of wind stage-hours), bounded where it is not
+  (2024-04-28 13:00 BE: 2 920 MW). The model's own installed-capacity cap
+  (`prepare_network`) only stops values above the fleet, so it did not catch
+  this.
+- **Days without ENTSO-E's day-ahead forecast get factor 1** (no forecast
+  update): solar 2024-12-07..11, wind 2024-06-02. The model's input on those
+  days is filled-in data, which made solar fall from ~9 GW to under 1 GW at
+  balancing.
+
+Compared on all 363 days as the chain uses them (stage MW = factor × baseline,
+capped at the fleet), against ENTSO-E's realised change (actual − day-ahead
+forecast) at balancing:
+
+| | upstream ratio | **floor 5 % (used)** | ENTSO-E forecast as divisor |
+|---|---|---|---|
+| wind: factors > 2 or < 0.3 (baseline > 200 MW) | 56 | **3** | 11 |
+| wind: balancing change vs realised, correlation | 0.88 | **0.92** | 0.91 |
+| solar: factors > 2 or < 0.3 | 636 | **101** | 5 976 |
+| solar: balancing change vs realised, MAE | 443 MW | **419 MW** | 1 675 MW |
+| load | — | identical to ratio | — |
+
+The ENTSO-E-divisor variant fails for solar because ENTSO-E's solar
+forecast is ~10 MW at night. The 41 wind stage-hours that still move more
+than 5 GW are real forecast misses (e.g. 2024-03-10: actual 9 GW below the
+day-ahead forecast). The 5 % is a modelling choice; it only acts in
+low-output hours. The comparison scripts are outside the repo
+(`forecast_data/_analysis_scripts/compare_variants.py`).
+
 ## Known gaps in `load`
 
 Three of `load`'s thirteen OMIE technology components (Fuel-Gas,
@@ -350,6 +417,14 @@ python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-02 --to-date 
 # 8. Retrain the mid-term SDDP model to cover the new range
 #    (edit [bellman].bgn_date in config.toml first)
 julia --project=. midterm_sddp4.jl
+
+# 9. Forecast-update factors Data/ES (needs ENTSOE_TOKEN for the download only;
+#    work folder ../forecast_data). The gates window must start one day
+#    before and end one day after the days you want (edge days are skipped).
+python3 forecast_updates/run_spain.py download --years 2022 2023 2024
+python3 forecast_updates/run_spain.py train
+python3 forecast_updates/run_spain.py gates --from 2024-01-01 --to 2024-12-30
+python3 forecast_updates/run_spain.py normalize --from 2024-01-02 --to 2024-12-29 --out Data/ES
 ```
 
 All the `entsoe_download/*.py` scripts read `ENTSOE_TOKEN` from the

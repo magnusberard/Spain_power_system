@@ -31,7 +31,9 @@ so it does not regenerate a full year as published.
 | `src/utils.py` | token read from `ENTSOE_TOKEN` first | same variable as `entsoe_download/`; no token in files |
 | `src/load_config.py` | `configs/` resolved next to the package | `run_spain.py` runs from a work folder outside the repo |
 | `src/post_process.py` | `load_omie_data` reads `OMIE_TECH_DIR/tecnologias_YYYYMMDD.txt` (latin-1) | the OMIE technology report `omie_conversion/` already caches; same layout |
+| `main.py` `define_gate_times` | gates at their wall-clock times and the day's real 23/24/25 hours | upstream broke clock-change days in local time; identical on all other days |
 | `run_spain.py` (new) | `download` / `train` / `gates` / `normalize` with dates on the command line | replaces the hard-coded `scripts/spain/*.py` drivers; forecasting logic unchanged |
+| `run_spain.py normalize` | default `--method floor`: `1 + (gate − DA) / max(DA, 5 % of installed capacity)`; `--method ratio` = upstream; days without ENTSO-E's day-ahead forecast get factor 1; clock-change days mapped to the model's 24 rows | upstream's plain ratio explodes when the DA-gate forecast is near zero (2024-04-28 13:00: wind ×15); see `docs/method_omie_full_year_conversion.md` |
 
 Python packages: `pandas numpy scikit-learn scipy matplotlib seaborn
 entsoe-py pyyaml python-dotenv` (TensorFlow and statsmodels are not needed).
@@ -43,10 +45,11 @@ entsoe-py pyyaml python-dotenv` (TensorFlow and statsmodels are not needed).
   the last day's ID3 gate (10:00 that day) lie outside, so both edge days are
   skipped with a `KeyError` message. Upstream's 2024-01-01..2024-12-30 window
   therefore yields 2024-01-02..2024-12-29: exactly the 363 days in `Data/ES`.
-- **Clock-change days.** A gate file always has 24 rows from local midnight,
-  so on 2024-03-31 it runs into 00:00 of the next day, and the solar step of
-  `normalize` fails against OMIE's 23-hour report.
-- **Time zone of the existing `Data/ES` files.** 361 of the 363 days are
-  indexed in UTC (`+00:00`); only 2024-07-08 and 2024-12-02 are in Spanish
-  local time. The market chain reads the 24 rows positionally as local hours,
-  so on those 361 days the factors sit 1 h (winter) / 2 h (summer) early.
+- **Clock-change days** (fixed here, see the table above): upstream gave a
+  gate file 24 rows from local midnight, so 2024-03-31 ran into 1 April and
+  the solar step of `normalize` failed against OMIE's 23-hour report.
+- **Time zone of the originally shipped `Data/ES` files.** 361 of their 363
+  days were indexed in UTC (`+00:00`); only 2024-07-08 and 2024-12-02 were in
+  Spanish local time. The market chain reads the 24 rows positionally as
+  local hours, so those factors sat 1 h (winter) / 2 h (summer) early. The
+  files were regenerated in local time on 2026-10-04.

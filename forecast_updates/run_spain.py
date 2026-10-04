@@ -16,8 +16,15 @@ Steps, run in order (each reads what the previous one wrote):
     gates      pick each market gate's forecast (DA, ID2, ID3, CID; BE =
                actual) for each day --from..--to            (upstream main.main)
     normalize  shift solar so its DA equals OMIE's cleared solar, zero tiny
-               values, divide every gate by DA -> one CSV per day and resource,
-               the Data/ES layout                (upstream omie_post_process)
+               values (upstream omie_post_process), then turn each gate into
+               a factor on the DA value -> one CSV per day and resource, the
+               Data/ES layout. Default --method floor:
+                   factor = 1 + (gate - DA) / max(DA, 5% of installed capacity)
+               i.e. upstream's gate / DA wherever DA is above 5% of capacity,
+               but no division by a near-zero DA-gate forecast (upstream gave
+               wind x15 on 2024-04-28 13:00). Days on which ENTSO-E's
+               day-ahead forecast is missing get factor 1 (no update).
+               Clock-change days become the model's 24 rows (as omie_conversion).
 
 Usage (PowerShell, from the repo root):
 
@@ -151,6 +158,31 @@ def _capacity_mw(resource, year):
     return float(pd.read_csv(p, index_col=0).loc[ZONE, str(year)])
 
 
+def _gap_days(resource, dates):
+    """Local days in `dates` on which ENTSO-E's downloaded day-ahead forecast
+    for `resource` is missing for at least one hour. The forecast model's
+    input on those days is filled-in data, so its gate updates are not
+    information (e.g. solar 2024-12-07..11, wind 2024-06-02)."""
+    import glob
+    import pandas as pd
+    if resource == "load":
+        files, col = glob.glob(os.path.join("data", "input_entsoe", "load_and_forecasts", ZONE, "*.csv")), "Forecasted Load"
+    else:
+        files, col = glob.glob(os.path.join("data", "input_entsoe", "generation_forecasts", resource, ZONE, "*.csv")), resource
+    s = pd.concat([pd.read_csv(f, index_col=0)[col] for f in files])
+    s.index = pd.to_datetime(s.index, utc=True).tz_convert("Europe/Madrid")
+    s = s[s.index.minute == 0]
+    s = s[~s.index.duplicated()]
+    gaps = set()
+    for date in dates:
+        start = pd.Timestamp(date.date(), tz="Europe/Madrid")
+        end = (start.tz_localize(None) + pd.Timedelta(days=1)).tz_localize("Europe/Madrid")
+        hrs = pd.date_range(start, end, freq="h", inclusive="left")
+        if s.reindex(hrs).isna().any():
+            gaps.add(date.date())
+    return gaps
+
+
 def cmd_normalize(args):
     import pandas as pd
     from src.paths import Paths
@@ -159,8 +191,14 @@ def cmd_normalize(args):
     out_root = args.out or os.path.join("normalized_forecasts", args.run_id, ZONE)
     entsoe_da = ({r: _entsoe_da_forecast(args.run_id, r) for r in RESOURCES}
                  if args.method == "entsoe" else {})
+    dates = pd.date_range(start=args.date_from, end=args.date_to, freq="D")
+    gaps = {r: set() if args.keep_gap_days else _gap_days(r, dates) for r in RESOURCES}
+    for r in RESOURCES:
+        if gaps[r]:
+            print(f"{r}: ENTSO-E day-ahead forecast missing on {sorted(str(d) for d in gaps[r])}"
+                  " -> factors set to 1 (no forecast update)")
     written, failed = 0, []
-    for date in pd.date_range(start=args.date_from, end=args.date_to, freq="D"):
+    for date in dates:
         day, month, year = date.day, date.month, date.year
         name = f"{day}_{month}_{year}.csv"
         for resource in RESOURCES:
@@ -189,6 +227,8 @@ def cmd_normalize(args):
                         ref = pd.Series(entsoe_da[resource].reindex(utc).values, index=gates.index)
                     ref = ref.where(ref > 0)                     # 0 or missing -> no update
                     norm = (1 + gates.sub(da, axis=0).div(ref, axis=0)).fillna(1.0).clip(lower=0.0)
+                if date.date() in gaps[resource]:
+                    norm.loc[:, :] = 1.0                         # no forecast update that day
                 norm = _to_24_rows(norm)
             except Exception as e:                       # report, keep going
                 failed.append(f"{date.date()} {resource}: {type(e).__name__}: {e}")
@@ -232,12 +272,16 @@ def main_cli():
     n.add_argument("--to", dest="date_to", required=True)
     n.add_argument("--out", help="output root (default: normalized_forecasts/<run-id>/ES "
                                  "in the work folder); a resource folder per type below it")
-    n.add_argument("--method", choices=("ratio", "floor", "entsoe"), default="ratio",
-                   help="ratio: gate / DA-gate forecast (upstream). floor: 1 + (gate - DA) / "
-                        "max(DA, floor-frac x installed capacity). entsoe: 1 + (gate - DA) / "
+    n.add_argument("--method", choices=("ratio", "floor", "entsoe"), default="floor",
+                   help="floor (default, used for Data/ES): 1 + (gate - DA) / max(DA, "
+                        "floor-frac x installed capacity). ratio: gate / DA-gate forecast "
+                        "(upstream; reproduces the original Data/ES). entsoe: 1 + (gate - DA) / "
                         "ENTSO-E's published day-ahead forecast")
     n.add_argument("--floor-frac", type=float, default=0.05,
                    help="for --method floor: share of installed capacity (default 0.05)")
+    n.add_argument("--keep-gap-days", action="store_true",
+                   help="keep the model's updates on days where ENTSO-E's day-ahead forecast "
+                        "is missing (default: factors set to 1 on those days)")
     n.set_defaults(func=cmd_normalize)
 
     args = p.parse_args()

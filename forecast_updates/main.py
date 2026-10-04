@@ -18,17 +18,25 @@ from src.post_process import restructure_forecast_df, normalize_to_day_ahead, lo
 from src.utils import make_dir
 
 def define_gate_times(date: pd.Timestamp, tz='Europe/Madrid') -> tuple[dict, dict]:
-    gate_time_dict = {
-            "DA": date - pd.Timedelta(hours=12),  # DA
-            # "ID1": date - pd.Timedelta(hours=9),   # IDA 1
-            "ID2": date - pd.Timedelta(hours=2),   # IDA 2
-            "ID3": date + pd.Timedelta(hours=10),  # IDA 3
-            "CID": pd.DatetimeIndex([date + pd.Timedelta(hours=hr) for hr in range(-1, 23)]),  # CID
-            # "BE": pd.DatetimeIndex([date + pd.Timedelta(hours=hr) for hr in range(24)])  # BE
-        }
+    # [Spain_power_system] Gates at their wall-clock times and the day's real
+    # hours. Upstream added fixed Timedeltas to local midnight and always took
+    # 24 hours, which on clock-change days put ID3 at 11:00/09:00 instead of
+    # 10:00 and gave 2024-03-31 an extra hour of 1 April and 2024-10-27 no
+    # 23:00. Identical to upstream on every other day (and on UTC days).
+    naive = date.tz_localize(None)
 
-    all_delivery_hours = pd.date_range(start=date, periods=24, freq='h', tz=tz)
-    second_half_delivery_hours = all_delivery_hours[12:]
+    def wall(hours):
+        return (naive + pd.Timedelta(hours=hours)).tz_localize(date.tz)
+
+    all_delivery_hours = pd.date_range(start=date, end=wall(24), freq='h', inclusive='left')  # 23/24/25 h
+    gate_time_dict = {
+            "DA": wall(-12),  # DA
+            # "ID1": wall(-9),   # IDA 1
+            "ID2": wall(-2),   # IDA 2
+            "ID3": wall(10),  # IDA 3
+            "CID": all_delivery_hours - pd.Timedelta(hours=1),  # CID: one hour before each delivery hour
+        }
+    second_half_delivery_hours = all_delivery_hours[all_delivery_hours.hour >= 12]
 
     delivery_hours = {
         "DA": all_delivery_hours,

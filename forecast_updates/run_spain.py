@@ -118,12 +118,47 @@ def cmd_gates(args):
     main(config=config, dates=dates, plotting_flag=args.plots, lead_times_dict=lead_times)
 
 
+def _to_24_rows(df):
+    """The model's 24-row day, by the same rule as
+    omie_conversion/convert_omie_to_model_data.py (to_24): a 23-hour day
+    repeats its last hour, a 25-hour day drops its first 02:00."""
+    import pandas as pd
+    n = len(df)
+    if n == 24:
+        return df
+    if n == 23:
+        return pd.concat([df, df.iloc[[-1]]])
+    if n == 25:
+        return pd.concat([df.iloc[:2], df.iloc[3:]])
+    raise ValueError(f"unexpected {n} hours in a day")
+
+
+def _entsoe_da_forecast(run_id, resource):
+    """ENTSO-E's published day-ahead forecast, hourly, as saved by `train`."""
+    import pandas as pd
+    from src.paths import Paths
+    s = pd.read_csv(Paths(run_id, resource, ZONE).raw_forecasts / "forecast_series.csv", index_col=0).iloc[:, 0]
+    s.index = pd.to_datetime(s.index, utc=True)
+    return s
+
+
+def _capacity_mw(resource, year):
+    """ENTSO-E installed capacity of `year` as downloaded; 0 for load."""
+    import pandas as pd
+    if resource == "load":
+        return 0.0
+    p = os.path.join("data", "input_entsoe", "capacities", resource.replace(" ", "_"), f"{ZONE}.csv")
+    return float(pd.read_csv(p, index_col=0).loc[ZONE, str(year)])
+
+
 def cmd_normalize(args):
     import pandas as pd
     from src.paths import Paths
     from src.post_process import load_omie_data, normalize_to_day_ahead
 
     out_root = args.out or os.path.join("normalized_forecasts", args.run_id, ZONE)
+    entsoe_da = ({r: _entsoe_da_forecast(args.run_id, r) for r in RESOURCES}
+                 if args.method == "entsoe" else {})
     written, failed = 0, []
     for date in pd.date_range(start=args.date_from, end=args.date_to, freq="D"):
         day, month, year = date.day, date.month, date.year
@@ -131,14 +166,30 @@ def cmd_normalize(args):
         for resource in RESOURCES:
             src_path = Paths(args.run_id, resource, ZONE).market_forecasts / name
             try:
-                gates = pd.read_csv(src_path, index_col=0, parse_dates=True)
+                gates = pd.read_csv(src_path, index_col=0)
                 # Same steps as upstream's scripts/spain/omie_post_process.py:
                 if resource == "Solar":
                     omie = load_omie_data(resource, day, month, year)
                     diff_with_omie = gates["DA"] - omie.values
                     gates = gates.subtract(diff_with_omie.values, axis=0)
                 gates[gates < 1e-5] = 0.0
-                norm = normalize_to_day_ahead(gates)
+                if args.method == "ratio":
+                    # upstream: every gate divided by the model's own DA-gate forecast
+                    norm = normalize_to_day_ahead(gates)
+                else:
+                    # Each gate's change from the DA-gate forecast, in MW, divided
+                    # by a reference that cannot be near zero: the DA forecast
+                    # floored at a share of installed capacity ("floor"), or
+                    # ENTSO-E's published day-ahead forecast ("entsoe").
+                    da = gates["DA"]
+                    if args.method == "floor":
+                        ref = da.clip(lower=args.floor_frac * _capacity_mw(resource, year))
+                    else:
+                        utc = pd.to_datetime(gates.index, utc=True)
+                        ref = pd.Series(entsoe_da[resource].reindex(utc).values, index=gates.index)
+                    ref = ref.where(ref > 0)                     # 0 or missing -> no update
+                    norm = (1 + gates.sub(da, axis=0).div(ref, axis=0)).fillna(1.0).clip(lower=0.0)
+                norm = _to_24_rows(norm)
             except Exception as e:                       # report, keep going
                 failed.append(f"{date.date()} {resource}: {type(e).__name__}: {e}")
                 continue
@@ -181,6 +232,12 @@ def main_cli():
     n.add_argument("--to", dest="date_to", required=True)
     n.add_argument("--out", help="output root (default: normalized_forecasts/<run-id>/ES "
                                  "in the work folder); a resource folder per type below it")
+    n.add_argument("--method", choices=("ratio", "floor", "entsoe"), default="ratio",
+                   help="ratio: gate / DA-gate forecast (upstream). floor: 1 + (gate - DA) / "
+                        "max(DA, floor-frac x installed capacity). entsoe: 1 + (gate - DA) / "
+                        "ENTSO-E's published day-ahead forecast")
+    n.add_argument("--floor-frac", type=float, default=0.05,
+                   help="for --method floor: share of installed capacity (default 0.05)")
     n.set_defaults(func=cmd_normalize)
 
     args = p.parse_args()

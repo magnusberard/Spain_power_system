@@ -35,15 +35,27 @@ Reproduces the observed 2024 Spanish market. The per-day input data
 (load/Wind/Solar, forecast factors, cross-border exchange, nuclear/coal/CHP
 calibration) is prepared for **2024-01-02 to 2024-12-29** (363 days — every
 day of 2024 except 1 January and 30–31 December, see "Known limitations"),
-but `TARGET_DAYS` in `run_market_chain.jl` is currently set to the two
-reference days (8 July, 2 December) while the rollout is validated
-week-by-week and month-by-month before running the full range. Those two
-hand-validated days remain the ones to check new results against.
+and `config.toml` `[run]` chooses which of them a run covers — by default the
+two hand-validated reference days (8 July, 2 December), the ones to check new
+results against. The chain checks before solving that every chosen day has
+its profiles, forecast factors, calibration and cross-border data, and stops
+with a list if not.
 
 ```bash
 # in config.toml: [scenario] label = "2024",  [weeks] enabled = false
-julia --project=. run_market_chain.jl
+julia --project=. run_market_chain.jl                      # days from [run]
+
+# one-off range or list without editing config.toml (PowerShell):
+$env:SPAIN_DAYS = "2024-01-02:2024-01-08"; julia --project=. run_market_chain.jl
+
+# the whole year, one month per Julia process, each into
+# results/2024_by_month/<yyyy-mm>/ (finished months are skipped on a rerun):
+.\scripts\run_2024_by_month.ps1
 ```
+
+A run keeps all results in memory until it ends (two days ≈ 50 MB of CSV), so
+run long ranges a month at a time. Runtime is roughly 2.5–3 minutes per day
+in a foreground terminal.
 
 Writes `results/` — `da_dispatch.csv` … `bal_dispatch.csv` for the five market
 stages, `gen_dispatch.csv` and `branch_flows.csv` for the redispatch, and

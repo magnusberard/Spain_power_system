@@ -479,12 +479,33 @@ RD_ONLY != "" &&
 # DA scale factors are always 1.0, so DA profiles equal the ES_old -12 baseline.
 # Stages modelled: DA → ID2 → ID3 → CID → Balancing (BE) → Redispatch.
 
-# Days with every input: 2024-01-02 .. 2024-12-29 (omie_conversion/ baselines
-# and calibration, forecast_updates/ factors, [bellman].bgn_date 2024-01-01).
-# 2024-01-01 and 2024-12-30/31 have no baseline, calibration or forecast
-# factors yet. Currently the two hand-validated reference days; for a longer
-# range run month by month (results are kept in memory until the end).
-TARGET_DAYS = ["2024-07-08", "2024-12-02"]
+# Study days of the 2024 path (the [weeks] block below replaces them). Set in
+# config.toml [run] -- `days = [...]`, or `from` / `to` -- and overridable for
+# one run, without editing the config, by SPAIN_DAYS:
+#     "2024-01-02:2024-01-31"     a range          "2024-07-08,2024-12-02"  a list
+# Days with every input: 2024-01-02 .. 2024-12-29 (checked further down).
+# Results are kept in memory until the end of the run, so run long ranges a
+# month at a time (scripts/run_2024_by_month.ps1).
+function study_days(cfg)
+    spec = String(strip(get(ENV, "SPAIN_DAYS", "")))
+    if spec != ""
+        if occursin(':', spec)
+            a, b = strip.(split(spec, ':'; limit = 2))
+            return [string(d) for d in Date(a):Day(1):Date(b)]
+        end
+        return [String(strip(s)) for s in split(spec, ',') if !isempty(strip(s))]
+    end
+    run = get(cfg, "run", Dict{String,Any}())
+    if haskey(run, "from") || haskey(run, "to")
+        (haskey(run, "from") && haskey(run, "to")) ||
+            error("config.toml: [run] needs both `from` and `to`")
+        return [string(d) for d in Date(run["from"]):Day(1):Date(run["to"])]
+    end
+    return [string(d) for d in get(run, "days", ["2024-07-08", "2024-12-02"])]
+end
+TARGET_DAYS = study_days(cfg)
+haskey(ENV, "SPAIN_DAYS") &&
+    @printf "Study days     : %s (SPAIN_DAYS), %d days\n" ENV["SPAIN_DAYS"] length(TARGET_DAYS)
 # [weeks]: sampled multi-week horizon (week_sampling.jl).  The persisted (or
 # freshly drawn, when resample = true) week sample replaces the two fixed 2024
 # study days; each sampled week is 7 SDDP-calendar days, so the Bellman
@@ -522,6 +543,34 @@ ES_NEW_DIR  = joinpath(@__DIR__, "Data", "ES")
 function es_filename(date_str)
     d = Date(date_str)
     "$(day(d))_$(month(d))_$(year(d)).csv"
+end
+
+# Every 2024 study day needs its own inputs. A missing per-day calibration
+# entry used to fall back silently to the annual default (LOCALLY_INFEASIBLE
+# on 2024-08-05), and a missing profile only failed deep into the run, so
+# check them all up front.
+if !WEEKS_ACTIVE
+    let missing_inputs = String[]
+        xb_days = CROSSBORDER && XB_SOURCE != "sddp" ?
+            Set(string.(CSV.read(joinpath(@__DIR__, "Data", "crossborder.csv"), DataFrame).Day)) : nothing
+        for d in TARGET_DAYS
+            Date(d) >= BELLMAN_BGN_DATE ||
+                push!(missing_inputs, "$d: before [bellman].bgn_date $(BELLMAN_BGN_DATE)")
+            for (dir, res) in (("ES_old", "load"), ("ES_old", "Wind"), ("ES_old", "Solar"),
+                               ("ES", "load"), ("ES", "Wind Onshore"), ("ES", "Solar"))
+                isfile(joinpath(@__DIR__, "Data", dir, res, es_filename(d))) ||
+                    push!(missing_inputs, "$d: Data/$dir/$res/$(es_filename(d))")
+            end
+            haskey(NUCLEAR_AVAIL_BY_DATE, d) || push!(missing_inputs, "$d: [da.nuclear_availability_by_date]")
+            haskey(COAL_AVAIL_BY_DATE, d)    || push!(missing_inputs, "$d: [da.coal_availability_by_date]")
+            CHP_ENABLED && !haskey(CHP_BY_DATE, d) && push!(missing_inputs, "$d: [chp.by_date]")
+            xb_days !== nothing && !(d in xb_days) && push!(missing_inputs, "$d: Data/crossborder.csv")
+        end
+        isempty(missing_inputs) ||
+            error("Missing inputs for $(length(unique(first.(split.(missing_inputs, ':')))))" *
+                  " of $(length(TARGET_DAYS)) study days:\n  " * join(missing_inputs, "\n  "))
+    end
+    @printf "Study days     : %s .. %s (%d days, all inputs present)\n" first(TARGET_DAYS) last(TARGET_DAYS) length(TARGET_DAYS)
 end
 
 # Returns 24-element vector of MW values for a given stage.

@@ -78,6 +78,18 @@ co2_price_region = "ES"
 #           sets a deeply negative price in any hour it is marginal.
 negative_co2_credit = false
 
+[run]
+# ── Study days of the 2024 path ([scenario].label = "2024", [weeks] off) ─────
+# Either a list of days, or a range with `from` / `to` (both inclusive; a
+# range takes precedence over `days`). Days with every input: 2024-01-02 ..
+# 2024-12-29. The environment variable SPAIN_DAYS overrides this for one run
+# ("2024-01-02:2024-01-31" or "2024-07-08,2024-12-02"); a run keeps all
+# results in memory until it ends, so run long ranges month by month with
+# scripts/run_2024_by_month.ps1.
+days = ["2024-07-08", "2024-12-02"]
+# from = "2024-01-02"
+# to   = "2024-01-31"
+
 [costs]
 # ── Marginal-cost source for the market chain ───────────────────────────────
 # gas_from_midterm = true takes the ES gas marginal cost from

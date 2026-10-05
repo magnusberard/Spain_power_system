@@ -6,14 +6,14 @@
 # after an interruption just start the script again; -Force re-runs them.
 #
 # Usage (PowerShell, from the repo root):
-#     .\scripts\run_2024_by_month.ps1                                # 2024-01-02 .. 2024-12-29
+#     .\scripts\run_2024_by_month.ps1                                # 2024-01-01 .. 2024-12-29
 #     .\scripts\run_2024_by_month.ps1 -From 2024-04-01 -To 2024-04-30
 #     .\scripts\run_2024_by_month.ps1 -Force                         # redo finished months
 #
 # Uses config.toml as it stands, except for the study days (SPAIN_DAYS) and
 # the results folder (SPAIN_RESULTS), which this script sets per month.
 param(
-    [string]$From = "2024-01-02",
+    [string]$From = "2024-01-01",
     [string]$To = "2024-12-29",
     [switch]$Force
 )

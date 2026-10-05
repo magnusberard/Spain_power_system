@@ -81,13 +81,13 @@ negative_co2_credit = false
 [run]
 # ── Study days of the 2024 path ([scenario].label = "2024", [weeks] off) ─────
 # Either a list of days, or a range with `from` / `to` (both inclusive; a
-# range takes precedence over `days`). Days with every input: 2024-01-02 ..
+# range takes precedence over `days`). Days with every input: 2024-01-01 ..
 # 2024-12-29. The environment variable SPAIN_DAYS overrides this for one run
-# ("2024-01-02:2024-01-31" or "2024-07-08,2024-12-02"); a run keeps all
+# ("2024-01-01:2024-01-31" or "2024-07-08,2024-12-02"); a run keeps all
 # results in memory until it ends, so run long ranges month by month with
 # scripts/run_2024_by_month.ps1.
 days = ["2024-07-08", "2024-12-02"]
-# from = "2024-01-02"
+# from = "2024-01-01"
 # to   = "2024-01-31"
 
 [costs]
@@ -747,6 +747,7 @@ ramp_limits = true
 "2024-12-27" = 0.957
 "2024-12-28" = 0.957
 "2024-12-29" = 0.957
+"2024-01-01" = 0.957
 
 # Per-day coal availability (see [da].coal_availability above for the derivation).
 [da.coal_availability_by_date]
@@ -1113,6 +1114,7 @@ ramp_limits = true
 "2024-12-27" = 0.172
 "2024-12-28" = 0.172
 "2024-12-29" = 0.172
+"2024-01-01" = 0.101
 
 [chp]
 # ── Industrial cogeneration / waste / mini-hydro ─────────────────────────────
@@ -1174,6 +1176,11 @@ siting_buses = 100
 gas_mw       = 2260.0
 waste_mw     =  730.0
 minihydro_mw =  420.0
+
+[chp.by_date."2024-01-01"]
+gas_mw       = 1023.7
+waste_mw     = 463.5
+minihydro_mw = 1116.8
 
 [chp.by_date."2024-01-02"]
 gas_mw       = 1315.4

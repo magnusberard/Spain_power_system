@@ -39,9 +39,10 @@ ES_OLD_DIR = os.path.join(REPO_DATA, "ES_old")
 OMIE_REF_DIR = os.path.join(REPO_DATA, "OMIE")
 
 # Days excluded from the run: the [ES] forecast-factor files don't cover
-# these 3, and per project decision they're simply skipped rather than
-# generated/guessed at.
-EXCLUDED_DATES = {"2024-01-01", "2024-12-30", "2024-12-31"}
+# these, and per project decision they're simply skipped rather than
+# generated/guessed at. 2024-01-01 was excluded too until its forecast
+# factors could be generated (forecast_updates/, 2026-10-05).
+EXCLUDED_DATES = {"2024-12-30", "2024-12-31"}
 
 # The 8 raw OMIE "TECNOLOGÍA" categories, grouped into the technology buckets
 # that reproduce Data/OMIE/actual_generation_*.csv exactly (validated against
@@ -63,7 +64,13 @@ TECH_TO_GROUP = {tech: g for g, techs in TECH_GROUPS.items() for tech in techs}
 
 
 def load_unit_map():
+    # Only the superseded per-unit (pdbf) reconstruction used this map;
+    # reconstruct_day() now reads OMIE's technology report and ignores it.
+    # Callers still pass it along, so return an empty map when the file
+    # (built on another machine, outside the repo) is not present.
     m = {}
+    if not os.path.isfile(UNIT_MAP_CSV):
+        return m
     with open(UNIT_MAP_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             m[r["code"]] = (r["zone"], r["technology"])

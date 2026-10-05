@@ -44,7 +44,9 @@ entsoe-py pyyaml python-dotenv` (TensorFlow and statsmodels are not needed).
   inside `--from`..`--to`. The first day's DA gate (12:00 the day before) and
   the last day's ID3 gate (10:00 that day) lie outside, so both edge days are
   skipped with a `KeyError` message. Upstream's 2024-01-01..2024-12-30 window
-  therefore yields 2024-01-02..2024-12-29: exactly the 363 days in `Data/ES`.
+  therefore yields 2024-01-02..2024-12-29: exactly the 363 days `Data/ES`
+  originally had. 2024-01-01 was added later from a window starting on
+  2023-12-31.
 - **Clock-change days** (fixed here, see the table above): upstream gave a
   gate file 24 rows from local midnight, so 2024-03-31 ran into 1 April and
   the solar step of `normalize` failed against OMIE's 23-hour report.

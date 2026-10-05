@@ -88,7 +88,9 @@ def main():
     args = ap.parse_args()
 
     unit_map = c.load_unit_map()
-    config_text = open(CONFIG_PATH, encoding="utf-8").read()
+    # newline="": keep config.toml's LF line endings (text-mode defaults on
+    # Windows would rewrite every line as CRLF).
+    config_text = open(CONFIG_PATH, encoding="utf-8", newline="").read()
     if args.force:
         config_text = remove_dates_in_range(config_text, "nuclear_availability_by_date",
                                              args.from_date, args.to_date)
@@ -125,7 +127,7 @@ def main():
 
     config_text = insert_entries(config_text, "nuclear_availability_by_date", new_nuclear)
     config_text = insert_entries(config_text, "coal_availability_by_date", new_coal)
-    open(CONFIG_PATH, "w", encoding="utf-8").write(config_text)
+    open(CONFIG_PATH, "w", encoding="utf-8", newline="").write(config_text)
 
     print(f"Added {len(new_nuclear)} nuclear + {len(new_coal)} coal entries "
           f"({n_done} days computed, {n_skipped} already had both)")

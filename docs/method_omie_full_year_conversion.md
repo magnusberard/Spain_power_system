@@ -5,8 +5,8 @@ originally covered only the two hand-validated study days (8 July, 2
 December 2024). The pipeline in `omie_conversion/` and `entsoe_download/`
 reproduces those two days' data **exactly** from bulk-downloadable public
 sources (OMIE + ENTSO-E), and extends coverage to every day from
-**2024-01-02 to 2024-12-29** (363 days — all of 2024 except 1 January and
-30–31 December, see "Why not all 366 days"). `run_market_chain.jl`'s
+**2024-01-01 to 2024-12-29** (364 days — all of 2024 except 30–31
+December, see "Why not all 366 days"). `run_market_chain.jl`'s
 `TARGET_DAYS` can cover that whole range, but is currently set to the two
 reference days while it's rolled out gradually and checked at each step —
 see "Rolling out beyond the two reference days" below.
@@ -24,13 +24,15 @@ piece.
   GDAES_D+1 "Last Price" 31.18 EUR/MWh from MIBGAS's 2023 file; EUA
   29/12/2023 77.98 EUR/t, the same Investing.com series), and
   `[bellman].bgn_date` moved to `2024-01-01` with the SDDP retrained.
-- **2024-01-01**: prices and SDDP cover it now, but it still has no
-  `Data/ES_old` baseline, no nuclear/coal/CHP calibration and no `Data/ES`
-  forecast factors (excluded in `convert_omie_to_model_data.EXCLUDED_DATES`).
-  All three can now be generated: OMIE + ENTSO-E data cover the day, and
-  the factors come from `forecast_updates/run_spain.py` with a window
-  starting on 2023-12-31 (the code skips the first day of its window, see
-  `forecast_updates/UPSTREAM.md`).
+- **2024-01-01 has every input too** (2026-10-05), all from real data:
+  `Data/ES_old` from the OMIE technology report + ENTSO-E day-ahead
+  exchange (removed from `EXCLUDED_DATES`; reproducing 2024-01-02 the same
+  way gave identical values); nuclear 0.957 / coal 0.101 availability; CHP
+  gas 1 023.7 / waste 463.5 / mini-hydro 1 116.8 MW (OMIE group 2 604 MW,
+  low on a holiday); `Data/ES` factors from `forecast_updates/run_spain.py`
+  with the gates window starting on 2023-12-31 (the code skips the first
+  day of its window). Only the 1 January files were written: the longer
+  window would move the other days' factors by at most 0.0013.
 - **2024-12-30, 2024-12-31**: no input data generated; the forecast factors
   also need ENTSO-E data into January 2025 (the window's last day is
   skipped the same way).
@@ -194,7 +196,7 @@ containing, not just the new part.
 - **`[da.nuclear_availability_by_date]` / `[da.coal_availability_by_date]`**:
   computed the same way the original two days were (peak OMIE-cleared MW ÷
   nameplate, now sourced from the technology report above) — mechanical, no
-  new data source, no known caveats. Backfilled for all 363 days;
+  new data source, no known caveats. Backfilled for all 364 days;
   `add_nuclear_coal_calibration.py` gained a `--force` flag to recompute and
   replace already-present dates (needed for the reconstruction-method
   switch, since this was a redo, not a gap-fill) — the two original
@@ -273,8 +275,9 @@ day-ahead forecast, the last five observed values and their forecast errors,
 and time features; `BE` is the realised value.
 
 **Regenerated 2026-10-04** (`forecast_updates/run_spain.py`, train on
-2022–2024, gates 2024-01-01..2024-12-30, normalize 2024-01-02..2024-12-29),
-replacing the files shipped with the repo:
+2022–2024, gates 2024-01-01..2024-12-30, normalize 2024-01-02..2024-12-29;
+2024-01-01 added 2026-10-05 from gates 2023-12-31..2024-12-30), replacing
+the files shipped with the repo:
 
 - **Reproduction check first.** Re-running upstream's own method
   (`--method ratio`, UTC days) matches the shipped files to 0.03 % (load) –
@@ -412,7 +415,7 @@ python3 omie_conversion/add_nuclear_coal_calibration.py --from-date 2024-01-01 -
 python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --force
 #    gas_mw alone, from the waste/minihydro already in config.toml (needs only
 #    OMIE_data/tecnologias/; add --dry-run to just write the report)
-python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-02 --to-date 2024-12-29 --gas-from-config
+python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --gas-from-config
 
 # 8. Retrain the mid-term SDDP model to cover the new range
 #    (edit [bellman].bgn_date in config.toml first)
@@ -423,8 +426,8 @@ julia --project=. midterm_sddp4.jl
 #    before and end one day after the days you want (edge days are skipped).
 python3 forecast_updates/run_spain.py download --years 2022 2023 2024
 python3 forecast_updates/run_spain.py train
-python3 forecast_updates/run_spain.py gates --from 2024-01-01 --to 2024-12-30
-python3 forecast_updates/run_spain.py normalize --from 2024-01-02 --to 2024-12-29 --out Data/ES
+python3 forecast_updates/run_spain.py gates --from 2023-12-31 --to 2024-12-30
+python3 forecast_updates/run_spain.py normalize --from 2024-01-01 --to 2024-12-29 --out Data/ES
 ```
 
 All the `entsoe_download/*.py` scripts read `ENTSOE_TOKEN` from the

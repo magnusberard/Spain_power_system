@@ -428,6 +428,13 @@ python3 forecast_updates/run_spain.py download --years 2022 2023 2024
 python3 forecast_updates/run_spain.py train
 python3 forecast_updates/run_spain.py gates --from 2023-12-31 --to 2024-12-30
 python3 forecast_updates/run_spain.py normalize --from 2024-01-01 --to 2024-12-29 --out Data/ES
+
+# 10. Optional, for validation only (the model does not read it): ENTSO-E actual
+#     generation per production type, all 17 types, 2020-01-01 to yesterday by
+#     default (--from/--to). This is what plants really produced, the reference
+#     for the redispatch stage; OMIE's technology report is only the day-ahead
+#     programme. Writes ../entsoe_download/generation_entsoe.csv.
+python3 entsoe_download/fetch_generation_entsoe.py
 ```
 
 All the `entsoe_download/*.py` scripts read `ENTSOE_TOKEN` from the

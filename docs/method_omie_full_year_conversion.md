@@ -435,6 +435,14 @@ python3 forecast_updates/run_spain.py normalize --from 2024-01-01 --to 2024-12-2
 #     for the redispatch stage; OMIE's technology report is only the day-ahead
 #     programme. Writes ../entsoe_download/generation_entsoe.csv.
 python3 entsoe_download/fetch_generation_entsoe.py
+
+# 11. Optional, for validation only: ENTSO-E actual generation per generation
+#     unit (A73), measured hourly output of each large unit (about 100 MW and up).
+#     One request per day; January 2024 by default (--from/--to). Writes one file
+#     per month to ../entsoe_download/generation_per_unit/<yyyy-mm>.csv. Unit names
+#     are short codes (SAGU1 = Sagunto), so matching them to the model's plants
+#     needs a hand-made table.
+python3 entsoe_download/fetch_generation_per_unit.py --from 2024-01-01 --to 2024-12-31
 ```
 
 All the `entsoe_download/*.py` scripts read `ENTSOE_TOKEN` from the

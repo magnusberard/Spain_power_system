@@ -62,6 +62,19 @@ stages, `gen_dispatch.csv` and `branch_flows.csv` for the redispatch, and
 `summary.csv` with one row per hour. Compare against `Data/OMIE/` with
 `plotting/paper_figures_2024.py`.
 
+Every run also writes `run_info.json` (code version, uncommitted files, study
+days, solver, who ran it, runtime), plus `config_used.toml` and, if the working
+tree had uncommitted changes, `run_info_diff.patch`. To share a run with the
+group, publish it to the results viewer (repo `Leide0022/spain-model-runs`,
+cloned next to this one; see its README):
+
+```powershell
+python scripts/publish_run.py results\2024_by_month\2024-08 --name "August, baseline" --note "what it tests" --push
+```
+
+This reads the big CSVs locally and pushes only a small package (a few MB per
+month); the viewer shows it next to real OMIE and ENTSO-E data.
+
 Coverage runs from 1 January to 29 December 2024 — see
 [`docs/method_omie_full_year_conversion.md`](docs/method_omie_full_year_conversion.md)
 for why, how the extended range's data was derived and validated, and what's

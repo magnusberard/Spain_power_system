@@ -684,6 +684,14 @@ end
 const IPOPT_SOLVER_ATTRS = ipopt_linear_solver_attrs()
 @printf "Linear solver  : %s\n" IPOPT_LINEAR_SOLVER
 
+# What this run was made from: code version, uncommitted files, days, config, solver
+# (results/<run>/run_info.json; completed at the end of the script). Used to label
+# the run in the results viewer; it does not change any results.
+include("run_info.jl")
+const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path = CONFIG_PATH,
+    extra = Dict{String,Any}("label" => SCEN_LABEL, "weeks" => WEEKS_ACTIVE,
+                             "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER))
+
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours
 # can be studied after the run (stdout stays quiet at print_level 0).
@@ -2172,3 +2180,8 @@ if RD_ENABLED
         @printf "  Domestic adequacy diagnostic: %.1f MWh load shedding (not an exchange-relaxation variable)\n" shed_total
     end
 end
+
+# ── Run info: finish time, runtime and solved AC hours (results/<run>/run_info.json) ──
+write_run_info_end!(RESULTS, RUN_INFO;
+    ac_solved = RD_ENABLED && @isdefined(n_solved) ? n_solved : nothing,
+    ac_total  = RD_ENABLED && @isdefined(n_total)  ? n_total  : nothing)

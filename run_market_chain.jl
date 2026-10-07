@@ -511,8 +511,11 @@ haskey(ENV, "SPAIN_DAYS") &&
 # study days; each sampled week is 7 SDDP-calendar days, so the Bellman
 # stage/cut/volume lookups below work unchanged.
 const WEEKS_ACTIVE = get(get(cfg, "weeks", Dict()), "enabled", false)
-RD_XB_SPLIT == "country_total" && !WEEKS_ACTIVE &&
-    error("config.toml: redispatch crossborder_split=\"country_total\" currently requires [weeks].enabled=true")
+# [redispatch].crossborder_split = "country_total" also works for the 2024 days:
+# the observed FR/PT exchange stays fixed per country and the redispatch picks
+# the split over the border buses (XB_BUS_CAPS below).  With "fixed", every
+# border bus takes its rating share, which leaves hours above ~2.7 GW to France
+# infeasible behind the Arkale transformer.
 const WEEK_KEY     = WEEKS_ACTIVE ? load_or_sample_weeks(cfg) : nothing
 if WEEKS_ACTIVE
     SCEN_ACTIVE || error("config.toml: [weeks] needs an EMPIRE scenario " *
@@ -690,7 +693,8 @@ const IPOPT_SOLVER_ATTRS = ipopt_linear_solver_attrs()
 include("run_info.jl")
 const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path = CONFIG_PATH,
     extra = Dict{String,Any}("label" => SCEN_LABEL, "weeks" => WEEKS_ACTIVE,
-                             "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER))
+                             "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER,
+                             "crossborder_split" => RD_XB_SPLIT))
 
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours
@@ -1040,8 +1044,10 @@ FOREIGN_SERIES = WEEKS_ACTIVE ? foreign_week_series(cfg, EMP, WEEK_KEY) : nothin
 BORDER_MW = WEEKS_ACTIVE ?
     crossborder_border_ratings(line_scale = LINE_SCALE, extra_lines = EXTRA_LINES) : nothing
 # Per-bus border-line nameplate MW.  The hourly NTC preprocessor uses these as
-# bounds while preserving fixed rating-proportional boundary shares.
-XB_BUS_CAPS = WEEKS_ACTIVE ?
+# bounds while preserving fixed rating-proportional boundary shares; with
+# crossborder_split = "country_total" they also bound each border bus in the
+# redispatch (2024 days included).
+XB_BUS_CAPS = (WEEKS_ACTIVE || RD_XB_SPLIT == "country_total") ?
              Dict(bus => mw for (_, busw) in
              crossborder_bus_ratings(line_scale = LINE_SCALE, extra_lines = EXTRA_LINES)
          for (bus, mw) in busw) : nothing

@@ -3170,6 +3170,17 @@ water_value = "constant"
 objective     = "quadratic"
 anchor_weight = 0.8
 
+# How the cross-border exchange is placed on the FR/PT border buses:
+#   "fixed"         — each border bus takes a fixed share of its country's
+#                     exchange, by line rating.  Hours above ~2.7 GW to or from
+#                     France are infeasible: the Arkale line's share cannot pass
+#                     the 240 MW transformer behind it (TR_65a15878).
+#   "country_total" — the exchange per country stays fixed; the redispatch picks
+#                     the split over the border buses, each within its line
+#                     rating × line_rating_factor and all in one direction, with
+#                     a small penalty for moving away from the rating split.
+crossborder_split = "country_total"
+
 # Run the network load flow (this redispatch stage) on its own, reusing the
 # market schedule from a PREVIOUS run instead of clearing stages 1–5 again.
 #   ""    — run the full chain (day-ahead → … → balancing → redispatch).

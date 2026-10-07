@@ -248,6 +248,32 @@ def build(rdir, runs_repo, args):
                 v = out[rows].sum(axis=0) if rows else np.zeros(H)
                 dest[st][c] = r1(np.where(seen, v, np.nan))
 
+    # balancing stage: what BAL moved relative to CID, summed up and down over the responding units
+    # (wind, solar and the fixed cross-border injections left out), and the forecast change it had
+    # to cover (CID -> BAL
+    # load minus wind minus solar; positive = the system needs more energy). Compared with REE's
+    # balancing energy and imbalance on the viewer's REE (e·sios) tab.
+    balancing = None
+    if (rdir / "cid_dispatch.csv").exists() and (rdir / "cid_profiles.csv").exists():
+        print("  reading the continuous-intraday schedule for the balancing volume ...")
+        _, cid_signed, cid_seen = stream_dispatch(rdir / "cid_dispatch.csv", "gen_id", hours, uidx, U)
+        _, bal_s, bal_seen = per_unit["BAL"]
+        # the plants that respond; wind and solar changing with their forecast are the cause, not balancing
+        market = np.array([f not in ("CrossBorder", "Wind", "Solar") for f, _ in keys])
+        d = (bal_s - cid_signed)[market]
+        both = bal_seen & cid_seen
+        up = np.where(both, np.clip(d, 0, None).sum(axis=0), np.nan)
+        down = np.where(both, np.clip(-d, 0, None).sum(axis=0), np.nan)
+        prof = {}
+        for st in ("cid", "bal"):
+            f = pd.read_csv(rdir / f"{st}_profiles.csv")
+            f = f[f.date.isin(hours.day_i)]
+            a = np.full((3, H), np.nan)
+            a[:, hours.of(f)] = f[["load_mw", "wind_mw", "solar_mw"]].to_numpy().T
+            prof[st] = a
+        dl, dw, ds = prof["bal"] - prof["cid"]
+        balancing = dict(up=r1(up), down=r1(down), need=r1(dl - dw - ds))
+
     # plant map groups: units of one fuel at one substation
     bus = pd.read_csv(MODEL_REPO / "Data/Bus_Data.csv", encoding="utf-8-sig").set_index("bus_id")
     units["group"] = [PLANT_OF.get(k) for k in keys]
@@ -293,6 +319,7 @@ def build(rdir, runs_repo, args):
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
+        balancing=balancing,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}

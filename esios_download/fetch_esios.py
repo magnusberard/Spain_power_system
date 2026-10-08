@@ -68,6 +68,26 @@ INDICATORS = {
     708: ("rt2_down_price", "Technical constraints, phase II down, average price", "average"),
     10340: ("rtr_up_price", "Real-time constraints up, weighted average price", "average"),
     10341: ("rtr_down_price", "Real-time constraints down, weighted average price", "average"),
+    # intraday prices. Until 13/06/2024 six MIBEL sessions (MI1-MI6); from then on the three
+    # European auctions use the first three ids (612 IDA1, 613 IDA2, 614 IDA3) and 615-617 stop
+    612: ("id_s1_price", "Intraday session 1 price (MI1, then IDA1)", "average"),
+    613: ("id_s2_price", "Intraday session 2 price (MI2, then IDA2)", "average"),
+    614: ("id_s3_price", "Intraday session 3 price (MI3, then IDA3)", "average"),
+    615: ("id_s4_price", "Intraday session 4 price (MI4, until 13/06/2024)", "average"),
+    616: ("id_s5_price", "Intraday session 5 price (MI5, until 13/06/2024)", "average"),
+    617: ("id_s6_price", "Intraday session 6 price (MI6, until 13/06/2024)", "average"),
+    1727: ("cid_price", "Continuous intraday reference price (weighted average of the trades)", "average"),
+    # traded volumes (energy assigned, Spanish zone; source OMIE), same session numbering as the prices
+    602: ("da_mwh", "Day-ahead market, energy assigned, Spain", "sum"),
+    605: ("id_s1_mwh", "Intraday session 1, energy assigned (MI1, then IDA1)", "sum"),
+    606: ("id_s2_mwh", "Intraday session 2, energy assigned (MI2, then IDA2)", "sum"),
+    607: ("id_s3_mwh", "Intraday session 3, energy assigned (MI3, then IDA3)", "sum"),
+    608: ("id_s4_mwh", "Intraday session 4, energy assigned (MI4, until 13/06/2024)", "sum"),
+    609: ("id_s5_mwh", "Intraday session 5, energy assigned (MI5, until 13/06/2024)", "sum"),
+    610: ("id_s6_mwh", "Intraday session 6, energy assigned (MI6, until 13/06/2024)", "sum"),
+    1442: ("cid_mwh", "Continuous intraday market, energy assigned", "sum"),
+    686: ("imb_up_price", "Imbalance price, up (paid to deviations up)", "average"),
+    687: ("imb_down_price", "Imbalance price, down (paid for deviations down)", "average"),
 }
 # redispatch volume split by cause (what the limitation of programme was for), MWh per hour:
 # SCB overloads in the base case, SCA overloads after a contingency, CT voltage control, RTD the

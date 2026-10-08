@@ -149,6 +149,40 @@ def stream_rd_cost(path, hours, unit_index, n_units):
     return cost
 
 
+def traded_volume(rdir, hours):
+    """Volume traded in each intraday stage (MW in each hour, one side), the model's counterpart of
+    the energy OMIE reports per auction. Every participant has a position, output minus consumption:
+    each unit of the market schedule (load shedding included) and the consumers (minus the stage's
+    load forecast). The balance makes the changes from the previous stage sum to zero, so what is
+    sold (positions up) equals what is bought (positions down); the sold side is reported. ID3 only
+    trades hours 12-23. Returns None for runs without the intraday schedules."""
+    stages = [("DA", "da"), ("ID2", "id2"), ("ID3", "id3"), ("CID", "cid")]
+    if not all((rdir / f"{f}_{k}.csv").exists() for _, f in stages for k in ("dispatch", "profiles")):
+        return None
+    print("  reading the intraday schedules for the traded volume ...")
+    for ch in pd.read_csv(rdir / "da_dispatch.csv", chunksize=20_000, usecols=["date", "hour", "gen_id"]):
+        ids = ch[(ch.date == ch.date.iloc[0]) & (ch.hour == ch.hour.iloc[0])].gen_id.tolist()
+        break
+    mid = {g: i for i, g in enumerate(ids)}
+    traded, prev = {}, None
+    for name, f in stages:
+        _, pos, seen = stream_dispatch(rdir / f"{f}_dispatch.csv", "gen_id", hours, mid, len(ids))
+        prof = pd.read_csv(rdir / f"{f}_profiles.csv")
+        prof = prof[prof.date.isin(hours.day_i)]
+        load = np.full(hours.H, np.nan)
+        load[hours.of(prof)] = prof.load_mw.to_numpy()
+        pos = np.vstack([pos, -np.nan_to_num(load)])
+        ok = seen & np.isfinite(load)
+        if prev is not None:
+            sold = np.clip(pos - prev[0], 0, None).sum(axis=0)
+            ok_both = ok & prev[1]
+            if name == "ID3":
+                ok_both &= np.arange(hours.H) % 24 >= 12
+            traded[name] = r1(np.where(ok_both, sold, np.nan))
+        prev = (pos, ok)
+    return traded
+
+
 def unit_table(rdir):
     """Units as the redispatch reports them (name, fuel, technology, bus, capacity)."""
     for ch in pd.read_csv(rdir / "gen_dispatch.csv", chunksize=20_000):
@@ -285,6 +319,8 @@ def build(rdir, runs_repo, args):
         dl, dw, ds = prof["bal"] - prof["cid"]
         balancing = dict(up=r1(up), down=r1(down), need=r1(dl - dw - ds))
 
+    traded = traded_volume(rdir, hours)
+
     # redispatch: change from the balancing schedule per unit, summed up and down, and its cost at
     # the model's marginal costs (more paid for what goes up, saved on what goes down) — the same
     # structure as REE's cost of technical constraints. The cross-border injections are left out
@@ -361,7 +397,7 @@ def build(rdir, runs_repo, args):
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
-        balancing=balancing, redispatch=redispatch,
+        balancing=balancing, redispatch=redispatch, traded=traded,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}

@@ -73,7 +73,30 @@ python scripts/publish_run.py results\2024_by_month\2024-08 --name "August, base
 ```
 
 This reads the big CSVs locally and pushes only a small package (a few MB per
-month); the viewer shows it next to real OMIE and ENTSO-E data.
+month); the viewer shows it next to real OMIE, ENTSO-E and REE data. When
+`publish_run.py` learns to pack something new (e.g. the traded volume per
+stage), runs published before that show it only after they are published
+again: same command with `--id <the run's id> --force`, on the PC that has the
+run's `results/` folder.
+
+**Real balancing, redispatch and intraday data (REE e·sios).** `esios_download/`
+fetches the hourly REE series the viewer compares the last stages with:
+balancing energy and prices (aFRR, mFRR, RR), technical-constraint and
+real-time redispatch volumes, costs and causes, the net imbalance, and the
+intraday auction and continuous-market prices and volumes. It needs a free
+personal e·sios token, read from the environment only, never from a file:
+
+```powershell
+$env:ESIOS_TOKEN = '...'
+python esios_download/find_indicators.py               # the catalogue, searchable by topic
+python esios_download/fetch_esios.py                   # every series in INDICATORS, all of 2024
+python esios_download/fetch_esios.py --ids 613 614     # only some series
+```
+
+Data goes to `../esios_download/` (outside the repo); months already
+downloaded are cached. Indicator numbers 612–614 and 605–607 change meaning on
+14 June 2024, when the six MIBEL intraday sessions became the European
+auctions IDA1–IDA3 (see the comments in `fetch_esios.py`).
 
 Coverage runs from 1 January to 29 December 2024 — see
 [`docs/method_omie_full_year_conversion.md`](docs/method_omie_full_year_conversion.md)
@@ -245,6 +268,11 @@ branch.
   the same week after a full data-pipeline rewrite (see below) reproduced
   the identical 5 failing hours, confirming this is a solver
   characteristic, not a data problem.
+  *Update 2026-10-08:* in the 2024 runs every failed AC hour had more than
+  about 2.7 GW to or from France, and those hours were genuinely infeasible
+  with the fixed border split (DC is infeasible too); `crossborder_split =
+  "country_total"` solves them (see "Cross-border exchange" below). Whether
+  the April-week hours had the same cause was not checked.
 
 ---
 
@@ -318,10 +346,26 @@ on the French ones in the six export hours of 8 July.
 
 `[crossborder].export_at_border = true` subtracts the export from the
 distributed Spanish load and places it as a fixed withdrawal at the FR/PT
-terminal buses, split by line thermal rating. Total load is unchanged, so the
-copper-plate gates clear identically (verified to the euro) and only the
-redispatch differs. Full derivation and evidence in
+terminal buses, starting from a split by line thermal rating (see below). Total
+load is unchanged, so the copper-plate gates clear identically (verified to the
+euro) and only the redispatch differs. Full derivation and evidence in
 [`docs/method_export_relocation.md`](docs/method_export_relocation.md).
+
+**How the exchange is split over the border buses** — `[redispatch].crossborder_split`:
+
+- `"country_total"` (the default since 2026-10-08): each country's exchange
+  stays fixed hour by hour, but the AC redispatch chooses each border bus's
+  share, each within its line rating × `line_rating_factor` and all in the same
+  direction, with a small penalty for moving away from the rating split. The
+  market stages are unchanged; `run_info.json` records the setting.
+- `"fixed"`: each border bus keeps its share by line rating. Hours with more
+  than about 2.7 GW to or from France are then infeasible: the 225 kV Arkale
+  line gets about 9 % of the exchange, and the 300 MVA transformer behind it
+  (`TR_65a15878`, 240 MW with `line_rating_factor` 0.8) cannot carry it. That
+  is about 12 % of the hours of 2024.
+
+With `"country_total"`, May (744/744) and September (720/720) 2024 solve every
+AC hour; May solved 606 of 744 with `"fixed"`.
 
 In `[weeks]` mode this does not apply: the ES demand comes from EMPIRE
 ScenarioData and carries no exchange, so the 4-zone DA's cleared export is a

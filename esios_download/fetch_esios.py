@@ -53,7 +53,34 @@ INDICATORS = {
     720: ("rtr_up_mwh", "Real-time constraints, up", "sum"),
     721: ("rtr_down_mwh", "Real-time constraints, down", "sum"),
     1338: ("imbalance_net_mwh", "Net imbalance volume, generation and demand", "sum"),
+    # cost of the redispatch (P.O. 14.4: extra cost over the market, charged to demand), EUR per hour
+    709: ("rt_cost_eur", "Technical constraints after day-ahead, cost (phases I + II)", "sum"),
+    1373: ("rt1_up_cost_eur", "Technical constraints, phase I up, cost", "sum"),
+    1374: ("rt1_down_cost_eur", "Technical constraints, phase I down, cost", "sum"),
+    1375: ("rt2_up_cost_eur", "Technical constraints, phase II up, cost", "sum"),
+    1376: ("rt2_down_cost_eur", "Technical constraints, phase II down, cost", "sum"),
+    724: ("rtr_cost_eur", "Real-time constraints, cost", "sum"),
+    1723: ("rtr_up_cost_eur", "Real-time constraints up, cost", "sum"),
+    1724: ("rtr_down_cost_eur", "Real-time constraints down, cost", "sum"),
+    705: ("rt1_up_price", "Technical constraints, phase I up, average price", "average"),
+    706: ("rt1_down_price", "Technical constraints, phase I down, average price", "average"),
+    707: ("rt2_up_price", "Technical constraints, phase II up, average price", "average"),
+    708: ("rt2_down_price", "Technical constraints, phase II down, average price", "average"),
+    10340: ("rtr_up_price", "Real-time constraints up, weighted average price", "average"),
+    10341: ("rtr_down_price", "Real-time constraints down, weighted average price", "average"),
 }
+# redispatch volume split by cause (what the limitation of programme was for), MWh per hour:
+# SCB overloads in the base case, SCA overloads after a contingency, CT voltage control, RTD the
+# distribution grid, RSI/RBI too little upward/downward reserve, ASE frequency deviation in the
+# European synchronous area, Otros other causes
+for ids, stage in (({"SCB": (1790, 1791), "SCA": (1792, 1793), "CT": (1794, 1795), "RTD": (1796, 1797),
+                     "RSI": (2352, 2353), "Otros": (1800, 1801)}, "rt1"),
+                   ({"SCB": (1802, 1803), "SCA": (1804, 1805), "CT": (1806, 1807), "RTD": (1808, 1809),
+                     "Otros": (1812, 1813), "RSI": (1814, 1815), "RBI": (1816, 1817), "ASE": (1818, 1819)}, "rtr")):
+    for cause, (up, down) in ids.items():
+        what = "phase I" if stage == "rt1" else "real time"
+        INDICATORS[up] = (f"{stage}_up_{cause.lower()}_mwh", f"Redispatch {what} up, cause {cause}", "sum")
+        INDICATORS[down] = (f"{stage}_down_{cause.lower()}_mwh", f"Redispatch {what} down, cause {cause}", "sum")
 
 
 def headers(token):

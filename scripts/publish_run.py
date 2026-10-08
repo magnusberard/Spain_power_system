@@ -138,6 +138,17 @@ def stream_dispatch(path, unit_col, hours, unit_index, n_units):
     return out, signed, seen
 
 
+def stream_rd_cost(path, hours, unit_index, n_units):
+    """Marginal cost (EUR/MWh) of every unit in every redispatch hour, from gen_dispatch.csv."""
+    cost = np.zeros((n_units, hours.H))
+    for ch in pd.read_csv(path, chunksize=CHUNK, usecols=["date", "hour", "unit_name", "cost_eur_per_mwh"]):
+        ch = ch[ch.date.isin(hours.day_i)]
+        ui = ch.unit_name.map(unit_index)
+        ok = ui.notna().to_numpy()
+        cost[ui.to_numpy()[ok].astype(int), hours.of(ch)[ok]] = ch.cost_eur_per_mwh.to_numpy()[ok]
+    return cost
+
+
 def unit_table(rdir):
     """Units as the redispatch reports them (name, fuel, technology, bus, capacity)."""
     for ch in pd.read_csv(rdir / "gen_dispatch.csv", chunksize=20_000):
@@ -274,6 +285,37 @@ def build(rdir, runs_repo, args):
         dl, dw, ds = prof["bal"] - prof["cid"]
         balancing = dict(up=r1(up), down=r1(down), need=r1(dl - dw - ds))
 
+    # redispatch: change from the balancing schedule per unit, summed up and down, and its cost at
+    # the model's marginal costs (more paid for what goes up, saved on what goes down) — the same
+    # structure as REE's cost of technical constraints. The cross-border injections are left out
+    # (their split is not plant redispatch). The AC stage also covers grid losses that the
+    # copper-plate markets do not see; that is about up minus down, reported as `losses`.
+    print("  reading the redispatch costs ...")
+    rd_cost_mwh = stream_rd_cost(rdir / "gen_dispatch.csv", hours, uidx, U)
+    _, rd_s, rd_sn = per_unit["RD"]
+    _, bal_s2, bal_sn = per_unit["BAL"]
+    plant = np.array([f != "CrossBorder" for f, _ in keys])
+    dlt = (rd_s - bal_s2)[plant]
+    okh = rd_sn & bal_sn & (status == 1)
+    redispatch = dict(
+        up=r1(np.where(okh, np.clip(dlt, 0, None).sum(axis=0), np.nan)),
+        down=r1(np.where(okh, np.clip(-dlt, 0, None).sum(axis=0), np.nan)),
+        losses=r1(np.where(okh, (rd_s - bal_s2).sum(axis=0), np.nan)),
+        cost=r1(np.where(okh, (rd_cost_mwh[plant] * dlt).sum(axis=0), np.nan)),
+    )
+    # the same split by type, to show on the viewer's REE tab who the model moves
+    RD_TYPE = {"pumped_storage": "Pumped storage"}
+    def rd_type(f, tech):
+        if f == "Hydro":
+            return RD_TYPE.get(tech, "Hydro")
+        return {"Gas": "Gas", "Oil": "Gas", "Wind": "Wind and solar", "Solar": "Wind and solar"}.get(f, "Other")
+    types = np.array([rd_type(f, tech) for f, tech in keys])[plant]
+    redispatch["up_by"], redispatch["down_by"] = {}, {}
+    for ty in ("Pumped storage", "Hydro", "Gas", "Wind and solar", "Other"):
+        sel = types == ty
+        redispatch["up_by"][ty] = r1(np.where(okh, np.clip(dlt[sel], 0, None).sum(axis=0), np.nan))
+        redispatch["down_by"][ty] = r1(np.where(okh, np.clip(-dlt[sel], 0, None).sum(axis=0), np.nan))
+
     # plant map groups: units of one fuel at one substation
     bus = pd.read_csv(MODEL_REPO / "Data/Bus_Data.csv", encoding="utf-8-sig").set_index("bus_id")
     units["group"] = [PLANT_OF.get(k) for k in keys]
@@ -319,7 +361,7 @@ def build(rdir, runs_repo, args):
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
-        balancing=balancing,
+        balancing=balancing, redispatch=redispatch,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}

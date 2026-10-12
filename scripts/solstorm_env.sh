@@ -24,5 +24,7 @@ export JULIA_DEPOT_PATH="/storage/users/$USER/julia_depot:"
 export TMPDIR="/storage/users/$USER/tmp"
 mkdir -p "/storage/users/$USER/julia_depot" "$TMPDIR"
 export IPOPT_LINEAR_SOLVER="${1:-mumps}"
+# Many runs share a node (solstorm_start_weeks.sh): keep BLAS to one thread each.
+export OPENBLAS_NUM_THREADS=1
 
 echo "Solstorm env   : Julia $(julia --version | cut -d' ' -f3), Ipopt solver $IPOPT_LINEAR_SOLVER, depot $JULIA_DEPOT_PATH"

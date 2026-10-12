@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Start this node's share of a period split into weeks, on NTNU's Solstorm
 # cluster. The weeks are dealt out over N nodes (part k of N gets weeks k, k+N,
-# k+2N, ...); on this node they are spread over several "lanes", each a detached
-# screen session that runs its weeks one after another (run_day_ranges.sh).
+# k+2N, ...); on this node they are spread over several "lanes", each a
+# background process that runs its weeks one after another (run_day_ranges.sh)
+# and logs to <folder>/lane-<res>-p<k>-l<lane>.log. The lanes keep running after
+# you log out (setsid + nohup; the compute nodes have no `screen`).
 # Run it on a compute node, from the repo root:
 #
 #     IPOPT=ma57 scripts/solstorm_start_weeks.sh offered /storage/users/$USER/results/2024_offered_weeks 1/5
@@ -16,13 +18,14 @@
 #                  DAYS (7) and IPOPT (mumps; ma57 once HSL is set up), as
 #                  environment variables in front of the command
 #
-# Watch:   screen -ls                          (sessions <res>-p<k>-l<lane>)
-#          screen -r off-p1-l1                 (leave with Ctrl+A, then D)
-#          tail -n 3 <folder>/*/run.log
+# Watch:   ps -u $USER -o pid,etime,args | grep [r]un_day_ranges   (lanes on this node)
+#          tail -n 3 <folder>/lane-*.log        (progress per lane)
+#          ls <folder>/*/summary.csv | wc -l    (finished weeks, all nodes)
+# Stop:    pkill -u $USER -f run_day_ranges.sh; pkill -u $USER julia   (this node only)
 # Join the weeks afterwards with scripts/merge_runs.py.
 set -eu
 
-[ $# -ge 3 ] || { sed -n '2,24p' "$0"; exit 1; }
+[ $# -ge 3 ] || { sed -n '2,26p' "$0"; exit 1; }
 RES="$1"; OUT="$2"; PART="$3"
 case "$RES" in accepted|offered) ;; *) echo "res_input must be accepted or offered"; exit 1 ;; esac
 K="${PART%%/*}"; N="${PART##*/}"
@@ -61,10 +64,12 @@ for lane in $(seq 1 "$LANES"); do
     done
     [ ${#ranges[@]} -eq 0 ] && continue
     name="$tag-p$K-l$lane"
-    # bash -l: a login shell, so the `module` command is defined
-    screen -dmS "$name" bash -lc "cd '$REPO' && source scripts/solstorm_env.sh '${IPOPT:-mumps}' \
-        && SPAIN_CONFIG='$CFG' scripts/run_day_ranges.sh '$OUT' ${ranges[*]}; exec bash"
-    echo "  $name: ${ranges[*]}"
+    # bash -l: a login shell, so the `module` command is defined. setsid + nohup:
+    # the lane keeps running after you log out (the compute nodes have no screen).
+    setsid nohup bash -lc "cd '$REPO' && source scripts/solstorm_env.sh '${IPOPT:-mumps}' \
+        && SPAIN_CONFIG='$CFG' scripts/run_day_ranges.sh '$OUT' ${ranges[*]}" \
+        > "$OUT/lane-$name.log" 2>&1 < /dev/null &
+    echo "  $name (pid $!): ${ranges[*]}"
 done
-echo "screen sessions on $(hostname):"
-screen -ls | grep -E "\.$tag-p$K-l[0-9]+" || true
+sleep 2
+echo "lanes running on $(hostname): $(ps -u "${USER:-$(id -un)}" -o args | grep -c '[r]un_day_ranges' || true)"

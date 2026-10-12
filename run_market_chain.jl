@@ -542,6 +542,18 @@ if RD_ONLY_DATE !== nothing
 end
 ES_OLD_DIR  = joinpath(@__DIR__, "Data", "ES_old")
 ES_NEW_DIR  = joinpath(@__DIR__, "Data", "ES")
+# [run].res_input: which day-ahead solar/wind baseline is read.
+#   "accepted" — Data/ES_old: OMIE's day-ahead programme, i.e. what was accepted.
+#   "offered"  — Data/ES_old_offered: the same plus the solar and wind offered in
+#                the auction but not accepted (omie_conversion/build_res_offered.py),
+#                so the model can curtail it itself and price it near zero.
+# Load is read from Data/ES_old in both cases.
+const RES_INPUT = String(get(get(cfg, "run", Dict{String,Any}()), "res_input", "accepted"))
+RES_INPUT in ("accepted", "offered") ||
+    error("config.toml: [run].res_input must be \"accepted\" or \"offered\", got \"$RES_INPUT\"")
+const RES_OLD_NAME = RES_INPUT == "offered" ? "ES_old_offered" : "ES_old"
+RES_OLD_DIR = joinpath(@__DIR__, "Data", RES_OLD_NAME)
+@printf "Solar/wind     : %s (Data/%s)\n" RES_INPUT RES_OLD_NAME
 
 function es_filename(date_str)
     d = Date(date_str)
@@ -559,7 +571,7 @@ if !WEEKS_ACTIVE
         for d in TARGET_DAYS
             Date(d) >= BELLMAN_BGN_DATE ||
                 push!(missing_inputs, "$d: before [bellman].bgn_date $(BELLMAN_BGN_DATE)")
-            for (dir, res) in (("ES_old", "load"), ("ES_old", "Wind"), ("ES_old", "Solar"),
+            for (dir, res) in (("ES_old", "load"), (RES_OLD_NAME, "Wind"), (RES_OLD_NAME, "Solar"),
                                ("ES", "load"), ("ES", "Wind Onshore"), ("ES", "Solar"))
                 isfile(joinpath(@__DIR__, "Data", dir, res, es_filename(d))) ||
                     push!(missing_inputs, "$d: Data/$dir/$res/$(es_filename(d))")
@@ -578,14 +590,16 @@ end
 
 # Returns 24-element vector of MW values for a given stage.
 # new_resource: folder name under Data/ES/      (e.g. "Wind Onshore")
-# old_resource: folder name under Data/ES_old/  (e.g. "Wind")
+# old_resource: folder name under Data/ES_old/  (e.g. "Wind"); solar and wind
+#               come from Data/ES_old_offered/ instead when [run].res_input = "offered"
 # Scenario runs rescale the 2024-actual MW level by the EMPIRE growth factor
 # (load → annual-demand ratio, solar/wind → installed-capacity ratio); the
 # hourly shape and the per-stage forecast factors are kept.
 profile_scale(new_resource) = new_resource == "load"  ? ES_LOAD_SCALE  :
                               new_resource == "Solar" ? ES_SOLAR_SCALE : ES_WIND_SCALE
 function load_scaled_col(date_str, new_resource, old_resource, stage_col)
-    base_df = CSV.read(joinpath(ES_OLD_DIR, old_resource, es_filename(date_str)), DataFrame)
+    base_dir = old_resource == "load" ? ES_OLD_DIR : RES_OLD_DIR
+    base_df = CSV.read(joinpath(base_dir, old_resource, es_filename(date_str)), DataFrame)
     sort!(base_df, :delivery_time)
     base_mw = Float64.(base_df[!, "-12"])
     scale_df = CSV.read(joinpath(ES_NEW_DIR, new_resource, es_filename(date_str)), DataFrame)
@@ -694,7 +708,7 @@ include("run_info.jl")
 const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path = CONFIG_PATH,
     extra = Dict{String,Any}("label" => SCEN_LABEL, "weeks" => WEEKS_ACTIVE,
                              "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER,
-                             "crossborder_split" => RD_XB_SPLIT))
+                             "crossborder_split" => RD_XB_SPLIT, "res_input" => RES_INPUT))
 
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours

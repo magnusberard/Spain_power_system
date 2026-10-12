@@ -90,6 +90,16 @@ days = ["2024-07-08", "2024-12-02"]
 # from = "2024-01-01"
 # to   = "2024-01-31"
 
+# Day-ahead solar and wind baseline:
+#   "accepted" — Data/ES_old: OMIE's day-ahead programme, what the market accepted
+#                (solar and wind are never left over, so they never set the price).
+#   "offered"  — Data/ES_old_offered: the same plus the solar and wind offered in
+#                the auction but not accepted (omie_conversion/build_res_offered.py).
+#                In hours the market curtailed them, the model gets the spare
+#                energy, curtails it itself and the price can fall to about 0.
+# Load is the same in both. Days need their Data/ES_old_offered files.
+res_input = "accepted"
+
 [costs]
 # ── Marginal-cost source for the market chain ───────────────────────────────
 # gas_from_midterm = true takes the ES gas marginal cost from

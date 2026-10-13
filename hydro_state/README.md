@@ -126,6 +126,31 @@ low-price spring, so it is partly a market outcome. The chain already uses it as
 the hook on and the old cuts, the balance moves to 78.3 / 9.9 TWh (about 4.5 TWh of that is
 mini-hydro, which REE counts as hydro).
 
+### Results with the supply aligned (2026-10-13 evening, policy `aligned`, hook commit `1f628da`)
+
+The water value along the simulated path (2024 mean) is 22.6 for `observed`, 77.2 for `aligned` and
+62.1 for `aligned_observed` (€/MWh). Reservoir fill error against REE, Jan–Jun / Jul–Dec (pp): baseline
+34.7 / 14.7, `aligned` 23.4 / 14.2, `aligned_observed` **6.9** / 14.0.
+
+Day-ahead price, full year, same setup as above (MAE vs OMIE, €/MWh):
+
+| | Jan–Jun | Jul–Dec (test) | Nov–Dec | Year | Corr. | Mean (real 62.6) |
+|---|---|---|---|---|---|---|
+| baseline (published) | 29.4 | 31.6 | 45.7 / 43.6 | 30.5 | 0.56 | 60.3 |
+| `observed` | 27.9 | 46.3 | 67.6 / 67.4 | 37.1 | 0.40 | 43.7 |
+| `aligned_observed` | 30.7 | 33.1 | 49.7 / 47.9 | 31.9 | 0.51 | 62.4 |
+| `aligned` | 32.8 | **26.5** | **31.3 / 31.6** | **29.6** | **0.64** | 71.0 |
+
+Reading: aligning the SDDP's supply with the chain fixes the water-value **level**. Both aligned
+variants lift it from ~22 to 62–77 €/MWh and cut the winter error. `aligned` passes the test
+half on price, but partly for the wrong reason: it keeps the 30 % start and is nearly empty in
+December (12 % vs REE 52 %), which props up the winter price. `aligned_observed` has the right
+reservoir in the first half, but it holds too much water into autumn (72 % vs REE 55 % in Sep–Oct),
+so its winter price is too low (58–65 vs 104–109), and its spring price is too high (water still
+valued at 65–70 €/MWh at 76–87 % fill). The remaining error is the **seasonal shape** of the water
+value: the next step is the structural one (annual vs multi-year reservoirs, minimum flows),
+calibrated on 2014–2023 and judged on the reservoir path first, then on price.
+
 ## Variants
 
 | Settings file | label | System | Start / inflow | Policy |

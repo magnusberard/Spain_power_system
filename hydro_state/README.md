@@ -107,6 +107,39 @@ resim`) before changing anything; then the timing, through structural limits on 
 pooled reservoir can shift between seasons (REE's annual vs multi-year reservoirs, minimum flows;
 Arvesen et al. 2025), calibrated on 2014–2023 and tested on 2024.
 
+## W6 diagnosis: the SDDP's own Spain is too cheap (`diagnose_sddp.py`)
+
+From `midterm_sddp4.jl resim` (20 sampled years, baseline cuts), the SDDP's Spanish price
+averages 48.9 €/MWh in 2024 against OMIE's 63.0. The most frequent price levels are 22 €/MWh (the
+2,600 MW `[chp]` cogeneration block) and 15.4 €/MWh (nuclear). Spain's 2024 balance against REE:
+nuclear + CHP + waste 91.4 vs 70.6 TWh, gas + coal 5.7 vs 32.1 TWh. Nuclear runs at full nameplate
+and the CHP group at its annual defaults, while the market chain has used the observed per-day
+values since October. Water priced against that Spain is cheap at any fill. Cross-border flows
+are also off (REE 2024: net import from France 3.0 TWh, net export to Portugal 10.5; the SDDP
+shows 9.3 and 23.8).
+
+**Fix (consistency, not fitting):** `build_stage_supply.jl` turns the chain's own per-day tables
+into a weekly file, and `midterm_sddp4.jl` reads it through `[midterm4].es_stage_supply_file`.
+That hook is off by default and was verified to leave the baseline byte-identical. Caveat: the
+spring dip in nuclear availability (0.44–0.70 in April–May) is partly economic curtailment in a
+low-price spring, so it is partly a market outcome. The chain already uses it as an input. With
+the hook on and the old cuts, the balance moves to 78.3 / 9.9 TWh (about 4.5 TWh of that is
+mini-hydro, which REE counts as hydro).
+
+## Variants
+
+| Settings file | label | System | Start / inflow | Policy |
+|---|---|---|---|---|
+| `hydro_state.toml` | observed | as baseline | REE / index | own |
+| `hydro_state_aligned.toml` | aligned | weekly ES supply | dataset 30 % / climate year | own |
+| `hydro_state_aligned_observed.toml` | aligned_observed | weekly ES supply | REE / index | `train_label = "aligned"` |
+
+`midterm_sddp4.jl` reads and writes one shared cuts file, `results/midterm4_cuts.json`. The script
+swaps each policy's own copy (`results/hydro_state/train_<train_label>.json`) into that slot and
+puts the previous content back afterwards, so cuts from one system never reach another.
+`cuts_<train_label>.json` holds the policy after W3. Delete it to retrain after changing
+`[training]`.
+
 ## Known limits and open points
 
 - REE's monthly reserve is taken as the level at the **end** of that month (the 2023-12 value

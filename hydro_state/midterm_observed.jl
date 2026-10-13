@@ -38,10 +38,14 @@ const HS_ROOT = normpath(joinpath(@__DIR__, ".."))
 const HS_SETTINGS_PATH = get(ENV, "HYDRO_STATE_CONFIG", joinpath(@__DIR__, "hydro_state.toml"))
 const HS = TOML.parsefile(HS_SETTINGS_PATH)
 const HS_LABEL = String(HS["label"])
+# Variants that differ only in the simulation (start level, inflow) share one trained policy:
+# train_label names it (default: label). Variants with a different system must not share it.
+const HS_TRAIN_LABEL = String(get(HS, "train_label", HS_LABEL))
 const HS_REUSE = "reuse" in ARGS
 const HS_RESULTS = joinpath(HS_ROOT, "results", "hydro_state")
 const HS_DATA = joinpath(HS_ROOT, "Data", "hydro_state")
-const HS_CUTS_JSON = joinpath(HS_RESULTS, "cuts_$(HS_LABEL).json")
+const HS_CUTS_JSON = joinpath(HS_RESULTS, "cuts_$(HS_TRAIN_LABEL).json")        # after W3
+const HS_TRAIN_JSON = joinpath(HS_RESULTS, "train_$(HS_TRAIN_LABEL).json")      # before W3
 mkpath(HS_RESULTS); mkpath(HS_DATA)
 
 # ── 1. base config copy: same system, outputs redirected to results/hydro_state ──
@@ -51,19 +55,42 @@ get(get(hs_cfg, "scenario", Dict()), "label", "2024") == "2024" ||
     error("hydro_state is for the 2024 path only ([scenario].label = \"2024\")")
 for (k, f) in (("cuts_out", "baseline_BellmanValuesOUT.csv"), ("volume_out", "baseline_Volume.csv"),
                ("turbine_out", "baseline_TurbineSchedule.csv"), ("exchange_out", "baseline_ExchangeSchedule.csv"))
-    hs_cfg["midterm4"][k] = "results/hydro_state/$f"
+    hs_cfg["midterm4"][k] = "results/hydro_state/$(HS_TRAIN_LABEL)_$f"
 end
+# [system].es_stage_supply_file: the SDDP's Spain gets the weekly supply the market chain uses
+# (midterm_sddp4.jl hook, off by default). This changes the system, so it needs its own training.
+const HS_STAGE_FILE = String(get(get(HS, "system", Dict()), "es_stage_supply_file", ""))
+HS_STAGE_FILE == "" || (hs_cfg["midterm4"]["es_stage_supply_file"] = HS_STAGE_FILE)
 const HS_TMP_CONFIG = joinpath(HS_RESULTS, "midterm_config_$(HS_LABEL).toml")
 open(io -> TOML.print(io, hs_cfg), HS_TMP_CONFIG, "w")
 ENV["SPAIN_CONFIG"] = HS_TMP_CONFIG
 
-# midterm_sddp4.jl trains unless ARGS has "export", which reloads its own cuts.
+# midterm_sddp4.jl trains unless ARGS has "export", and both read/write the one shared file
+# results/midterm4_cuts.json. Cuts trained on one system are not valid for another, so this
+# variant's own copy (train_<train_label>.json) is swapped into that slot for the run and the
+# slot's previous content is put back afterwards.
+const HS_SLOT = joinpath(HS_ROOT, "results", "midterm4_cuts.json")
+const HS_SLOT_BACKUP = joinpath(HS_RESULTS, "slot_backup_$(getpid()).json")
+isfile(HS_SLOT) && cp(HS_SLOT, HS_SLOT_BACKUP; force = true)
 empty!(ARGS)
-if HS_REUSE || isfile(joinpath(HS_ROOT, "results", "midterm4_cuts.json"))
+if isfile(HS_TRAIN_JSON)
+    cp(HS_TRAIN_JSON, HS_SLOT; force = true)
     push!(ARGS, "export")
+else
+    HS_REUSE && error("reuse: $HS_TRAIN_JSON not found — run without reuse first")
+    rm(HS_SLOT; force = true)
 end
-println("hydro_state: including midterm_sddp4.jl ($(isempty(ARGS) ? "train" : "export"))")
-include(joinpath(HS_ROOT, "midterm_sddp4.jl"))
+println("hydro_state: including midterm_sddp4.jl ($(isempty(ARGS) ? "train" : "export"), policy '$HS_TRAIN_LABEL')")
+try
+    include(joinpath(HS_ROOT, "midterm_sddp4.jl"))
+    isfile(HS_TRAIN_JSON) || cp(HS_SLOT, HS_TRAIN_JSON)
+finally
+    if isfile(HS_SLOT_BACKUP)
+        mv(HS_SLOT_BACKUP, HS_SLOT; force = true)
+    else
+        rm(HS_SLOT; force = true)
+    end
+end
 include(joinpath(HS_ROOT, "bellman.jl"))
 
 const HS_VMAX_ES = reservoirs["ES"].vmax
@@ -73,10 +100,10 @@ const HS_STATE_ES = Symbol("vres[ES]")
 # Cuts from any starting level are valid for the same model: the terminal target
 # (END_FILL × the dataset's v0) is fixed when the model is built, so changing the
 # root state only changes which states the forward passes visit.
-if HS_REUSE
+if HS_REUSE || isfile(HS_CUTS_JSON)
     isfile(HS_CUTS_JSON) || error("reuse: $HS_CUTS_JSON not found — run without reuse first")
     SDDP.read_cuts_from_file(model, HS_CUTS_JSON)
-    println("hydro_state: reloaded $HS_CUTS_JSON, training skipped")
+    println("hydro_state: reloaded $HS_CUTS_JSON (policy '$HS_TRAIN_LABEL'), training skipped")
 else
     fills = Float64.(HS["training"]["es_start_fills"])
     iters = Int(HS["training"]["iterations_per_start"])

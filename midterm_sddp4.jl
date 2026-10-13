@@ -341,6 +341,44 @@ therm_cost(i::Int, t::Int) =
     (GAS_STAGE === nothing || GAS_KIND[i] === nothing) ? therm[i].cost :
     GAS_STAGE[GAS_KIND[i]][t]
 
+# ── Optional per-stage Spanish supply ([midterm4].es_stage_supply_file) ──────
+# Empty (the default): every unit keeps its fixed pmax above, as before.  Set
+# (2024 path only): weekly ES nuclear and coal availability and the [chp] block
+# sizes (cogeneration / waste / mini-hydro) per stage, from a file built out of
+# the market chain's own per-day tables (hydro_state/build_stage_supply.jl), so
+# the water values are computed against the supply the day-ahead stage sees.
+# Without it the SDDP runs nuclear at full nameplate and the [chp] blocks at
+# their annual defaults.  Columns: stage, nuclear_avail, coal_avail,
+# chp_gas_mw, chp_waste_mw, chp_minihydro_mw (one row per stage, ≥ n_stages).
+const ES_STAGE_FILE = String(get(mcfg, "es_stage_supply_file", ""))
+# unit index ⇒ per-stage pmax [MW], for the ES units the file covers
+const ES_STAGE_PMAX = if ES_STAGE_FILE == ""
+    Dict{Int,Vector{Float64}}()
+else
+    SCEN_ACTIVE && error("[midterm4].es_stage_supply_file is for the 2024 path only")
+    es_sdf = CSV.read(joinpath(@__DIR__, ES_STAGE_FILE), DataFrame)
+    nrow(es_sdf) >= N_STAGES || error("$ES_STAGE_FILE: $(nrow(es_sdf)) rows < n_stages = $N_STAGES")
+    es_sdf = es_sdf[1:N_STAGES, :]
+    es_pmax = Dict{Int,Vector{Float64}}()
+    for (i, u) in enumerate(therm)
+        u.zone == "ES" || continue
+        if u.tech == "Nuclear"            # nameplate × weekly availability
+            es_pmax[i] = u.pmax .* es_sdf.nuclear_avail
+        elseif u.tech == "Coal"           # pmax above is nameplate × ES_COAL_AVAIL
+            es_pmax[i] = (ES_COAL_AVAIL > 0 ? u.pmax / ES_COAL_AVAIL : 0.0) .* es_sdf.coal_avail
+        elseif u.tech == "Cogeneration"
+            es_pmax[i] = Float64.(es_sdf.chp_gas_mw)
+        elseif u.tech == "Waste_CHP"
+            es_pmax[i] = Float64.(es_sdf.chp_waste_mw)
+        elseif u.tech == "Mini_hydro"
+            es_pmax[i] = Float64.(es_sdf.chp_minihydro_mw)
+        end
+    end
+    @printf("ES stage supply from %s: nuclear avail %.2f…%.2f, cogeneration %.0f…%.0f MW (%d units per stage)\n",
+            ES_STAGE_FILE, extrema(es_sdf.nuclear_avail)..., extrema(es_sdf.chp_gas_mw)..., length(es_pmax))
+    es_pmax
+end
+
 df_tr = CSV.read(joinpath(DATA_DIR, "Transmission.csv"), DataFrame)
 lines = [(from = node_of(String(r[1])), to = node_of(String(r.ToNode)),
           fmax = Float64(r.Capacity_MW)) for r in eachrow(df_tr)]
@@ -648,6 +686,9 @@ model = SDDP.LinearPolicyGraph(;
     @constraint(sp, ptbudget, Δh * sum(turbpt) <= 0.0)                          # RHS ← inflow
 
     @variable(sp, 0 <= gth[i in 1:length(therm), 1:NB] <= therm[i].pmax)
+    for (i, pmax_t) in ES_STAGE_PMAX, b in 1:NB       # empty unless es_stage_supply_file is set
+        set_upper_bound(gth[i, b], pmax_t[t])
+    end
     @variable(sp, gres[z in 1:length(ZONES), 1:NB] >= 0)
 
     ns = length(sts)

@@ -1126,6 +1126,55 @@ ramp_limits = true
 "2024-12-29" = 0.172
 "2024-01-01" = 0.101
 
+[islands]
+# ── Balearic plants in the market stages ─────────────────────────────────────
+# The Balearic Islands are a non-peninsular electricity system (RD 738/2015):
+# REE dispatches ALL island plants (thermal, renewable, waste) and they are paid
+# a regulated price; none of them sells in OMIE's peninsular market. OMIE's unit
+# list has no Balearic power plant, and its Spanish coal units are only Aboño 1-2,
+# Los Barrios and Soto 3. What OMIE does have are purchase units for the HVDC
+# link ("CUR ENLACE BALEARES"): the power the link (Morvedre/Sagunto – Mallorca,
+# line LTGES0254) carries is bought on the mainland, as demand, and is already
+# inside the OMIE load the model runs on.
+#
+# generations.csv still puts the island plants on the Mallorca buses (the Menorca
+# and Ibiza plants included: those islands have no buses of their own), and the
+# copper-plate market stages have no network, so they offer these plants to the
+# peninsular market as if they stood on the mainland: 31 units, 2 094 MW
+# (gas 1 524, coal 260, PV 272, waste 38).
+#
+# exclude_from_market = true, for every unit on the buses below:
+#   • market stages (DA, ID2, ID3, CID, balancing): held at 0 MW;
+#   • redispatch: kept and never frozen at a market set-point, so Mallorca stays
+#     an island grid behind the HVDC link: the link brings what it can and the
+#     redispatch runs the island plants for the rest. That output counts as
+#     upward redispatch, which REE's peninsular redispatch figures do not include.
+# And in every stage, because the inputs are OMIE's (peninsular):
+#   • the solar/wind series is shared over mainland units only (an island unit
+#     gets the same capacity factor without taking a share of the peninsula's);
+#   • the coal availability factor (peak OMIE coal ÷ 2 900 MW, which counts the
+#     island coal in) is rescaled to the 2 640 MW mainland coal fleet;
+#   • the [chp] blocks are not sited on these buses.
+# false = the original behaviour.
+exclude_from_market = false
+# The 10 Mallorca buses (the only island buses; LTGES0254 lands on ES00683).
+buses = ["ES00285", "ES00286", "ES00287", "ES00288", "ES00289",
+         "ES00290", "ES00291", "ES00292", "ES00683", "ES00784"]
+
+# ── Ceuta ────────────────────────────────────────────────────────────────────
+# Ceuta is an isolated system too, with no link to the mainland in 2024: REE
+# began building the 132 kV Algeciras–Ceuta link in June 2024 and laid its first
+# submarine cable in September 2025. Its plant is not an OMIE unit and the OMIE
+# load has no Ceuta demand. generations.csv lists it (G0116, "Ceuta power
+# station", 83 MW, as a gas turbine) at its Ceuta coordinates but attached to
+# Algeciras (ES00190), the nearest bus across the Strait, so the model treats it
+# as a mainland plant in every stage.
+# remove_isolated = true leaves the listed units out of every stage, market and
+# redispatch. For runs after the link is in service, model Ceuta's demand and
+# the link instead of putting the plant back on the mainland.
+remove_isolated = false
+isolated_units = ["G0116"]   # Ceuta
+
 [chp]
 # ── Industrial cogeneration / waste / mini-hydro ─────────────────────────────
 # OMIE clears this fleet as a single market group, "Cogeneración / Residuos /

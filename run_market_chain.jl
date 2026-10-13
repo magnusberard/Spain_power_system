@@ -369,6 +369,28 @@ function chp_blocks_for(date_str)
     isempty(blocks) ? nothing : blocks
 end
 
+# ── Balearic plants kept out of the market stages ([islands]) ───────────────
+# The island plants do not sell in OMIE's peninsular market, but the copper-
+# plate gates have no network and would offer them as mainland supply.  When
+# enabled, every unit on the listed buses is held at 0 MW in every market gate
+# (DA, ID2, ID3, CID, balancing); the redispatch keeps them, unfrozen, so it
+# runs them for the island load the HVDC link cannot carry.  The same bus set
+# also corrects the solar/wind shares, the coal factor and the CHP siting in
+# every stage (prepare_network).  See [islands] in config.toml.
+const ISLANDS_CFG  = get(cfg, "islands", Dict())
+const ISLAND_BUSES = get(ISLANDS_CFG, "exclude_from_market", false) ?
+    Set{String}(String.(get(ISLANDS_CFG, "buses", String[]))) : nothing
+if ISLAND_BUSES !== nothing
+    @printf "Island plants  : units on %d island buses kept out of the market stages ([islands])\n" length(ISLAND_BUSES)
+end
+# [islands].remove_isolated: plants of isolated systems that generations.csv
+# attached to a mainland bus (Ceuta → Algeciras) are left out of every stage.
+const REMOVED_UNITS = get(ISLANDS_CFG, "remove_isolated", false) ?
+    Set{String}(String.(get(ISLANDS_CFG, "isolated_units", String[]))) : nothing
+if REMOVED_UNITS !== nothing
+    @printf "Isolated plants: %d unit(s) left out of every stage ([islands])\n" length(REMOVED_UNITS)
+end
+
 const ID2_ENABLED = get(get(cfg, "id2",        Dict()), "enabled", true)
 const ID3_ENABLED = get(get(cfg, "id3",        Dict()), "enabled", true)
 const CID_ENABLED = get(get(cfg, "cid",        Dict()), "enabled", true)
@@ -1252,6 +1274,9 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      nuclear_availability = nuclear_avail_for(date_str),
                      coal_availability = coal_avail_for(date_str),
                      ramp_limits = RAMP_LIMITS,
+                     island_buses = ISLAND_BUSES,
+                     islands_off_market = true,
+                     removed_units = REMOVED_UNITS,
                      chp_blocks = chp_blocks_for(date_str),
                      chp_siting_buses = CHP_SITING_BUSES,
                      voltage_band = VOLTAGE_BAND,
@@ -1827,6 +1852,8 @@ if RD_WATER_VALUE == "constant"
                               crossborder_same_direction = RD_XB_SPLIT == "country_total",
                               da_dispatch = sched_hour,
                               frozen_fuels = RD_FROZEN_FUELS,
+                              island_buses = ISLAND_BUSES,
+                              removed_units = REMOVED_UNITS,
                               nuclear_availability = nuclear_avail_for(date_str),
                               coal_availability = coal_avail_for(date_str),
                               chp_blocks = chp_blocks_for(date_str),
@@ -1901,6 +1928,8 @@ elseif RD_WATER_VALUE == "piecewise"
                                 crossborder_same_direction = RD_XB_SPLIT == "country_total",
                                 da_dispatch = rd_sched_for(date_str, ts.hour),
                                 frozen_fuels = RD_FROZEN_FUELS,
+                                island_buses = ISLAND_BUSES,
+                                removed_units = REMOVED_UNITS,
                                 nuclear_availability = nuclear_avail_for(date_str),
                                 coal_availability = coal_avail_for(date_str),
                                 chp_blocks = chp_blocks_for(date_str),

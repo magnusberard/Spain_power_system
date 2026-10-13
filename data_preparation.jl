@@ -283,6 +283,22 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          # hour-to-hour bound on |Δpg|.  The network build itself
                          # is unaffected — a ramp rate is not a network property.
                          ramp_limits::Bool = false,
+                         # Balearic buses ([islands]).  Units there do not sell in
+                         # the peninsular market.  When given: the OMIE solar/wind
+                         # series is shared over mainland units only, the coal
+                         # availability factor is rescaled to the mainland coal
+                         # fleet, island units are never frozen at a market
+                         # set-point in the redispatch, and the CHP block is not
+                         # sited on these buses.  `nothing` ⇒ old behaviour.
+                         island_buses::Union{Nothing,AbstractSet{String}} = nothing,
+                         # true (copper-plate market gates only): units on
+                         # `island_buses` are held at 0 MW.
+                         islands_off_market::Bool = false,
+                         # Units (generations.csv unit_id) left out of the network
+                         # altogether, in every stage ([islands].remove_isolated):
+                         # plants of isolated systems that generations.csv attached
+                         # to a mainland bus (Ceuta).  `nothing` ⇒ none.
+                         removed_units::Union{Nothing,AbstractSet{String}} = nothing,
                          # Stage-6 redispatch freeze set ([redispatch].frozen_fuels
                          # in config.toml).  A bare "Fuel" entry (e.g. "Nuclear")
                          # freezes every technology under that fuel; "Fuel:technology"
@@ -341,12 +357,28 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     # Pure thermal uprate (see `rating_scale` above): multiplies rate_a only.
     rscale(branch_id) = rating_scale === nothing ? 1.0 :
                         get(rating_scale, String(branch_id), 1.0)
+    on_island(row) = island_buses !== nothing && String(row.bus_id) in island_buses
+    # The solar/wind series are OMIE's, i.e. PENINSULAR output, so with
+    # [islands] on they are shared over mainland units only; an island unit then
+    # gets the same capacity factor without taking a share of the peninsula's.
     total_solar_mw = sum(Float64(row.capacity_mw) * uscale(row) for row in eachrow(gen_df)
-                         if row.primary_fuel == "Solar" && haskey(bus_idx, row.bus_id);
+                         if row.primary_fuel == "Solar" && haskey(bus_idx, row.bus_id) &&
+                            !on_island(row);
                          init = 0.0)
     total_wind_mw  = sum(Float64(row.capacity_mw) * uscale(row) for row in eachrow(gen_df)
-                         if row.primary_fuel == "Wind" && haskey(bus_idx, row.bus_id);
+                         if row.primary_fuel == "Wind" && haskey(bus_idx, row.bus_id) &&
+                            !on_island(row);
                          init = 0.0)
+    # coal_availability is the day's peak OMIE coal ÷ the WHOLE coal nameplate
+    # (omie_conversion/add_nuclear_coal_calibration.py), which includes the
+    # island coal OMIE never sees.  With [islands] on, rescale it to the
+    # mainland fleet so the mainland units can still reach OMIE's peak.
+    coal_scale = let coal(r) = String(r.primary_fuel) == "Coal" && haskey(bus_idx, r.bus_id)
+        all_mw  = sum(Float64(r.capacity_mw) * uscale(r) for r in eachrow(gen_df) if coal(r); init = 0.0)
+        main_mw = sum(Float64(r.capacity_mw) * uscale(r) for r in eachrow(gen_df)
+                      if coal(r) && !on_island(r); init = 0.0)
+        (island_buses === nothing || main_mw <= 0.0) ? 1.0 : all_mw / main_mw
+    end
 
     # ── Buses ────────────────────────────────────────────────
     buses = Dict{String,Any}()
@@ -536,6 +568,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     gen_count = 0
     for row in eachrow(gen_df)
         haskey(bus_idx, row.bus_id) || continue
+        removed_units !== nothing && String(row.unit_id) in removed_units && continue
         cap_mw = Float64(row.capacity_mw) * uscale(row)
         cap_mw > 1e-6 || continue          # tech fully retired in the scenario
         pmax_pu = if row.primary_fuel == "Solar" && isfinite(solar_avail_mw) && total_solar_mw > 0
@@ -545,10 +578,13 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         elseif String(row.primary_fuel) == "Nuclear"
             cap_mw * nuclear_availability / BASEMVA
         elseif String(row.primary_fuel) == "Coal"
-            cap_mw * coal_availability / BASEMVA
+            # island coal keeps the plain factor (no island calibration exists)
+            cap_mw * (on_island(row) ? coal_availability :
+                      min(1.0, coal_availability * coal_scale)) / BASEMVA
         else
             cap_mw / BASEMVA
         end
+        island_unit = on_island(row)
         is_reservoir = String(row.primary_fuel) == "Hydro" &&
                        lowercase(String(row.technology)) == "reservoir"
         is_pumped    = String(row.primary_fuel) == "Hydro" &&
@@ -605,8 +641,11 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                   !isnothing(nuclear_da_dispatch) &&
                   haskey(nuclear_da_dispatch, String(row.unit_id))) ?
                  nuclear_da_dispatch[String(row.unit_id)] / BASEMVA : nothing
+        # Island units ([islands]) are never frozen: they took no part in the
+        # market, so their set-point there (0 MW) is not a schedule to hold, and
+        # the redispatch must be free to run them for the island load.
         is_frozen = nuc_pu !== nothing ||
-                    (da_pu !== nothing &&
+                    (da_pu !== nothing && !island_unit &&
                      is_fuel_frozen(String(row.primary_fuel), String(row.technology)))
         frozen_pu = nuc_pu !== nothing ? nuc_pu : da_pu
         # Nuclear must-run floor: when not frozen (the DA clear), hold nuclear at
@@ -622,6 +661,11 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         pg_strt = frozen_pu !== nothing ? clamp(frozen_pu, pmin_free, pmax_pu) :
                   nuc_floor > 0.0       ? pmax_pu :
                   is_pumped             ? 0.0     : pmax_pu/2
+        # Kept out of the market ([islands]): the unit stays in the network with
+        # its reactive capability, but offers no active power in this gate.
+        if islands_off_market && island_unit
+            pmin_g = pmax_g = pg_strt = 0.0
+        end
 
         gen_count += 1
         gens[string(gen_count)] = Dict{String,Any}(
@@ -685,9 +729,12 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     # Industrial CHP sits at industrial sites, so concentrating it on the big
     # load buses is closer to reality than spreading it over all 1 057 of them —
     # and it keeps the LP from growing by thousands of units.
+    # With [islands] on, island buses are skipped: the blocks are sized from an
+    # OMIE (peninsular) market group.
     if chp_blocks !== nothing && !isempty(chp_blocks)
         sites = sort([(String(r.bus_id), Float64(r.demand)) for r in eachrow(load_df)
-                      if haskey(bus_idx, String(r.bus_id)) && Float64(r.demand) > 0.0];
+                      if haskey(bus_idx, String(r.bus_id)) && Float64(r.demand) > 0.0 &&
+                         (island_buses === nothing || !(String(r.bus_id) in island_buses))];
                      by = last, rev = true)
         n_site = min(chp_siting_buses, length(sites))
         sites  = sites[1:n_site]

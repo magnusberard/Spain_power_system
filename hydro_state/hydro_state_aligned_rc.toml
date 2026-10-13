@@ -1,0 +1,18 @@
+# Variant "aligned_rc": the "aligned" system (weekly ES supply) plus the seasonal envelope on
+# the ES reservoir from REE 2014–2023 (rule curves). Dataset start (30 %) and the replayed
+# climate year, as "aligned", so the A/B against it isolates the envelope.
+#   HYDRO_STATE_CONFIG=hydro_state/hydro_state_aligned_rc.toml julia --project=. hydro_state/midterm_observed.jl
+label = "aligned_rc"
+
+[system]
+es_stage_supply_file = "Data/hydro_state/es_stage_supply_2024.csv"
+es_rule_curve_file = "Data/hydro_state/es_rule_curves_2014_2023.csv"
+
+[observed]
+ree_file = "Data/hydro_state/ree_hydro_monthly.csv"
+observed_start = false
+inflow = "climate_year"
+
+[training]
+es_start_fills = [0.20, 0.35, 0.50, 0.65, 0.80, 0.95]
+iterations_per_start = 15

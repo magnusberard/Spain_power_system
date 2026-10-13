@@ -61,6 +61,12 @@ end
 # (midterm_sddp4.jl hook, off by default). This changes the system, so it needs its own training.
 const HS_STAGE_FILE = String(get(get(HS, "system", Dict()), "es_stage_supply_file", ""))
 HS_STAGE_FILE == "" || (hs_cfg["midterm4"]["es_stage_supply_file"] = HS_STAGE_FILE)
+# [system].es_rule_curve_file: seasonal envelope on the ES reservoir (midterm_sddp4.jl hook,
+# off by default); also a different system, so it needs its own training.
+const HS_RULE_FILE = String(get(get(HS, "system", Dict()), "es_rule_curve_file", ""))
+HS_RULE_FILE == "" || (hs_cfg["midterm4"]["es_rule_curve_file"] = HS_RULE_FILE)
+haskey(get(HS, "system", Dict()), "es_rule_curve_penalty") &&
+    (hs_cfg["midterm4"]["es_rule_curve_penalty"] = Float64(HS["system"]["es_rule_curve_penalty"]))
 const HS_TMP_CONFIG = joinpath(HS_RESULTS, "midterm_config_$(HS_LABEL).toml")
 open(io -> TOML.print(io, hs_cfg), HS_TMP_CONFIG, "w")
 ENV["SPAIN_CONFIG"] = HS_TMP_CONFIG

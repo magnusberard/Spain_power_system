@@ -379,6 +379,30 @@ else
     es_pmax
 end
 
+# ── Optional seasonal envelope on the ES reservoir ([midterm4].es_rule_curve_file) ──
+# Empty (the default): no limits beyond 0 ≤ V ≤ vmax, as before.  Set (2024 path
+# only): the end-of-stage ES volume is kept within lower_fill · vmax … upper_fill ·
+# vmax per stage (rule curves: flood-control margins above, minimum reserves below),
+# from a file built out of REE's observed fill over calibration years
+# (hydro_state/build_rule_curves.py).  Soft: each MWh outside costs
+# es_rule_curve_penalty EUR (default = end_penalty), so a very wet or dry week stays
+# feasible — above the curve the policy spills or turbines, as a real operator must.
+# Columns: stage, lower_fill, upper_fill (fractions of vmax; one row per stage).
+const ES_RULE_FILE = String(get(mcfg, "es_rule_curve_file", ""))
+const ES_RULE_PENALTY = Float64(get(mcfg, "es_rule_curve_penalty", END_PENALTY))
+const ES_RULE_CURVE = if ES_RULE_FILE == ""
+    nothing
+else
+    SCEN_ACTIVE && error("[midterm4].es_rule_curve_file is for the 2024 path only")
+    es_rc = CSV.read(joinpath(@__DIR__, ES_RULE_FILE), DataFrame)
+    nrow(es_rc) >= N_STAGES || error("$ES_RULE_FILE: $(nrow(es_rc)) rows < n_stages = $N_STAGES")
+    all(0 .<= es_rc.lower_fill .<= es_rc.upper_fill .<= 1) ||
+        error("$ES_RULE_FILE: need 0 ≤ lower_fill ≤ upper_fill ≤ 1")
+    @printf("ES rule curves from %s: fill %.0f…%.0f %% (lower) / %.0f…%.0f %% (upper), penalty %.0f EUR/MWh\n",
+            ES_RULE_FILE, 100 .* extrema(es_rc.lower_fill)..., 100 .* extrema(es_rc.upper_fill)..., ES_RULE_PENALTY)
+    (lower = Float64.(es_rc.lower_fill[1:N_STAGES]), upper = Float64.(es_rc.upper_fill[1:N_STAGES]))
+end
+
 df_tr = CSV.read(joinpath(DATA_DIR, "Transmission.csv"), DataFrame)
 lines = [(from = node_of(String(r[1])), to = node_of(String(r.ToNode)),
           fmax = Float64(r.Capacity_MW)) for r in eachrow(df_tr)]
@@ -716,6 +740,15 @@ model = SDDP.LinearPolicyGraph(;
     cost = BLOCK_HOURS * (
         sum(therm_cost(i, t) * gth[i, b] for i in 1:length(therm), b in 1:NB)
       + VOLL * sum(shed))
+
+    # Soft seasonal envelope on the ES reservoir (none unless es_rule_curve_file is set)
+    if ES_RULE_CURVE !== nothing
+        @variable(sp, rc_over >= 0)                                # MWh above the upper curve
+        @variable(sp, rc_under >= 0)                               # MWh below the lower curve
+        @constraint(sp, vres["ES"].out <= ES_RULE_CURVE.upper[t] * reservoirs["ES"].vmax + rc_over)
+        @constraint(sp, vres["ES"].out + rc_under >= ES_RULE_CURVE.lower[t] * reservoirs["ES"].vmax)
+        cost = cost + ES_RULE_PENALTY * (rc_over + rc_under)
+    end
 
     # Soft end-of-horizon target: penalise only the shortfall, so a dry final
     # week stays feasible instead of forcing load shedding to refill.

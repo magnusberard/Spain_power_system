@@ -83,6 +83,30 @@ path to `results/hydro_state/baseline_*.csv` for comparison. The market-chain co
    a fixed solar/wind input. A small grid (accepted/offered × baseline/hydro-state) separates
    the two effects.
 
+## Results so far (label `observed`, commit `a8577d3`, 2026-10-13)
+
+Reservoir path (`compare_reservoir.py`), fill error vs REE: Jan–Jun 34.7 → 11.7 pp, Jul–Dec
+14.7 → 13.6 pp. 2024 inflow 34.1 TWh vs REE producible 35.2 TWh; no spill. The release
+**timing is not fixed**: April–May 1.9 / 0.7 TWh (OMIE hydro 4.1 / 2.9), November–December
+4.5 / 5.8 TWh (2.6 / 2.5). The fill overshoots to 87 % in June (REE 72–76 %).
+
+Day-ahead price, full year, day-ahead only, offered solar/wind (`compare_prices.py`, against the
+published "2024, offered solar/wind" run `539be8c`, which this setup reproduces to 0.04 €/MWh):
+
+| | Real | Baseline | Observed | MAE baseline → observed |
+|---|---|---|---|---|
+| Jan–Jun | 39.1 | 53.5 | 42.3 | 29.4 → 27.9 |
+| Jul–Dec | 86.1 | 67.1 | 45.0 | 31.6 → 46.3 |
+| Year | 62.6 | 60.3 | 43.7 | 30.5 → 37.1 (correlation 0.56 → 0.40) |
+
+March–May improve by 5–13 €/MWh per month; every month from June gets worse. At a
+realistic fill, the cuts value water at about 21–25 €/MWh, far below gas, so hydro undercuts gas
+all year. **Verdict: rejected on the test half.** The volume is no longer the main error; the
+water value is (W6). Next: diagnose the SDDP's own price level and gas path (`midterm_sddp4.jl
+resim`) before changing anything; then the timing, through structural limits on how much water the
+pooled reservoir can shift between seasons (REE's annual vs multi-year reservoirs, minimum flows;
+Arvesen et al. 2025), calibrated on 2014–2023 and tested on 2024.
+
 ## Known limits and open points
 
 - REE's monthly reserve is taken as the level at the **end** of that month (the 2023-12 value

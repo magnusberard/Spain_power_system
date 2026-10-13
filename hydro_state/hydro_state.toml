@@ -1,0 +1,35 @@
+# Settings for hydro_state/midterm_observed.jl. See hydro_state/README.md.
+#
+# Each switch turns on one part of the fix on its own, so the effect of each can be
+# measured separately (A/B), and so a variant that only works by fitting 2024 shows up.
+
+# Output names: Data/hydro_state/{BellmanValuesOUT,Volume,TurbineSchedule,ExchangeSchedule}_<label>.csv
+# and hydro_state/config_<label>.toml (the market-chain config that reads them).
+label = "observed"
+
+[observed]
+# REE monthly reserves and producible, written by hydro_state/fetch_ree_hydro.py.
+ree_file = "Data/hydro_state/ree_hydro_monthly.csv"
+
+# W2 start level. true: the ES reservoir starts at REE's total fill at the end of the month
+# before [bellman].bgn_date (the 2023-12 value for a 2024-01-01 start), as a fraction of
+# the model's own reservoir size. false: the dataset's InitialVolume (30 %), as today.
+observed_start = true
+# Optional: take the start fill from this month instead (e.g. "2024-01" if REE's monthly value
+# turns out to be the monthly mean, not the end-of-month level). Sensitivity only.
+# start_fill_month = "2024-01"
+
+# W4 inflow during the simulation:
+#   "index"       — the model's own climatological ES inflow for that week (mean over the
+#                   training scenarios) × REE's producible index for that month (2024 / its
+#                   historical mean). Only the realised inflow of the current week is known
+#                   when the week is decided; future inflows stay the training scenarios.
+#   "climate_year" — the replayed climate year ([midterm4].sim_year), as today.
+inflow = "index"
+
+[training]
+# W3: extra SDDP iterations started from a spread of ES reservoir levels (fractions of
+# the model's ES reservoir size), so the cuts are accurate wherever the observed path
+# goes, not only near the 30 % path the baseline training visits. An empty list skips it.
+es_start_fills = [0.20, 0.35, 0.50, 0.65, 0.80, 0.95]
+iterations_per_start = 15

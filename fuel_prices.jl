@@ -121,6 +121,44 @@ function gas_srmc(fp::FuelPrices, tech::Symbol, d::Date)::Float64
 end
 
 """
+    gas_srmc_eta(fp, eta, delivery_date) -> EUR/MWh_el
+
+SRMC of ONE combined-cycle unit with its own efficiency `eta`
+([costs.gas_unit_efficiency]):
+
+    SRMC = (P_gas + 3.6 * ef * P_CO2) / eta  +  vom_ccgt
+
+with `ef` the CO2 per GJ of FUEL burned.  `content` is per GJ of electricity at
+the CCGT eta (see the note at the top), so ef = content * eta = 0.0545 tCO2/GJ
+for gas; a less efficient unit burns more gas per MWh and emits more.  With
+eta = fp.eta[:ccgt] this is exactly gas_srmc(fp, :ccgt, d).
+"""
+function gas_srmc_eta(fp::FuelPrices, eta::Float64, d::Date)::Float64
+    pg = gas_price(fp, d)
+    pg === nothing && error("no MIBGAS quote for delivery $d")
+    pc = carbon_price(fp, d - Day(1))
+    pc === nothing && error("no EUA settlement on or before $(d - Day(1))")
+    ef = fp.content[:ccgt] * fp.eta[:ccgt]
+    return (pg + 3.6 * ef * pc) / eta + fp.vom[:ccgt]
+end
+
+"""
+    load_gas_unit_eta(cfg) -> Dict{String,Float64} or nothing
+
+unit_id ⇒ efficiency from [costs.gas_unit_efficiency].file (built by
+scripts/build_gas_unit_efficiency.py); `nothing` when the switch is off.
+"""
+function load_gas_unit_eta(cfg; root = @__DIR__)
+    c = get(get(cfg, "costs", Dict()), "gas_unit_efficiency", Dict())
+    get(c, "enabled", false) || return nothing
+    f  = joinpath(root, String(get(c, "file", "Data/gas_unit_efficiency.csv")))
+    df = CSV.read(f, DataFrame; types = Dict(:unit_id => String))
+    eta = Dict(String(r.unit_id) => Float64(r.efficiency) for r in eachrow(df))
+    all(e -> 0.3 < e < 0.7, values(eta)) || error("$f: efficiency outside 0.3-0.7")
+    return eta
+end
+
+"""
     gas_srmc_mean(fp, tech, d0, d1) -> EUR/MWh_el
 
 Mean daily SRMC over `d0:d1` inclusive — the weekly-stage figure for the

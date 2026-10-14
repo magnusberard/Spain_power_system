@@ -240,6 +240,10 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          #                   BESS fleet placed on the grid
                          unit_scale::Union{Dict{Tuple{String,String},Float64},Nothing} = nothing,
                          cost_override::Union{Dict{Tuple{String,String},Float64},Nothing} = nothing,
+                         #   unit_cost_override : unit_id ⇒ EUR/MWh, ahead of
+                         #                   cost_override (per-unit CCGT cost,
+                         #                   [costs.gas_unit_efficiency])
+                         unit_cost_override::Union{Dict{String,Float64},Nothing} = nothing,
                          bess_units = nothing,
                          # nodal disaggregation (empire_nodal.jl; all `nothing`
                          # for the 2024 run and for disaggregation = "zonal"):
@@ -591,6 +595,9 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                        lowercase(String(row.technology)) == "pumped_storage"
         c1 = if is_reservoir && !isnothing(hydro_reservoir_cost)
             hydro_reservoir_cost * BASEMVA
+        elseif unit_cost_override !== nothing &&
+               haskey(unit_cost_override, String(row.unit_id))
+            unit_cost_override[String(row.unit_id)] * BASEMVA
         elseif cost_override !== nothing &&
                haskey(cost_override, (String(row.primary_fuel), String(row.technology)))
             cost_override[(String(row.primary_fuel), String(row.technology))] * BASEMVA

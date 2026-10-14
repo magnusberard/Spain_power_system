@@ -160,6 +160,25 @@ eta         = { ccgt = 0.5600044800358402, ocgt = 0.4250074376301585 }
 co2_content = { ccgt = 0.09735481800000001, ocgt = 0.128053746 }
 vom         = { ccgt = 4.68, ocgt = 5.76 }
 
+[costs.gas_unit_efficiency]
+# ── One efficiency per combined-cycle unit ───────────────────────────────────
+# enabled = true prices every CCGT in `file` from its own efficiency instead of
+# the shared [costs.gas_srmc].eta.ccgt, so the gas fleet becomes a merit order:
+#
+#   SRMC_u = (P_gas + 3.6 * ef * P_CO2) / eta_u  +  vom.ccgt
+#
+# with ef = co2_content.ccgt * eta.ccgt = 0.0545 tCO2 per GJ of gas (fuel_prices.jl,
+# gas_srmc_eta); a unit at eta 0.56 costs exactly what it does with this off.
+# `file` is built by scripts/build_gas_unit_efficiency.py: build year from Global
+# Energy Monitor's Global Oil and Gas Plant Tracker (August 2026), efficiency by
+# ENTSO-E category (ERAA 2025/TYNDP 2026 Data Collection Guidelines, p. 6):
+#   built 2001-05 -> 0.56   2006-10 -> 0.58   2011+ -> 0.60   (our year proxy)
+#   units under 100 MW and units without a build year -> 0.56
+# Needs [costs.gas_srmc] on; 2024 path only. OCGTs, the [chp] gas block and the
+# mid-term SDDP (water values) keep the single CCGT cost.
+enabled = false
+file    = "Data/gas_unit_efficiency.csv"
+
 [weeks]
 # ── Sampled multi-week study horizon (2035 scenario target) ──────────────────
 # enabled = true replaces the two fixed 2024 TARGET_DAYS with n_weeks sampled

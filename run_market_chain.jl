@@ -88,6 +88,13 @@ const UNIT_SCALE    = SCEN_ACTIVE ? empire_unit_scale(EMP)     : nothing
 const GAS_SRMC_ON = !SCEN_ACTIVE &&
     get(get(get(cfg, "costs", Dict()), "gas_srmc", Dict()), "enabled", false)
 const FUEL_PRICES = GAS_SRMC_ON ? load_fuel_prices(cfg) : nothing
+# [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
+# CCGT is priced from its own gas burn (gas_srmc_eta).  Builds on gas_srmc, so
+# 2024 path only.
+const GAS_UNIT_ETA = GAS_SRMC_ON ? load_gas_unit_eta(cfg) : nothing
+if !GAS_SRMC_ON && get(get(get(cfg, "costs", Dict()), "gas_unit_efficiency", Dict()), "enabled", false)
+    println("WARNING: [costs.gas_unit_efficiency] ignored — needs [costs.gas_srmc] on and the 2024 path")
+end
 const COST_OVERRIDE = let
     ov = SCEN_ACTIVE ? empire_cost_override(EMP) : Dict{Tuple{String,String},Float64}()
     # [costs].gas_from_midterm: take the ES gas marginal cost from
@@ -328,6 +335,17 @@ function cost_override_for(date_str)
 end
 if GAS_SRMC_ON
     println("Gas marginal cost: observed MIBGAS + EUA (per study day)")
+end
+# Per-unit CCGT costs for one study day ([costs.gas_unit_efficiency]):
+# unit_id ⇒ EUR/MWh for every unit in the efficiency file.  prepare_network uses
+# them ahead of the shared (Gas, Combined_cycle) cost from cost_override_for.
+function unit_cost_override_for(date_str)
+    GAS_UNIT_ETA === nothing && return nothing
+    d = Date(String(date_str))
+    return Dict(u => gas_srmc_eta(FUEL_PRICES, eta, d) for (u, eta) in GAS_UNIT_ETA)
+end
+if GAS_UNIT_ETA !== nothing
+    @printf "Gas per unit   : %d CCGT units priced from their own efficiency ([costs.gas_unit_efficiency])\n" length(GAS_UNIT_ETA)
 end
 # [da].ramp_limits — hour-to-hour ramp bounds on the thermal fleet, from the
 # per-technology percent-of-nameplate rates in Data/power_unit_tech_params.csv.
@@ -730,7 +748,8 @@ include("run_info.jl")
 const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path = CONFIG_PATH,
     extra = Dict{String,Any}("label" => SCEN_LABEL, "weeks" => WEEKS_ACTIVE,
                              "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER,
-                             "crossborder_split" => RD_XB_SPLIT, "res_input" => RES_INPUT))
+                             "crossborder_split" => RD_XB_SPLIT, "res_input" => RES_INPUT,
+                             "gas_unit_efficiency" => GAS_UNIT_ETA !== nothing))
 
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours
@@ -1130,6 +1149,7 @@ if NTC_HOURLY_ENABLED && RUN_MARKET
                         gen_bus_voltage_control = false,
                         unit_scale = UNIT_SCALE,
                         cost_override = cost_override_for(ts.date),
+                        unit_cost_override = unit_cost_override_for(ts.date),
                         bess_units = BESS_UNITS,
                         unit_scale_by_id = UNIT_SCALE_ID,
                         extra_units = EXTRA_UNITS,
@@ -1292,6 +1312,7 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      gen_bus_vmax = GEN_BUS_VMAX,
                      unit_scale = UNIT_SCALE,
                      cost_override = cost_override_for(date_str),
+                     unit_cost_override = unit_cost_override_for(date_str),
                      bess_units = BESS_UNITS,
                      unit_scale_by_id = UNIT_SCALE_ID,
                      extra_units = EXTRA_UNITS,
@@ -1871,6 +1892,7 @@ if RD_WATER_VALUE == "constant"
                               gen_bus_vmax = GEN_BUS_VMAX,
                               unit_scale = UNIT_SCALE,
                               cost_override = cost_override_for(date_str),
+                              unit_cost_override = unit_cost_override_for(date_str),
                               bess_units = BESS_UNITS,
                               unit_scale_by_id = UNIT_SCALE_ID,
                               extra_units = EXTRA_UNITS,
@@ -1947,6 +1969,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 gen_bus_vmax = GEN_BUS_VMAX,
                                 unit_scale = UNIT_SCALE,
                                 cost_override = cost_override_for(date_str),
+                                unit_cost_override = unit_cost_override_for(date_str),
                                 bess_units = BESS_UNITS,
                                 unit_scale_by_id = UNIT_SCALE_ID,
                                 extra_units = EXTRA_UNITS,

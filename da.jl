@@ -47,7 +47,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                   prev_sched::Union{Nothing,Dict{Int,Dict{String,Float64}}} = nothing,
                   anchor::Union{Nothing,Dict{Int,Dict{String,Float64}}} = nothing,
                   foreign = nothing,
-                  hydro_budget_mwh::Union{Nothing,Float64} = nothing)
+                  hydro_budget_mwh::Union{Nothing,Float64} = nothing,
+                  uc = nothing)
     H     = length(nets)
     # Net indices (1-based) whose generation is tradable at this gate.  Hours not
     # in `free` are frozen at the previous gate's schedule (`prev_sched`, MW): they
@@ -272,14 +273,60 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         end
     end
 
+    # ── Unit commitment of the CCGT fleet ([unit_commitment], unit_commitment.jl) ──
+    # `uc` : (units = Dict(unit_id ⇒ UCUnit), mip_gap, time_limit_s), DA only.
+    # Per unit and hour a binary on/off and start:
+    #   min_load·pmax·on ≤ pg ≤ pmax·on
+    #   start[h] ≥ on[h] − on[h−1]            (no start in hour 1: a unit running
+    #                                           there counts as already on)
+    #   Σ start[h−UT+1..h] ≤ on[h]             minimum up time UT
+    #   Σ start[h−DT+1..h] ≤ 1 − on[h−DT]      minimum down time DT (within the day)
+    # and start_cost·start in the objective.  The problem is then a MIP; the
+    # price is read after re-solving it as an LP with the binaries fixed (below).
+    uc_on    = Dict{Tuple{Int,String},JuMP.VariableRef}()
+    uc_start = Dict{Tuple{Int,String},JuMP.VariableRef}()
+    start_cost_expr = JuMP.AffExpr(0.0)
+    if uc !== nothing
+        free == Set(1:H) || error("solve_da: unit commitment is for the DA gate only (all hours free)")
+        for (name, u) in uc.units
+            all(h -> haskey(pg_by_name, (h, name)), 1:H) || continue
+            for h in 1:H
+                p  = pg_by_name[(h, name)]
+                pm = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : 0.0
+                on = JuMP.@variable(model, binary = true)
+                st = JuMP.@variable(model, binary = true)
+                uc_on[(h, name)] = on
+                uc_start[(h, name)] = st
+                JuMP.@constraint(model, p <= pm * on)
+                JuMP.@constraint(model, p >= u.min_load * pm * on)
+                if h == 1
+                    JuMP.fix(st, 0.0; force = true)
+                else
+                    JuMP.@constraint(model, st >= on - uc_on[(h - 1, name)])
+                end
+                JuMP.add_to_expression!(start_cost_expr, u.start_cost, st)
+            end
+            for h in 1:H
+                JuMP.@constraint(model,
+                    sum(uc_start[(τ, name)] for τ in max(1, h - u.min_up + 1):h) <= uc_on[(h, name)])
+                h - u.min_down >= 1 || continue
+                JuMP.@constraint(model,
+                    sum(uc_start[(τ, name)] for τ in (h - u.min_down + 1):h) <= 1 - uc_on[(h - u.min_down, name)])
+            end
+        end
+        JuMP.set_optimizer_attribute(model, "MIPGap", uc.mip_gap)
+        JuMP.set_optimizer_attribute(model, "TimeLimit", uc.time_limit_s)
+    end
+
     # Primary objective: linear generation cost (reservoir cost is 0 here) + future
-    # cost (+ the foreign zones' dispatch cost in the 4-zone clearing).  This
-    # sets the merit order and therefore which units clear.
+    # cost (+ the foreign zones' dispatch cost in the 4-zone clearing) (+ CCGT
+    # start-up costs under unit commitment).  This sets the merit order and
+    # therefore which units clear.
     op = JuMP.AffExpr(0.0)
     for h in 1:H, (k, g) in nets[h].gens
         JuMP.add_to_expression!(op, g["cost"][1], pg[(h, k)])
     end
-    cost_expr = op + θ_future + foreign_cost
+    cost_expr = op + θ_future + foreign_cost + start_cost_expr
 
     # ── Minimum-movement anchor (intraday gates only) ─────────────────────────
     # For every tradable-hour unit that has a previous-gate set-point, add L1
@@ -309,6 +356,26 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     JuMP.@objective(model, Min, cost_expr)
     JuMP.optimize!(model)
     status = string(JuMP.termination_status(model))
+
+    # Unit commitment: keep the MIP's on/off decisions, then fix every binary at
+    # that value and re-solve as an LP so the ES balance has duals (the price).
+    # A MIP stopped by the time limit is used if it found a solution.
+    uc_result = nothing
+    if uc !== nothing
+        mip_status = status
+        has_sol    = JuMP.result_count(model) > 0
+        if has_sol && status in ("OPTIMAL", "TIME_LIMIT")
+            gap = JuMP.relative_gap(model)
+            on_v = Dict(k => JuMP.value(v) > 0.5 for (k, v) in uc_on)
+            st_v = Dict(k => JuMP.value(v) > 0.5 for (k, v) in uc_start)
+            sc   = JuMP.value(start_cost_expr)
+            JuMP.fix_discrete_variables(model)
+            JuMP.optimize!(model)
+            status = string(JuMP.termination_status(model))
+            uc_result = (on = on_v, start = st_v, start_cost_eur = sc,
+                         mip_status = mip_status, mip_gap = gap)
+        end
+    end
 
     # ── Market price of the ES copper-plate balance ───────────────────────────
     # Read here, from the COST solve, and never later: the lexicographic pass
@@ -366,5 +433,5 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         end
     end
     return (sched = sched, status = status, objective = objval, xb = xb,
-            prices = prices, es_price = es_price)
+            prices = prices, es_price = es_price, uc = uc_result)
 end

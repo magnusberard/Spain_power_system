@@ -52,6 +52,7 @@ const GRB_ENV = Gurobi.Env()
 include("data_preparation.jl")
 include("bellman.jl")
 include("fuel_prices.jl")
+include("unit_commitment.jl")
 include("crossborder.jl")
 include("da.jl")
 include("empire_scenario.jl")
@@ -347,6 +348,17 @@ end
 if GAS_UNIT_ETA !== nothing
     @printf "Gas per unit   : %d CCGT units priced from their own efficiency ([costs.gas_unit_efficiency])\n" length(GAS_UNIT_ETA)
 end
+# [unit_commitment]: CCGTs of at least min_mw are committed in the DA (on/off,
+# minimum load, start-up cost, minimum up/down time; unit_commitment.jl, da.jl).
+# Start-up fuel is priced from the day's gas + CO2, so 2024 path only for now.
+const UC_CFG = GAS_SRMC_ON ? load_uc_config(cfg) : nothing
+if !GAS_SRMC_ON && get(get(cfg, "unit_commitment", Dict()), "enabled", false)
+    println("WARNING: [unit_commitment] ignored — needs [costs.gas_srmc] on and the 2024 path")
+end
+if UC_CFG !== nothing
+    @printf "Unit commit.   : CCGT >= %.0f MW in the DA; min up %d h, down %d h; min load %.0f %% (1x1) / %.0f %% (>= %.0f MW, 2x1); start %.1f EUR/MW wear + %.1f MWh gas/MW\n" UC_CFG.min_mw UC_CFG.min_up UC_CFG.min_down 100UC_CFG.min_load_1x1 100UC_CFG.min_load_2x1 UC_CFG.two_by_one_min_mw UC_CFG.wear_eur_per_mw UC_CFG.start_fuel_mwh_per_mw
+end
+uc_rows_all = []   # per (date, hour, unit) commitment of the DA → results/uc_commitment.csv
 # [da].ramp_limits — hour-to-hour ramp bounds on the thermal fleet, from the
 # per-technology percent-of-nameplate rates in Data/power_unit_tech_params.csv.
 # Applies to every copper-plate gate (DA, ID2, ID3, the rolling CID gates and
@@ -749,7 +761,8 @@ const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path =
     extra = Dict{String,Any}("label" => SCEN_LABEL, "weeks" => WEEKS_ACTIVE,
                              "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER,
                              "crossborder_split" => RD_XB_SPLIT, "res_input" => RES_INPUT,
-                             "gas_unit_efficiency" => GAS_UNIT_ETA !== nothing))
+                             "gas_unit_efficiency" => GAS_UNIT_ETA !== nothing,
+                             "unit_commitment" => UC_CFG !== nothing))
 
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours
@@ -1405,17 +1418,35 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
 
     log_file = DIAGNOSTIC_OUTPUT ? nothing : joinpath(IPOPT_LOG_DIR, "$(date_str)_$(log_tag).log")
     t_start  = time()
+    uc = nothing
+    if label == "DA" && UC_CFG !== nothing
+        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+              mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
+    end
     result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
                         gurobi_da(log_file = log_file);
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
-                        hydro_budget_mwh = get(bv, :budget, nothing))
+                        hydro_budget_mwh = get(bv, :budget, nothing),
+                        uc = uc)
     @printf "  %s %s : status=%s  cost=%.0f EUR  (%.1f s)\n" label date_str result.status result.objective (time() - t_start)
     result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
         error("$label dispatch failed for $date_str: $(result.status)")
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, result.sched;
                         nuclear_schedule = nuclear_schedule_acc)
     record_prices!(label, date_str, day_ts, result.es_price)
+    if uc !== nothing && result.uc !== nothing
+        n_on = [count(u -> get(result.uc.on, (h, u), false), keys(uc.units)) for h in eachindex(nets)]
+        @printf "    unit commitment: %d CCGT units, on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g\n" length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap
+        for (h_idx, ts) in enumerate(eachrow(day_ts)), (name, u) in uc.units
+            haskey(result.uc.on, (h_idx, name)) || continue
+            push!(uc_rows_all, (date = date_str, hour = ts.hour, unit_id = name,
+                on = result.uc.on[(h_idx, name)], start = result.uc.start[(h_idx, name)],
+                dispatch_mw = round(get(result.sched[h_idx], name, 0.0); digits = 1),
+                max_mw = round(u.mw; digits = 1), min_load = u.min_load,
+                start_cost_eur = round(u.start_cost; digits = 0)))
+        end
+    end
     return result
 end
 
@@ -2171,6 +2202,10 @@ if RUN_MARKET && !isempty(price_rows_all)
     price_df = DataFrame(price_rows_all)
     sort!(price_df, [:date, :stage, :hour])
     CSV.write(joinpath(RESULTS, "market_prices.csv"), price_df)
+    if !isempty(uc_rows_all)
+        CSV.write(joinpath(RESULTS, "uc_commitment.csv"), DataFrame(uc_rows_all))
+        @printf "  uc_commitment.csv : %d rows\n" length(uc_rows_all)
+    end
     @printf "  market_prices.csv: %d rows (%s)\n" nrow(price_df) join(unique(price_df.stage), "/")
 end
 

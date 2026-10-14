@@ -179,6 +179,51 @@ vom         = { ccgt = 4.68, ocgt = 5.76 }
 enabled = false
 file    = "Data/gas_unit_efficiency.csv"
 
+[unit_commitment]
+# ── On/off decisions for the CCGT fleet in the day-ahead (unit_commitment.jl) ──
+# enabled = true: every Gas/Combined_cycle unit of at least `min_mw` is either
+# off, or running between its minimum load and its maximum; each start costs
+# start-up money; once started it stays on >= min_up_h, once stopped it stays
+# off >= min_down_h.  The DA becomes a MIP; the price is read from an LP
+# re-solve with the on/off decisions fixed.  Part 1: DA only (the later gates
+# do not yet keep the DA on/off), no carry-over between days (a unit running
+# in hour 1 counts as already on).  Needs [costs.gas_srmc] on; 2024 path only.
+#
+# Sources:
+#   min_up_h, min_down_h,      Intertek for WECC (2020), "Update of Reliability
+#   min_load_1x1, _2x1         and Cost Impacts of Flexible Generation on Fossil-
+#                              fueled Generators", Table 2, Typical CC
+#                              [GT+HRSG+ST]: min up 120 min, min down 360 min,
+#                              min load 48 % (1x1), 25 % (2x1).
+#   start_wear_usd_per_mw      same report, Table 4, typical CC, warm start,
+#                              median (lower bound), 2020 $ per MW of capacity.
+#   usd_inflator_to_2024       WECC PCDS meeting 28 Feb 2024 (Intertek start
+#                              costs, 2020 $ -> 2024 $).
+#   usd_per_eur                ECB annual average 2024 (series EXR.A.USD.EUR.SP00.A).
+#   start_fuel_mwh_per_mw      DIW Data Documentation 68 (Schröder et al. 2013),
+#                              Table 25, CCGT hot/warm start, citing Meibom et
+#                              al. (2008); priced at the day's gas + its CO2.
+#   => at 2024 averages (gas 34.8, EUA 66.5): 57.4 + 1.5 x 47.8 = ~129 EUR/MW
+#      per start, ~52,000 EUR for a 400 MW unit.
+# ASSUMPTION (ours): units of two_by_one_min_mw or more are "2x1" (two gas
+# turbines + one steam turbine) and get min_load_2x1; all others min_load_1x1.
+# The layout is not in our data; the 54 CCGTs >= 100 MW split into 43 units of
+# 200-435 MW and 11 of 782-859 MW with nothing between (~400 MW = typical 1x1,
+# ~800 MW = typical 2x1).
+enabled               = false
+min_mw                = 100.0
+min_up_h              = 2
+min_down_h            = 6
+min_load_1x1          = 0.48
+min_load_2x1          = 0.25
+two_by_one_min_mw     = 700.0
+start_wear_usd_per_mw = 52.0
+usd_inflator_to_2024  = 1.1953
+usd_per_eur           = 1.0824
+start_fuel_mwh_per_mw = 1.5
+mip_gap               = 1e-4     # Gurobi relative MIP gap
+time_limit_s          = 600.0    # per DA solve; the best solution found is used
+
 [weeks]
 # ── Sampled multi-week study horizon (2035 scenario target) ──────────────────
 # enabled = true replaces the two fixed 2024 TARGET_DAYS with n_weeks sampled

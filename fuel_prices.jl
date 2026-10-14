@@ -143,6 +143,20 @@ function gas_srmc_eta(fp::FuelPrices, eta::Float64, d::Date)::Float64
 end
 
 """
+    gas_fuel_cost_th(fp, delivery_date) -> EUR per MWh of gas burned
+
+Gas price plus the CO2 it emits, P_gas + 3.6 * ef * P_CO2 with the same ef as
+gas_srmc_eta — the cost of the start-up fuel in unit_commitment.jl.
+"""
+function gas_fuel_cost_th(fp::FuelPrices, d::Date)::Float64
+    pg = gas_price(fp, d)
+    pg === nothing && error("no MIBGAS quote for delivery $d")
+    pc = carbon_price(fp, d - Day(1))
+    pc === nothing && error("no EUA settlement on or before $(d - Day(1))")
+    return pg + 3.6 * fp.content[:ccgt] * fp.eta[:ccgt] * pc
+end
+
+"""
     load_gas_unit_eta(cfg) -> Dict{String,Float64} or nothing
 
 unit_id ⇒ efficiency from [costs.gas_unit_efficiency].file (built by

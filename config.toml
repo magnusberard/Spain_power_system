@@ -185,9 +185,11 @@ file    = "Data/gas_unit_efficiency.csv"
 # off, or running between its minimum load and its maximum; each start costs
 # start-up money; once started it stays on >= min_up_h, once stopped it stays
 # off >= min_down_h.  The DA becomes a MIP; the price is read from an LP
-# re-solve with the on/off decisions fixed.  Part 1: DA only (the later gates
-# do not yet keep the DA on/off), no carry-over between days (a unit running
-# in hour 1 counts as already on).  Needs [costs.gas_srmc] on; 2024 path only.
+# re-solve with the on/off decisions fixed.  Consecutive study days carry each
+# unit's state over midnight (starts after midnight are paid, min up/down run
+# on); on the first day of a run a unit running in hour 1 counts as already on.
+# The later gates (ID2, ID3, CID, BAL) keep the DA on/off as bounds and cannot
+# start a unit.  Needs [costs.gas_srmc] on; 2024 path only.
 #
 # Sources:
 #   min_up_h, min_down_h,      Intertek for WECC (2020), "Update of Reliability
@@ -223,6 +225,17 @@ usd_per_eur           = 1.0824
 start_fuel_mwh_per_mw = 1.5
 mip_gap               = 1e-4     # Gurobi relative MIP gap
 time_limit_s          = 600.0    # per DA solve; the best solution found is used
+# Minimum-income check (unit_commitment.jl, mic_clear), as Spain's day-ahead
+# cleared in 2024: a unit is accepted only if the day's income covers its
+# condition — cost-based here: starts x start cost (fixed) + its EUR/MWh cost.
+# Failing units are removed one at a time, largest EUR/MWh gap first (OMIE,
+# Reglas de funcionamiento §6.3.1.2), and the day re-cleared; then removed
+# units that would now profit are tried back one at a time (EUPHEMIA Public
+# Description §7.7, PRMIC reinsertion; OMIE §6.3.2).  max_rounds = 100 is the
+# default of the Comillas iberian-day-ahead-market-simulator (Insunza et al.
+# 2026).  Log: results/uc_rounds.csv.
+mic_check             = true
+max_rounds            = 100
 
 [weeks]
 # ── Sampled multi-week study horizon (2035 scenario target) ──────────────────

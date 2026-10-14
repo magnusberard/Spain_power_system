@@ -359,6 +359,24 @@ if UC_CFG !== nothing
     @printf "Unit commit.   : CCGT >= %.0f MW in the DA; min up %d h, down %d h; min load %.0f %% (1x1) / %.0f %% (>= %.0f MW, 2x1); start %.1f EUR/MW wear + %.1f MWh gas/MW\n" UC_CFG.min_mw UC_CFG.min_up UC_CFG.min_down 100UC_CFG.min_load_1x1 100UC_CFG.min_load_2x1 UC_CFG.two_by_one_min_mw UC_CFG.wear_eur_per_mw UC_CFG.start_fuel_mwh_per_mw
 end
 uc_rows_all = []   # per (date, hour, unit) commitment of the DA → results/uc_commitment.csv
+uc_rounds_all = [] # minimum-income check log, one row per DA clear → results/uc_rounds.csv
+# Carry-over ([unit_commitment]): every CCGT's state after the last DA day solved
+# (on/off and for how many hours), the next day's starting point when that day
+# is the following calendar day; otherwise the first-day rule applies.
+const UC_STATE      = Dict{String,NamedTuple{(:on, :up, :down),Tuple{Bool,Int,Int}}}()
+const UC_STATE_DATE = Ref("")
+# DA commitment per (date, hour) ⇒ unit ⇒ (on, min_load), kept by the later gates.
+const UC_COMMIT = Dict{Tuple{String,Int},Dict{String,Tuple{Bool,Float64}}}()
+function uc_bounds_for(date_str, day_ts)
+    UC_CFG === nothing && return nothing
+    b = Dict{Tuple{Int,String},Tuple{Bool,Float64}}()
+    for (h_idx, ts) in enumerate(eachrow(day_ts))
+        for (name, v) in get(UC_COMMIT, (String(date_str), ts.hour), Dict{String,Tuple{Bool,Float64}}())
+            b[(h_idx, name)] = v
+        end
+    end
+    return isempty(b) ? nothing : b
+end
 # [da].ramp_limits — hour-to-hour ramp bounds on the thermal fleet, from the
 # per-technology percent-of-nameplate rates in Data/power_unit_tech_params.csv.
 # Applies to every copper-plate gate (DA, ID2, ID3, the rolling CID gates and
@@ -1420,15 +1438,29 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     t_start  = time()
     uc = nothing
     if label == "DA" && UC_CFG !== nothing
+        prev_day = string(Date(String(date_str)) - Day(1))
         uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+              init = UC_STATE_DATE[] == prev_day ? copy(UC_STATE) : nothing,
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
     end
-    result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
+    ucb = label == "DA" ? nothing : uc_bounds_for(date_str, day_ts)
+    solve_gate(u) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
                         gurobi_da(log_file = log_file);
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
                         hydro_budget_mwh = get(bv, :budget, nothing),
-                        uc = uc)
+                        uc = u, uc_bounds = ucb)
+    if uc !== nothing && UC_CFG.mic_check
+        # Minimum-income check loop (unit_commitment.jl, mic_clear)
+        result, mic_log = mic_clear(solve_gate, uc, UC_CFG.max_rounds)
+        for r in mic_log
+            push!(uc_rounds_all, merge((date = String(date_str),), r))
+        end
+        n_rm = count(r -> r.action == "remove", mic_log); n_ri = count(r -> r.action == "reinsert", mic_log)
+        @printf "    minimum-income check: %d clears, %d unit(s) removed, %d put back%s\n" length(mic_log) n_rm n_ri (any(r -> r.action == "max_rounds", mic_log) ? " — STOPPED AT max_rounds" : "")
+    else
+        result = solve_gate(uc)
+    end
     @printf "  %s %s : status=%s  cost=%.0f EUR  (%.1f s)\n" label date_str result.status result.objective (time() - t_start)
     result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
         error("$label dispatch failed for $date_str: $(result.status)")
@@ -1437,7 +1469,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     record_prices!(label, date_str, day_ts, result.es_price)
     if uc !== nothing && result.uc !== nothing
         n_on = [count(u -> get(result.uc.on, (h, u), false), keys(uc.units)) for h in eachindex(nets)]
-        @printf "    unit commitment: %d CCGT units, on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g\n" length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap
+        @printf "    unit commitment: %d CCGT units, on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g, carry-over %s\n" length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap (uc.init === nothing ? "no (first day)" : "yes")
         for (h_idx, ts) in enumerate(eachrow(day_ts)), (name, u) in uc.units
             haskey(result.uc.on, (h_idx, name)) || continue
             push!(uc_rows_all, (date = date_str, hour = ts.hour, unit_id = name,
@@ -1446,6 +1478,29 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
                 max_mw = round(u.mw; digits = 1), min_load = u.min_load,
                 start_cost_eur = round(u.start_cost; digits = 0)))
         end
+        for (h_idx, ts) in enumerate(eachrow(day_ts))
+            d = get!(UC_COMMIT, (String(date_str), ts.hour), Dict{String,Tuple{Bool,Float64}}())
+            for (name, u) in uc.units
+                haskey(result.uc.on, (h_idx, name)) && (d[name] = (result.uc.on[(h_idx, name)], u.min_load))
+            end
+        end
+        # End-of-day state for the next day (carry-over)
+        H = length(nets)
+        new_state = Dict{String,NamedTuple{(:on, :up, :down),Tuple{Bool,Int,Int}}}()
+        for name in keys(uc.units)
+            haskey(result.uc.on, (H, name)) || continue
+            last = result.uc.on[(H, name)]
+            run  = 0
+            for h in H:-1:1
+                result.uc.on[(h, name)] == last || break
+                run += 1
+            end
+            if run == H && uc.init !== nothing && haskey(uc.init, name) && uc.init[name].on == last
+                run = min(run + (last ? uc.init[name].up : uc.init[name].down), 10_000)
+            end
+            new_state[name] = (on = last, up = last ? run : 0, down = last ? 0 : run)
+        end
+        empty!(UC_STATE); merge!(UC_STATE, new_state); UC_STATE_DATE[] = String(date_str)
     end
     return result
 end
@@ -1478,7 +1533,8 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
         anchor_map = Dict(h => prev_full[h] for h in hgate:H if haskey(prev_full, h))
         result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
-                            hydro_budget_mwh = get(bv, :budget, nothing))
+                            hydro_budget_mwh = get(bv, :budget, nothing),
+                            uc_bounds = uc_bounds_for(date_str, day_ts))
         result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
             error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
         committed[hgate] = result.sched[hgate]
@@ -2205,6 +2261,10 @@ if RUN_MARKET && !isempty(price_rows_all)
     if !isempty(uc_rows_all)
         CSV.write(joinpath(RESULTS, "uc_commitment.csv"), DataFrame(uc_rows_all))
         @printf "  uc_commitment.csv : %d rows\n" length(uc_rows_all)
+    end
+    if !isempty(uc_rounds_all)
+        CSV.write(joinpath(RESULTS, "uc_rounds.csv"), DataFrame(uc_rounds_all))
+        @printf "  uc_rounds.csv : %d rows\n" length(uc_rounds_all)
     end
     @printf "  market_prices.csv: %d rows (%s)\n" nrow(price_df) join(unique(price_df.stage), "/")
 end

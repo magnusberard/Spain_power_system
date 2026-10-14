@@ -434,6 +434,61 @@ tables are now populated the same way for all 364 days in the generated
 range (`omie_conversion/add_nuclear_coal_calibration.py`), not just the two
 reference days shown above.
 
+## Gas plants: efficiency, unit commitment, minimum-income check
+
+Three switches in `config.toml`, all **off by default** (2024 path only, they
+need `[costs.gas_srmc]` on). Sources are also in the comments of
+`config.toml`, `unit_commitment.jl` and `scripts/build_gas_unit_efficiency.py`.
+
+**1. One efficiency per CCGT** (`[costs.gas_unit_efficiency]`).
+`scripts/build_gas_unit_efficiency.py` writes `Data/gas_unit_efficiency.csv`:
+each Gas/Combined_cycle unit's build year from Global Energy Monitor, *Global
+Oil and Gas Plant Tracker*, August 2026 release (CC BY 4.0; the .xlsx sits next
+to the repo, not in it), and an efficiency by ENTSO-E category (ERAA 2025 /
+TYNDP 2026 Data Collection Guidelines, p. 6): present 1 = 0.56, present 2 =
+0.58, new = 0.60. Each unit is then priced
+`(P_gas + 3.6·ef·P_CO2) / eta_u + vom` (`fuel_prices.jl`, `gas_srmc_eta`).
+
+**2. Unit commitment in the day-ahead** (`[unit_commitment]`). CCGTs ≥ 100 MW
+are off, or between minimum load and max; each start costs money; minimum up
+2 h, down 6 h. The DA is a MIP; the price comes from an LP re-solve with the
+on/off fixed. The state at midnight carries over to the next study day; ID2,
+ID3, CID and BAL keep the DA on/off as bounds (they cannot start a unit).
+- Min up/down, minimum load 48 % (1x1) / 25 % (2x1): Intertek for WECC (2020),
+  *Update of Reliability and Cost Impacts of Flexible Generation on
+  Fossil-fueled Generators*, Table 2 (Typical CC).
+- Start wear 52 $/MW (Table 4, warm, median, 2020 $) × 1.1953 (WECC 2020→2024
+  inflator) ÷ 1.0824 (ECB 2024 USD per EUR) = 57.4 €/MW, plus start fuel
+  1.5 MWh gas per MW (DIW Data Documentation 68, Table 25) at the day's gas +
+  CO2 price → about 129 €/MW per start at 2024 averages.
+
+**3. Minimum-income check** (`[unit_commitment].mic_check`). As Spain's
+day-ahead cleared in 2024: a unit whose day's income does not cover its
+starts × start cost + its €/MWh cost is removed, largest €/MWh gap first (OMIE
+Reglas de funcionamiento §6.3.1.2), and the day re-cleared; removed units that
+would then profit are tried back one at a time (EUPHEMIA Public Description
+§7.7). At most `max_rounds = 100` clears per day (default of the Comillas
+iberian-day-ahead-market-simulator). Log: `results/uc_rounds.csv`; the
+commitment itself: `results/uc_commitment.csv`.
+
+**Assumptions (ours, not from a source):**
+- **Units ≥ 700 MW are "2x1"** (two gas turbines + one steam turbine) and get
+  the 25 % minimum load; all others 48 %. Our data has no plant layout; the
+  54 CCGTs ≥ 100 MW split into 43 units of 200–435 MW and 11 of 782–859 MW with
+  nothing between (~400 MW is a typical 1x1, ~800 MW a typical 2x1).
+- Build year → ENTSO-E category: 2001–05 → 0.56, 2006–10 → 0.58, 2011+ → 0.60.
+  ENTSO-E itself does not assign categories by build year.
+- Units under 100 MW (mostly industrial cogeneration) keep 0.56 and no on/off.
+- One start type ("warm"); the start fuel's CO2 is paid.
+- First day of a run (or after a gap in the study days): a unit running in
+  hour 1 counts as already on (no start cost).
+
+**Test so far (8 Jul + 2 Dec 2024):** switches off give identical results.
+Switched on, the DA commits only 0–2 CCGTs because the model's DA uses about
+twice the real hydro (2 Dec: 167 vs OMIE 88 GWh), so gas is barely needed and
+the price barely moves. Carry-over, the later-gate bounds and the
+minimum-income check are not yet tested in a full run.
+
 ## Storage (pumped hydro and Li-Ion BESS)
 
 Both storage families are held to an **intra-day SOC window plus a daily energy

@@ -48,7 +48,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                   anchor::Union{Nothing,Dict{Int,Dict{String,Float64}}} = nothing,
                   foreign = nothing,
                   hydro_budget_mwh::Union{Nothing,Float64} = nothing,
-                  uc = nothing)
+                  uc = nothing,
+                  uc_bounds = nothing)
     H     = length(nets)
     # Net indices (1-based) whose generation is tradable at this gate.  Hours not
     # in `free` are frozen at the previous gate's schedule (`prev_sched`, MW): they
@@ -274,15 +275,24 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     end
 
     # ── Unit commitment of the CCGT fleet ([unit_commitment], unit_commitment.jl) ──
-    # `uc` : (units = Dict(unit_id ⇒ UCUnit), mip_gap, time_limit_s), DA only.
+    # `uc` : (units = Dict(unit_id ⇒ UCUnit), init, mip_gap, time_limit_s), DA only.
     # Per unit and hour a binary on/off and start:
     #   min_load·pmax·on ≤ pg ≤ pmax·on
-    #   start[h] ≥ on[h] − on[h−1]            (no start in hour 1: a unit running
-    #                                           there counts as already on)
+    #   start[h] ≥ on[h] − on[h−1]            hour 1 against the previous day's
+    #                                           last hour (`init`, carry-over);
+    #                                           without `init` (first day of a run)
+    #                                           a unit running in hour 1 counts as
+    #                                           already on (no start)
     #   Σ start[h−UT+1..h] ≤ on[h]             minimum up time UT
-    #   Σ start[h−DT+1..h] ≤ 1 − on[h−DT]      minimum down time DT (within the day)
-    # and start_cost·start in the objective.  The problem is then a MIP; the
+    #   Σ start[h−DT+1..h] ≤ 1 − on[h−DT]      minimum down time DT
+    # and start_cost·start in the objective.  With `init`, a unit that has been on
+    # for fewer than UT hours stays on, and one off for fewer than DT hours stays
+    # off, until its minimum time is served.  The problem is then a MIP; the
     # price is read after re-solving it as an LP with the binaries fixed (below).
+    #
+    # `uc_bounds` : (h, unit_id) ⇒ (on, min_load) from the DA commitment, for the
+    # later gates (ID2, ID3, CID, BAL): off ⇒ 0 MW; on ⇒ min_load·pmax..pmax.
+    # Plain bounds on tradable hours, so those gates stay LPs.
     uc_on    = Dict{Tuple{Int,String},JuMP.VariableRef}()
     uc_start = Dict{Tuple{Int,String},JuMP.VariableRef}()
     start_cost_expr = JuMP.AffExpr(0.0)
@@ -290,6 +300,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         free == Set(1:H) || error("solve_da: unit commitment is for the DA gate only (all hours free)")
         for (name, u) in uc.units
             all(h -> haskey(pg_by_name, (h, name)), 1:H) || continue
+            init = get(uc, :init, nothing) === nothing ? nothing : get(uc.init, name, nothing)
             for h in 1:H
                 p  = pg_by_name[(h, name)]
                 pm = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : 0.0
@@ -299,12 +310,36 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 uc_start[(h, name)] = st
                 JuMP.@constraint(model, p <= pm * on)
                 JuMP.@constraint(model, p >= u.min_load * pm * on)
-                if h == 1
-                    JuMP.fix(st, 0.0; force = true)
-                else
+                if h > 1
                     JuMP.@constraint(model, st >= on - uc_on[(h - 1, name)])
+                elseif init !== nothing
+                    JuMP.@constraint(model, st >= on - (init.on ? 1.0 : 0.0))
+                else
+                    JuMP.fix(st, 0.0; force = true)
                 end
                 JuMP.add_to_expression!(start_cost_expr, u.start_cost, st)
+            end
+            # Carry-over of the minimum up/down time from the previous day.
+            must_on = 0
+            if init !== nothing
+                if init.on && init.up < u.min_up
+                    must_on = min(H, u.min_up - init.up)
+                    for h in 1:must_on
+                        JuMP.@constraint(model, uc_on[(h, name)] == 1)
+                    end
+                elseif !init.on && init.down < u.min_down
+                    for h in 1:min(H, u.min_down - init.down)
+                        JuMP.@constraint(model, uc_on[(h, name)] == 0)
+                    end
+                end
+            end
+            # Removed by the minimum-income check (unit_commitment.jl, mic_clear):
+            # off for the day, except the hours it must still run from the night
+            # before (like OMIE's "parada programada", the scheduled stop).
+            if name in get(uc, :force_off, ())
+                for h in (must_on + 1):H
+                    JuMP.@constraint(model, uc_on[(h, name)] == 0)
+                end
             end
             for h in 1:H
                 JuMP.@constraint(model,
@@ -316,6 +351,21 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         end
         JuMP.set_optimizer_attribute(model, "MIPGap", uc.mip_gap)
         JuMP.set_optimizer_attribute(model, "TimeLimit", uc.time_limit_s)
+    end
+    if uc_bounds !== nothing
+        for ((h, name), (on, ml)) in uc_bounds
+            h in free || continue                      # frozen hours keep their fix
+            p = get(pg_by_name, (h, name), nothing)
+            p === nothing && continue
+            ub = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : 0.0
+            if on
+                lb = JuMP.has_lower_bound(p) ? JuMP.lower_bound(p) : 0.0
+                JuMP.set_lower_bound(p, max(lb, ml * ub))
+            else
+                JuMP.set_upper_bound(p, 0.0)
+                JuMP.has_lower_bound(p) && JuMP.lower_bound(p) > 0 && JuMP.set_lower_bound(p, 0.0)
+            end
+        end
     end
 
     # Primary objective: linear generation cost (reservoir cost is 0 here) + future

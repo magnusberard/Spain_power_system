@@ -25,11 +25,11 @@ python hydro_state/compare_prices.py results/hydro_state/runs/aligned_rc_observe
 python hydro_state/compare_prices.py results/hydro_state/runs/aligned_rc <same>
 ```
 The `reuse` run seeds `results/hydro_state/{train,cuts}_aligned_rc.json` from
-`Data/hydro_state/policies/` on a fresh clone. `compare_reservoir.py` also needs the original
-baseline path, `results/hydro_state/baseline_{Volume,TurbineSchedule}.csv`, which is not in git.
-Recreate it once with `julia --project=. midterm_sddp4.jl export` under a config copy whose
-`[midterm4]` `*_out` paths point at those names. Alternatively, it is the tracked
-`Data/Volume_Scen0_OUT_sddp4.csv` / `Data/TurbineSchedule_sddp4.csv`; copy them to those names.
+`Data/hydro_state/policies/` on a fresh clone. `compare_reservoir.py` compares against the
+baseline path of the 2026-10-13 runs, committed as `Data/hydro_state/reference_baseline_*.csv`. Note
+that this is **not** the same as the tracked `Data/Volume_Scen0_OUT_sddp4.csv`: that file comes from
+an earlier training of the same baseline (the ES level differs by up to 0.45 TWh, 0.15 TWh on
+average), so SDDP retrains are not bit-for-bit reproducible.
 
 **Pitfalls:**
 - `hydro_state/config_<label>.toml` are full copies of the `config.toml` they were generated from

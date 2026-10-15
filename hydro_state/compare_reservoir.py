@@ -62,8 +62,12 @@ def main() -> None:
     args = ap.parse_args()
 
     vmax = es_vmax()
-    base = monthly_path(p("results", "hydro_state", "baseline_Volume.csv"),
-                        p("results", "hydro_state", "baseline_TurbineSchedule.csv"), vmax)
+    # The baseline path of the 2026-10-13 runs (written to results/ by the first run, committed as
+    # Data/hydro_state/reference_baseline_*.csv so comparisons stay reproducible on a fresh clone).
+    def base_file(stem: str) -> str:
+        r = p("results", "hydro_state", f"baseline_{stem}.csv")
+        return r if os.path.exists(r) else p("Data", "hydro_state", f"reference_baseline_{stem}.csv")
+    base = monthly_path(base_file("Volume"), base_file("TurbineSchedule"), vmax)
     var = monthly_path(p("Data", "hydro_state", f"Volume_{args.label}.csv"),
                        p("Data", "hydro_state", f"TurbineSchedule_{args.label}.csv"), vmax)
     ree = pd.read_csv(p("Data", "hydro_state", "ree_hydro_monthly.csv"), index_col="month")

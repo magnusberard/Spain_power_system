@@ -26,6 +26,21 @@
 #                                      citing Meibom et al. (2008).  Priced at
 #                                      the day's gas price PLUS its CO2
 #                                      (gas_fuel_cost_th, fuel_prices.jl).
+# Coal ([unit_commitment.coal]), same rules, Intertek's subcritical classes by
+# installed MW (small 35–299 MW, large 300–900 MW; Intertek 2020 p. 6):
+#   min up / down, min load            Table 2: small 720 / 360 min, 40 %;
+#                                      large 720 / 480 min, 35 %.
+#   start wear (warm, median, 2020 $)  Table 4: small 112, large 64 $/MW, same
+#                                      2020→2024 $ and $→EUR conversion as gas.
+#   start fuel 5.7 MWh fuel per MW     DIW Data Documentation 68, Table 25,
+#                                      coal warm start (Meibom et al. 2008),
+#                                      priced at the unit's coal + CO2 cost per
+#                                      MWh of fuel = EUR/MWh_el cost × eta 0.435
+#                                      (EMPIRE's coal efficiency).
+# Assumption: all Spanish coal units are subcritical (not checked per unit).
+# With use_availability_factor = true the fleet-wide coal availability factor
+# still scales each unit (a closure proxy); with false (the setting here) units
+# run at full size and closed plants are removed via [fleet].closed_units.
 # ASSUMPTION (ours): units of `two_by_one_min_mw` (700 MW) or more are 2x1
 # (two gas turbines + one steam turbine) and get the 2x1 minimum load.  Neither
 # generations.csv nor GEM gives the layout; the 54 Spanish CCGTs of 100 MW or
@@ -73,13 +88,33 @@ function load_uc_config(cfg)
             mip_gap           = Float64(get(c, "mip_gap", 1e-4)),
             time_limit_s      = Float64(get(c, "time_limit_s", 600.0)),
             mic_check         = Bool(get(c, "mic_check", false)),
-            max_rounds        = Int(get(c, "max_rounds", 100)))
+            max_rounds        = Int(get(c, "max_rounds", 100)),
+            coal              = load_uc_coal(c))
+end
+
+# [unit_commitment.coal]: the same rules for the coal fleet; `nothing` when off.
+# Intertek's two subcritical classes, chosen by the unit's installed MW
+# (Intertek 2020 defines small subcritical as 35–299 MW, large as 300–900 MW).
+function load_uc_coal(c)
+    k = get(c, "coal", Dict())
+    get(k, "enabled", false) || return nothing
+    usd(x) = Float64(x) * Float64(c["usd_inflator_to_2024"]) / Float64(c["usd_per_eur"])
+    return (min_mw            = Float64(k["min_mw"]),
+            large_min_mw      = Float64(k["large_min_mw"]),
+            small = (min_up = Int(k["min_up_h_small"]), min_down = Int(k["min_down_h_small"]),
+                     min_load = Float64(k["min_load_small"]), wear_eur_per_mw = usd(k["start_wear_usd_per_mw_small"])),
+            large = (min_up = Int(k["min_up_h_large"]), min_down = Int(k["min_down_h_large"]),
+                     min_load = Float64(k["min_load_large"]), wear_eur_per_mw = usd(k["start_wear_usd_per_mw_large"])),
+            start_fuel_mwh_per_mw = Float64(k["start_fuel_mwh_per_mw"]),
+            eta = Float64(k["eta"]),
+            use_availability_factor = Bool(get(k, "use_availability_factor", true)))
 end
 
 """
     uc_units_for(nets, date_str, ucc, fp) -> Dict{String,UCUnit}
 
 The committed units for one day: every Gas/Combined_cycle unit in `nets`
+(and, with [unit_commitment.coal], every coal unit; see below)
 whose largest hourly pmax is at least `ucc.min_mw`.
 """
 function uc_units_for(nets, date_str, ucc, fp)
@@ -97,6 +132,25 @@ function uc_units_for(nets, date_str, ucc, fp)
         m >= ucc.min_mw || continue
         ml = m >= ucc.two_by_one_min_mw ? ucc.min_load_2x1 : ucc.min_load_1x1
         units[name] = UCUnit(name, m, ml, ucc.min_up, ucc.min_down, start_eur_per_mw * m, vc[name])
+    end
+    # Coal ([unit_commitment.coal]): class by installed MW; start fuel priced at
+    # the unit's own fuel + CO2 cost per MWh of fuel = its EUR/MWh_el cost × eta
+    # (the model's coal cost is one figure incl. CO2; VOM ignored here).
+    cc = get(ucc, :coal, nothing)
+    if cc !== nothing
+        cmw = Dict{String,Float64}(); cvc = Dict{String,Float64}(); cinst = Dict{String,Float64}()
+        for net in nets, (_, g) in net.gens
+            g["fuel"] == "Coal" || continue
+            cmw[g["name"]]   = max(get(cmw, g["name"], 0.0), g["pmax"] * BASEMVA)
+            cvc[g["name"]]   = g["cost"][1] / BASEMVA
+            cinst[g["name"]] = Float64(get(g, "installed_mw", g["pmax"] * BASEMVA))
+        end
+        for (name, m) in cmw
+            (m >= 1.0 && cinst[name] >= cc.min_mw) || continue
+            p = cinst[name] >= cc.large_min_mw ? cc.large : cc.small
+            start_per_mw = p.wear_eur_per_mw + cc.start_fuel_mwh_per_mw * cvc[name] * cc.eta
+            units[name] = UCUnit(name, m, p.min_load, p.min_up, p.min_down, start_per_mw * m, cvc[name])
+        end
     end
     return units
 end

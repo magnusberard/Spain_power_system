@@ -89,6 +89,13 @@ const UNIT_SCALE    = SCEN_ACTIVE ? empire_unit_scale(EMP)     : nothing
 const GAS_SRMC_ON = !SCEN_ACTIVE &&
     get(get(get(cfg, "costs", Dict()), "gas_srmc", Dict()), "enabled", false)
 const FUEL_PRICES = GAS_SRMC_ON ? load_fuel_prices(cfg) : nothing
+# [costs.coal_srmc]: coal priced per study day from a quarterly coal price and
+# the same daily EUA as gas (fuel_prices.jl, coal_srmc).  Needs [costs.gas_srmc].
+const COAL_SRMC = GAS_SRMC_ON ? load_coal_srmc(cfg) : nothing
+if !GAS_SRMC_ON && get(get(get(cfg, "costs", Dict()), "coal_srmc", Dict()), "enabled", false)
+    println("WARNING: [costs.coal_srmc] ignored — needs [costs.gas_srmc] on and the 2024 path")
+end
+COAL_SRMC !== nothing && println("Coal marginal cost: quarterly coal price + EUA (per study day, [costs.coal_srmc])")
 # [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
 # CCGT is priced from its own gas burn (gas_srmc_eta).  Builds on gas_srmc, so
 # 2024 path only.
@@ -318,7 +325,11 @@ const COAL_AVAIL = Float64(get(get(cfg, "da", Dict()), "coal_availability", 1.0)
 const COAL_AVAIL_BY_DATE = Dict{String,Float64}(
     String(k) => Float64(v) for (k, v) in
         get(get(cfg, "da", Dict()), "coal_availability_by_date", Dict{String,Any}()))
-coal_avail_for(date_str) = get(COAL_AVAIL_BY_DATE, String(date_str), COAL_AVAIL)
+# With [unit_commitment.coal].use_availability_factor = false the coal units run
+# at full size (closed ones removed via [fleet]) and the commitment decides when
+# they run, instead of one fleet-wide derate (COAL_UNIT_FLEET, set further down).
+coal_avail_for(date_str) = COAL_UNIT_FLEET ? 1.0 :
+    get(COAL_AVAIL_BY_DATE, String(date_str), COAL_AVAIL)
 
 # Marginal-cost overrides for one study day.  Identical to COST_OVERRIDE except
 # under [costs.gas_srmc], where the two Gas technologies are repriced from that
@@ -332,6 +343,7 @@ function cost_override_for(date_str)
     d = Date(String(date_str))
     ov[("Gas", "Combined_cycle")] = gas_srmc(FUEL_PRICES, :ccgt, d)
     ov[("Gas", "Gas_turbine")]    = gas_srmc(FUEL_PRICES, :ocgt, d)
+    COAL_SRMC !== nothing && (ov[("Coal", "Coal")] = coal_srmc(FUEL_PRICES, COAL_SRMC, d))
     return ov
 end
 if GAS_SRMC_ON
@@ -358,6 +370,9 @@ end
 if UC_CFG !== nothing
     @printf "Unit commit.   : CCGT >= %.0f MW in the DA; min up %d h, down %d h; min load %.0f %% (1x1) / %.0f %% (>= %.0f MW, 2x1); start %.1f EUR/MW wear + %.1f MWh gas/MW\n" UC_CFG.min_mw UC_CFG.min_up UC_CFG.min_down 100UC_CFG.min_load_1x1 100UC_CFG.min_load_2x1 UC_CFG.two_by_one_min_mw UC_CFG.wear_eur_per_mw UC_CFG.start_fuel_mwh_per_mw
 end
+const COAL_UNIT_FLEET = UC_CFG !== nothing && UC_CFG.coal !== nothing &&
+                        !UC_CFG.coal.use_availability_factor
+COAL_UNIT_FLEET && println("Coal fleet     : units at full size, no availability factor ([unit_commitment.coal])")
 uc_rows_all = []   # per (date, hour, unit) commitment of the DA → results/uc_commitment.csv
 uc_rounds_all = [] # minimum-income check log, one row per DA clear → results/uc_rounds.csv
 # Carry-over ([unit_commitment]): every CCGT's state after the last DA day solved
@@ -433,8 +448,19 @@ if ISLAND_BUSES !== nothing
 end
 # [islands].remove_isolated: plants of isolated systems that generations.csv
 # attached to a mainland bus (Ceuta → Algeciras) are left out of every stage.
-const REMOVED_UNITS = get(ISLANDS_CFG, "remove_isolated", false) ?
-    Set{String}(String.(get(ISLANDS_CFG, "isolated_units", String[]))) : nothing
+# [fleet].closed_units: units closed in reality (e.g. As Pontes in 2024) are left
+# out of every stage too, alongside the isolated ones.
+const FLEET_CFG    = get(cfg, "fleet", Dict())
+const FLEET_CLOSED = get(FLEET_CFG, "enabled", false) ?
+    Set{String}(String.(get(FLEET_CFG, "closed_units", String[]))) : Set{String}()
+const REMOVED_UNITS = let s = get(ISLANDS_CFG, "remove_isolated", false) ?
+        Set{String}(String.(get(ISLANDS_CFG, "isolated_units", String[]))) : Set{String}()
+    union!(s, FLEET_CLOSED)
+    isempty(s) ? nothing : s
+end
+isempty(FLEET_CLOSED) || @printf "Closed plants  : %d unit(s) left out of every stage ([fleet])\n" length(FLEET_CLOSED)
+COAL_UNIT_FLEET && isempty(FLEET_CLOSED) &&
+    println("WARNING: coal runs without the availability factor but [fleet] closes no unit — closed coal plants (e.g. As Pontes) are back at full size")
 if REMOVED_UNITS !== nothing
     @printf "Isolated plants: %d unit(s) left out of every stage ([islands])\n" length(REMOVED_UNITS)
 end
@@ -1469,7 +1495,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     record_prices!(label, date_str, day_ts, result.es_price)
     if uc !== nothing && result.uc !== nothing
         n_on = [count(u -> get(result.uc.on, (h, u), false), keys(uc.units)) for h in eachindex(nets)]
-        @printf "    unit commitment: %d CCGT units, on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g, carry-over %s\n" length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap (uc.init === nothing ? "no (first day)" : "yes")
+        @printf "    unit commitment: %d units (CCGT + coal), on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g, carry-over %s\n" length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap (uc.init === nothing ? "no (first day)" : "yes")
         for (h_idx, ts) in enumerate(eachrow(day_ts)), (name, u) in uc.units
             haskey(result.uc.on, (h_idx, name)) || continue
             push!(uc_rows_all, (date = date_str, hour = ts.hour, unit_id = name,
@@ -1550,12 +1576,52 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
 end
 
 xb_rows_all = []          # per-hour cleared exchange + zonal prices (weeks mode)
-if DA_ENABLED && RUN_MARKET
+
+da_sched_for(date_str, hour)  = get(da_schedule,  (date_str, hour), nothing)
+id2_sched_for(date_str, hour) = get(id2_schedule, (date_str, hour), nothing)
+id3_sched_for(date_str, hour) = get(id3_schedule, (date_str, hour), nothing)
+cid_sched_for(date_str, hour) = get(cid_schedule, (date_str, hour), nothing)
+bal_sched_for(date_str, hour) = get(bal_schedule, (date_str, hour), nothing)
+
+# Diagnostic mode frees a stage's per-unit schedule once no later gate of that
+# day needs it — the day-by-day counterpart of clear_stage_schedules!.
+function clear_stage_day!(date_str, schedules...)
+    DIAGNOSTIC_OUTPUT || return
+    for s in schedules
+        for k in [k for k in keys(s) if k[1] == date_str]
+            delete!(s, k)
+        end
+    end
+    GC.gc(false)
+end
+
+# ── Market stages 1–5, DAY BY DAY ─────────────────────────────────────────────
+# Each study day runs its whole chain — DA → ID2 → ID3 → CID → BAL — before the
+# next day starts, as the real calendar does: the DA for day D+1 clears at 12:00
+# on D, after D's IDA3 (10:00).  So whatever a day hands to the next (the CCGT
+# on/off state under [unit_commitment], UC_STATE) comes from a day whose own
+# markets are already cleared.  The stages of one day only read that day's
+# earlier stages, so without state passed between days the results equal the
+# old stage-by-stage order.
+# Predecessor schedule the balancing gate adjusts: the latest market view
+# available (CID > ID3 > ID2 > DA).  All 24 hours are tradable and anchored to it
+# with minimum movement — the same formulation as the ID2 intraday gate.
+pre_bal_schedule = CID_ENABLED ? cid_schedule :
+                   ID3_ENABLED ? id3_schedule :
+                   ID2_ENABLED ? id2_schedule : da_schedule
+if RUN_MARKET && DA_ENABLED
+    stages = join(filter(!isempty, [DA_ENABLED ? "DA" : "", ID2_ENABLED ? "ID2" : "", ID3_ENABLED ? "ID3" : "",
+                                    CID_ENABLED ? "CID" : "", BAL_ENABLED ? "BAL" : ""]), " → ")
+    println("\n── Market stages 1–5, day by day: $stages ──")
     println(WEEKS_ACTIVE ?
-        "\n── Stage 1: Day-ahead market (joint 4-zone ES/PT/FR/EU, NTC-coupled, 24h Bellman-coupled) ──" :
-        "\n── Stage 1: Day-ahead market (copper-plate, 24h Bellman-coupled) ──")
+        "   DA: joint 4-zone ES/PT/FR/EU, NTC-coupled, 24h Bellman-coupled" :
+        "   DA: copper-plate, 24h Bellman-coupled")
+    println("   ID2: all 24 h, anchored to DA | ID3: hours 12–23 only | CID: rolling gates 1 h before delivery | BAL: all 24 h | nuclear fixed at DA after the DA")
     for date_str in TARGET_DAYS
-        bv     = day_bellman[date_str]
+        println("\n── $date_str ──")
+        bv = day_bellman[date_str]
+
+        # Stage 1 — Day-ahead
         day_ts = filter(r -> r.date == date_str, hourly_da)
         foreign = WEEKS_ACTIVE ?
             foreign_day(cfg, EMP, FOREIGN_SERIES, date_str, bv;
@@ -1589,83 +1655,53 @@ if DA_ENABLED && RUN_MARKET
             fr = extrema(x.FR for x in result.xb); pt = extrema(x.PT for x in result.xb)
             @printf "       net FR %.0f…%.0f MW | net PT %.0f…%.0f MW  (+ = import to ES; FR wv %.2f EUR/MWh)\n" fr[1] fr[2] pt[1] pt[2] foreign.fr_wv
         end
+
+        # Stage 2 — Intraday auction ID2: all 24 hours tradable, anchored to the
+        # DA schedule (minimum-movement adjustment for the ID2 forecast update).
+        if ID2_ENABLED
+            day_ts = filter(r -> r.date == date_str, hourly_id2)
+            run_copper_plate!(id2_schedule, id2_rows_all, "ID2", date_str, day_ts, bv, "id2";
+                              nuclear_sched = da_schedule,
+                              prev_schedule = da_schedule)
+            clear_stage_day!(date_str, da_schedule)
+        end
+
+        # Stage 3 — Intraday auction ID3: closes 10:00 D and trades only the last
+        # 12 delivery hours (12–23); hours 0–11 keep their ID2 schedule.
+        if ID3_ENABLED
+            day_ts = filter(r -> r.date == date_str, hourly_id3)
+            run_copper_plate!(id3_schedule, id3_rows_all, "ID3", date_str, day_ts, bv, "id3";
+                              nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
+                              free_hours_actual = Set(12:23),
+                              prev_schedule = id2_schedule)
+            clear_stage_day!(date_str, id2_schedule)
+        end
+
+        # Stage 4 — Continuous intraday: rolling gates 1 h before delivery.  Its
+        # predecessor view: ID3 where it traded (hours 12–23), else ID2, else DA —
+        # the same precedence the redispatch anchor uses.
+        if CID_ENABLED
+            day_ts = filter(r -> r.date == date_str, hourly_cid)
+            cid_anchor_base(d, h) = ID3_ENABLED ? (id3_sched_for(d, h) !== nothing ? id3_sched_for(d, h) :
+                                                   ID2_ENABLED ? id2_sched_for(d, h) : da_sched_for(d, h)) :
+                                    ID2_ENABLED ? id2_sched_for(d, h) : da_sched_for(d, h)
+            run_cid_rolling!(cid_schedule, cid_rows_all, date_str, day_ts, bv;
+                             nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
+                             anchor_base = cid_anchor_base)
+            clear_stage_day!(date_str, id2_schedule, id3_schedule)
+        end
+
+        # Stage 5 — Balancing: all 24 hours, anchored to the latest market view.
+        if BAL_ENABLED
+            day_ts = filter(r -> r.date == date_str, hourly_bal)
+            run_copper_plate!(bal_schedule, bal_rows_all, "BAL", date_str, day_ts, bv, "bal";
+                              nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
+                              prev_schedule = pre_bal_schedule)
+            clear_stage_day!(date_str, da_schedule, da_nuclear_schedule,
+                             id2_schedule, id3_schedule, cid_schedule)
+        end
     end
 end
-
-da_sched_for(date_str, hour) = get(da_schedule, (date_str, hour), nothing)
-
-if ID2_ENABLED && RUN_MARKET
-    println("\n── Stage 2: Intraday market ID2 (copper-plate, Nuclear fixed at DA) ──")
-    for date_str in TARGET_DAYS
-        bv     = day_bellman[date_str]
-        day_ts = filter(r -> r.date == date_str, hourly_id2)
-        # All 24 hours tradable, anchored to the DA schedule (minimum-movement
-        # adjustment for the ID2 forecast update rather than a fresh re-clear).
-        run_copper_plate!(id2_schedule, id2_rows_all, "ID2", date_str, day_ts, bv, "id2";
-                          nuclear_sched = da_schedule,
-                          prev_schedule = da_schedule)
-    end
-end
-ID2_ENABLED && clear_stage_schedules!(da_schedule)
-
-id2_sched_for(date_str, hour) = get(id2_schedule, (date_str, hour), nothing)
-
-if ID3_ENABLED && RUN_MARKET
-    println("\n── Stage 3: Intraday market ID3 (copper-plate, last 12h only, Nuclear fixed at DA) ──")
-    for date_str in TARGET_DAYS
-        bv     = day_bellman[date_str]
-        day_ts = filter(r -> r.date == date_str, hourly_id3)
-        # ID3 closes 10:00 D and trades only the last 12 delivery hours (12–23);
-        # hours 0–11 are not retradeable here and stay at their ID2 schedule.
-        run_copper_plate!(id3_schedule, id3_rows_all, "ID3", date_str, day_ts, bv, "id3";
-                          nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
-                          free_hours_actual = Set(12:23),
-                          prev_schedule = id2_schedule)
-    end
-end
-ID3_ENABLED && clear_stage_schedules!(id2_schedule)
-
-id3_sched_for(date_str, hour) = get(id3_schedule, (date_str, hour), nothing)
-
-if CID_ENABLED && RUN_MARKET
-    println("\n── Stage 4: Continuous Intraday (rolling gates 1h before delivery, Nuclear fixed at DA) ──")
-    for date_str in TARGET_DAYS
-        bv     = day_bellman[date_str]
-        day_ts = filter(r -> r.date == date_str, hourly_cid)
-        # CID's predecessor view: ID3 where it traded (hours 12–23), else ID2,
-        # else DA — the same precedence the redispatch anchor uses.
-        cid_anchor_base(d, h) = ID3_ENABLED ? (id3_sched_for(d, h) !== nothing ? id3_sched_for(d, h) :
-                                               ID2_ENABLED ? id2_sched_for(d, h) : da_sched_for(d, h)) :
-                                ID2_ENABLED ? id2_sched_for(d, h) : da_sched_for(d, h)
-        run_cid_rolling!(cid_schedule, cid_rows_all, date_str, day_ts, bv;
-                         nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
-                         anchor_base = cid_anchor_base)
-    end
-end
-CID_ENABLED && clear_stage_schedules!(id2_schedule, id3_schedule)
-
-cid_sched_for(date_str, hour) = get(cid_schedule, (date_str, hour), nothing)
-
-if BAL_ENABLED && RUN_MARKET
-    println("\n── Stage 5: Balancing market (copper-plate, Nuclear fixed at DA) ──")
-    # Predecessor schedule the balancing gate adjusts: the latest market view
-    # available (CID > ID3 > ID2 > DA).  All 24 hours are tradable and anchored
-    # to it with minimum movement — the same formulation as the ID2 intraday gate.
-    pre_bal_schedule = CID_ENABLED ? cid_schedule :
-                       ID3_ENABLED ? id3_schedule :
-                       ID2_ENABLED ? id2_schedule : da_schedule
-    for date_str in TARGET_DAYS
-        bv     = day_bellman[date_str]
-        day_ts = filter(r -> r.date == date_str, hourly_bal)
-        run_copper_plate!(bal_schedule, bal_rows_all, "BAL", date_str, day_ts, bv, "bal";
-                          nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
-                          prev_schedule = pre_bal_schedule)
-    end
-end
-BAL_ENABLED && clear_stage_schedules!(da_schedule, da_nuclear_schedule,
-                                      id2_schedule, id3_schedule, cid_schedule)
-
-bal_sched_for(date_str, hour) = get(bal_schedule, (date_str, hour), nothing)
 
 # Reconstruct a (date,hour) ⇒ Dict(unit ⇒ MW) anchor schedule from a previous
 # run's <stage>_dispatch.csv in RESULTS.  Used by the [redispatch].from_saved

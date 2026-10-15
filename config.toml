@@ -179,6 +179,54 @@ vom         = { ccgt = 4.68, ocgt = 5.76 }
 enabled = false
 file    = "Data/gas_unit_efficiency.csv"
 
+[costs.coal_srmc]
+# ── Coal marginal cost from a market coal price + the daily EUA ──────────────
+# enabled = true replaces the single annual coal cost (generation_cost_pypsa_2024.csv,
+# 94.01 EUR/MWh) with, per study day (fuel_prices.jl, coal_srmc):
+#
+#   SRMC = (P_coal,quarter + 3.6 * co2_t_per_gj_fuel * P_CO2) / eta + vom
+#
+#   P_coal   quarterly German import price for steam coal, EUR per MWh of coal,
+#            delivered (freight included): BAFA/VDKI, as tabulated by AG
+#            Energiebilanzen, Herbsttagung 25 Oct 2024 ("Steinkohle (BAFA/VDKI)
+#            EUR/MWh": 2024 Q1 21.9, Q2 21.9, Q3 20.77).  Q4 2024 not published
+#            as a number (chart only) → Q3 carried forward (our assumption).
+#            Used as the price Spanish plants pay for imported coal.
+#   P_CO2    the same daily EUA settlement as gas ([costs.gas_srmc]).
+#   co2_t_per_gj_fuel  0.0913 tCO2 per GJ of coal: EMPIRE's coal content × its eta
+#            (see fuel_prices.jl / empire_scenario.jl); IPCC default for other
+#            bituminous coal is 0.0946.
+#   eta      0.435, EMPIRE's coal efficiency (empire_scenario.jl); within ENTSO-E
+#            ERAA 2025 Annex 1 Table 17 (hard coal 35–46 %).
+#   vom      3.3 EUR/MWh, ENTSO-E ERAA 2025 Annex 1 Table 16 (hard coal).
+# Check, 2024 Q1 at EUA ~60: (21.9 + 19.7)/0.435 + 3.3 ≈ 99 EUR/MWh vs the fixed 94.
+# Needs [costs.gas_srmc] on (it reads the EUA series); 2024 path only.
+enabled             = false
+price_eur_mwh_th    = { "2024Q1" = 21.9, "2024Q2" = 21.9, "2024Q3" = 20.77, "2024Q4" = 20.77 }
+co2_t_per_gj_fuel   = 0.0913
+eta                 = 0.435
+vom                 = 3.3
+
+[fleet]
+# ── Plants closed in reality, left out of every stage ────────────────────────
+# enabled = true removes these units (generations.csv unit_id) from the market
+# stages and the redispatch.  Use it with [unit_commitment.coal]
+# use_availability_factor = false, which drops the fleet-wide coal derate (that
+# factor was calibrated on the whole 2,900 MW coal nameplate, closed units
+# included).  2024 evidence: OMIE day-ahead bid headers (cab files, 2024) and
+# ENTSO-E actual generation per unit (2024):
+#   G0039, G0040  As Pontes      no OMIE bid and 0 MWh all 2024; closure approved
+#                                Aug 2023, shut by Aug 2024 (Endesa; Renewables Now)
+#   G0742         La Pereda      no OMIE bid in 2024; Hunosa approved the end of
+#                                coal on 23 Dec 2020, biomass conversion from 2025
+# Not listed: Alcúdia 3–4 (G0204, G0206, Mallorca) — units 1–2 closed 1 Jan 2020,
+# 3–4 limited to 500 h/yr for emergencies since Aug 2021; they are island plants,
+# kept out of the market by [islands].exclude_from_market.
+# Open in 2024 (bid in OMIE every day): Aboño 2, Los Barrios, Soto de Ribera 3;
+# Aboño 1 bid on 12 days only (Jul, Oct, Dec) but is kept as available.
+enabled      = false
+closed_units = ["G0039", "G0040", "G0742"]
+
 [unit_commitment]
 # ── On/off decisions for the CCGT fleet in the day-ahead (unit_commitment.jl) ──
 # enabled = true: every Gas/Combined_cycle unit of at least `min_mw` is either
@@ -236,6 +284,46 @@ time_limit_s          = 600.0    # per DA solve; the best solution found is used
 # 2026).  Log: results/uc_rounds.csv.
 mic_check             = true
 max_rounds            = 100
+
+[unit_commitment.coal]
+# ── The same rules for the coal fleet (unit_commitment.jl) ───────────────────
+# With [unit_commitment] on and enabled = true here, every coal unit of at
+# least min_mw installed is committed like the CCGTs: on/off, minimum load,
+# start cost, min up/down, carry-over, the later gates keep the DA on/off, and
+# the minimum-income check.  Spanish coal plants bid under the same OMIE rules
+# as gas (e.g. 8 Jul 2024: Soto de Ribera 3 74,000 EUR + 132.5 EUR/MWh).
+# Classes by installed MW as Intertek defines them: small subcritical 35–299
+# MW, large subcritical 300–900 MW (Intertek for WECC 2020, p. 6).
+#   min up / down, min load     Intertek 2020, Table 2: small 720 / 360 min, 40 %;
+#                               large 720 / 480 min, 35 %.
+#   start wear, warm, median    Intertek 2020, Table 4: small 112, large 64 $/MW
+#                               (2020 $), converted as for gas (usd_* above).
+#   start fuel                  DIW Data Documentation 68, Table 25, coal warm
+#                               start: 5.7 MWh fuel per MW (Meibom et al. 2008),
+#                               priced at the unit's cost × eta (fuel + CO2 per
+#                               MWh of fuel).
+#   eta                         0.435, EMPIRE's coal efficiency (empire_scenario.jl).
+# => ~124 (small) / ~71 (large) EUR/MW wear + ~233 EUR/MW start fuel at the
+#    2024 coal cost of 94.01 EUR/MWh.  Real 2024 fixed terms: 68–267 EUR/MW.
+# Assumption: all Spanish coal units are subcritical.  With use_availability_factor
+# = true the fleet-wide coal derate still scales each unit (min load and start
+# cost follow it); with false, units run at full size and closures come from [fleet].
+enabled                     = true
+min_mw                      = 35.0
+large_min_mw                = 300.0
+min_up_h_small              = 12
+min_down_h_small            = 6
+min_load_small              = 0.40
+start_wear_usd_per_mw_small = 112.0
+min_up_h_large              = 12
+min_down_h_large            = 8
+min_load_large              = 0.35
+start_wear_usd_per_mw_large = 64.0
+start_fuel_mwh_per_mw       = 5.7
+eta                         = 0.435
+# false: no fleet-wide coal availability factor — units run at full size and
+# the commitment decides when; closed units must then be removed via [fleet].
+use_availability_factor     = false
 
 [weeks]
 # ── Sampled multi-week study horizon (2035 scenario target) ──────────────────

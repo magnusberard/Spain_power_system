@@ -157,6 +157,35 @@ function gas_fuel_cost_th(fp::FuelPrices, d::Date)::Float64
 end
 
 """
+    load_coal_srmc(cfg) -> NamedTuple or nothing
+
+[costs.coal_srmc]: quarterly coal price (EUR per MWh of coal), CO2 factor per
+GJ of coal, efficiency and VOM.  `nothing` when off.
+"""
+function load_coal_srmc(cfg)
+    c = get(get(cfg, "costs", Dict()), "coal_srmc", Dict())
+    get(c, "enabled", false) || return nothing
+    q = Dict(String(k) => Float64(v) for (k, v) in c["price_eur_mwh_th"])
+    return (price = q, ef = Float64(c["co2_t_per_gj_fuel"]),
+            eta = Float64(c["eta"]), vom = Float64(c["vom"]))
+end
+
+"""
+    coal_srmc(fp, cc, delivery_date) -> EUR/MWh_el
+
+    SRMC = (P_coal,quarter + 3.6 * ef * P_CO2) / eta + vom
+
+P_CO2 is the same EUA settlement as for gas (last on or before D-1).
+"""
+function coal_srmc(fp::FuelPrices, cc, d::Date)::Float64
+    key = string(year(d), "Q", (month(d) - 1) ÷ 3 + 1)
+    haskey(cc.price, key) || error("[costs.coal_srmc]: no coal price for $key")
+    pc = carbon_price(fp, d - Day(1))
+    pc === nothing && error("no EUA settlement on or before $(d - Day(1))")
+    return (cc.price[key] + 3.6 * cc.ef * pc) / cc.eta + cc.vom
+end
+
+"""
     load_gas_unit_eta(cfg) -> Dict{String,Float64} or nothing
 
 unit_id ⇒ efficiency from [costs.gas_unit_efficiency].file (built by

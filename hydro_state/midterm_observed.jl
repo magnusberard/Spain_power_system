@@ -47,6 +47,15 @@ const HS_DATA = joinpath(HS_ROOT, "Data", "hydro_state")
 const HS_CUTS_JSON = joinpath(HS_RESULTS, "cuts_$(HS_TRAIN_LABEL).json")        # after W3
 const HS_TRAIN_JSON = joinpath(HS_RESULTS, "train_$(HS_TRAIN_LABEL).json")      # before W3
 mkpath(HS_RESULTS); mkpath(HS_DATA)
+# Trained policies committed to the repo (Data/hydro_state/policies/, for the variants worth
+# keeping) seed results/hydro_state on a fresh clone, so `reuse` works without retraining.
+for (src, dst) in ((joinpath(HS_DATA, "policies", "train_$(HS_TRAIN_LABEL).json"), HS_TRAIN_JSON),
+                   (joinpath(HS_DATA, "policies", "cuts_$(HS_TRAIN_LABEL).json"), HS_CUTS_JSON))
+    if !isfile(dst) && isfile(src)
+        cp(src, dst)
+        println("hydro_state: seeded $(basename(dst)) from Data/hydro_state/policies/")
+    end
+end
 
 # ── 1. base config copy: same system, outputs redirected to results/hydro_state ──
 const HS_BASE_CONFIG = get(ENV, "SPAIN_CONFIG", joinpath(HS_ROOT, "config.toml"))

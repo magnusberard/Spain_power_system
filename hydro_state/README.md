@@ -1,5 +1,47 @@
 # hydro_state — the 2024 reservoir state from observation
 
+## Status and handover (2026-10-15, Magnus → Lars Erik)
+
+Branch `hydro-state` (pushed, not merged), based on `main` `0558164`. The full write-up is in the
+vault: `wiki/code/model-changes-hydro-state.md` (§15), `wiki/syntheses/hydro-state-2024.md` (results)
+and `work/issues/hydro-seasonal-water-value.md` (next steps, commands).
+
+| Variant | Policy trained | Simulated | Reservoir check | Price test | Verdict |
+|---|---|---|---|---|---|
+| `observed` | yes | yes | yes | yes | rejected (water value ~22) |
+| `aligned` | yes (policy in `Data/hydro_state/policies/`) | yes | yes | yes | passes on price, wrong reason |
+| `aligned_observed` | = `aligned` | yes | yes | yes | right reservoir in H1, narrow fail |
+| `aligned_rc` | yes (policy in `Data/hydro_state/policies/`) | yes | **not yet** | **not yet** | — |
+| `aligned_rc_observed` | = `aligned_rc` | **not yet** | — | — | — (the candidate) |
+
+**Next (about 1 h, no training needed):**
+```bash
+HYDRO_STATE_CONFIG=hydro_state/hydro_state_aligned_rc_observed.toml julia --project=. hydro_state/midterm_observed.jl reuse   # ~5 min
+python hydro_state/compare_reservoir.py --label aligned_rc --omie <spain-model-runs>/reference/real_hourly_2024.csv.gz
+python hydro_state/compare_reservoir.py --label aligned_rc_observed --omie <same>
+bash hydro_state/run_da_parallel.sh hydro_state/config_aligned_rc_observed.toml results/hydro_state/runs/aligned_rc_observed 7   # ~25 min
+bash hydro_state/run_da_parallel.sh hydro_state/config_aligned_rc.toml results/hydro_state/runs/aligned_rc 7                     # ~25 min
+python hydro_state/compare_prices.py results/hydro_state/runs/aligned_rc_observed <spain-model-runs>/runs/2024-01-01_2024-offered
+python hydro_state/compare_prices.py results/hydro_state/runs/aligned_rc <same>
+```
+The `reuse` run seeds `results/hydro_state/{train,cuts}_aligned_rc.json` from
+`Data/hydro_state/policies/` on a fresh clone. `compare_reservoir.py` also needs the original
+baseline path, `results/hydro_state/baseline_{Volume,TurbineSchedule}.csv`, which is not in git.
+Recreate it once with `julia --project=. midterm_sddp4.jl export` under a config copy whose
+`[midterm4]` `*_out` paths point at those names. Alternatively, it is the tracked
+`Data/Volume_Scen0_OUT_sddp4.csv` / `Data/TurbineSchedule_sddp4.csv`; copy them to those names.
+
+**Pitfalls:**
+- `hydro_state/config_<label>.toml` are full copies of the `config.toml` they were generated from
+  (`0558164`). After merging a newer `main` (e.g. `50f7ec6`, island switches) regenerate them
+  (`... midterm_observed.jl reuse` rewrites the config copy from the current `config.toml`), or they
+  silently lack the new settings.
+- Run the two day-ahead tests one after the other. Two at once ran the PC out of memory (Claude Code
+  killed the run), and a sleeping PC stretched a 25-min test to 2 h.
+- `results/midterm4_cuts.json` is shared with plain `midterm_sddp4.jl`. The script swaps its own
+  policy in and restores the slot (checked by SHA-1), but a killed run can leave it swapped. Compare
+  it with `results/hydro_state/train_observed.json`, which is the baseline policy.
+
 New files only: `midterm_sddp4.jl`, `bellman.jl`, `run_market_chain.jl` and `config.toml` are
 unchanged. The market chain picks the result up through a config copy (`SPAIN_CONFIG`), so
 week-by-week runs on Solstorm work as before.

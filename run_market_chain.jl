@@ -1603,6 +1603,29 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, committed)
 end
 
+# ── Carry-over between runs ([unit_commitment]) ──────────────────────────────
+# SPAIN_UC_STATE_IN points to a previous run's uc_state.json (written at the end
+# of every market run with unit commitment, see below; used by
+# scripts/run_markets_sequential.sh to chain consecutive chunks).  It seeds the
+# first study day when its date is the day before; otherwise the first-day rule
+# applies (free initial state: units the model runs in hour 1 count as already
+# on, without a start, and min up/down are not enforced from before midnight).
+import JSON
+const UC_STATE_IN = get(ENV, "SPAIN_UC_STATE_IN", "")
+if UC_CFG !== nothing && RUN_MARKET && UC_STATE_IN != "" && isfile(UC_STATE_IN) && !isempty(TARGET_DAYS)
+    let j = JSON.parsefile(UC_STATE_IN), want = string(Date(String(first(TARGET_DAYS))) - Day(1))
+        if String(j["date"]) == want
+            for (u, v) in j["units"]
+                UC_STATE[String(u)] = (on = Bool(v["on"]), up = Int(v["up"]), down = Int(v["down"]))
+            end
+            UC_STATE_DATE[] = want
+            @printf "UC state in    : %d units, end of %s (%s)\n" length(UC_STATE) want UC_STATE_IN
+        else
+            println("UC state in    : $(UC_STATE_IN) is for $(j["date"]), not $want — first-day rule used")
+        end
+    end
+end
+
 xb_rows_all = []          # per-hour cleared exchange + zonal prices (weeks mode)
 
 da_sched_for(date_str, hour)  = get(da_schedule,  (date_str, hour), nothing)
@@ -2410,6 +2433,18 @@ if RD_ENABLED
         end
         @printf "  Domestic adequacy diagnostic: %.1f MWh load shedding (not an exchange-relaxation variable)\n" shed_total
     end
+end
+
+# ── End-of-run unit-commitment state → results/uc_state.json ──────────────────
+# The state after the last study day (on/off, hours in that state), read by the
+# next chunk via SPAIN_UC_STATE_IN (scripts/run_markets_sequential.sh).
+if RUN_MARKET && UC_CFG !== nothing && UC_STATE_DATE[] != ""
+    open(joinpath(RESULTS, "uc_state.json"), "w") do io
+        JSON.print(io, Dict("date" => UC_STATE_DATE[],
+                            "units" => Dict(u => Dict("on" => v.on, "up" => v.up, "down" => v.down)
+                                            for (u, v) in UC_STATE)), 2)
+    end
+    @printf "  uc_state.json : %d units, end of %s\n" length(UC_STATE) UC_STATE_DATE[]
 end
 
 # ── Run info: finish time, runtime and solved AC hours (results/<run>/run_info.json) ──

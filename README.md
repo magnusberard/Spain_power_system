@@ -136,6 +136,34 @@ into one results folder that `publish_run.py` can publish (`--runs-repo` can
 point at a folder holding only spain-model-runs' `reference/` and an empty
 `runs/`). The script headers have the details.
 
+**Split runs (unit commitment over a full year).** With unit commitment on,
+each day starts from the day before, so weeks run side by side would each
+start from the first-day rule. A split run keeps the exact carry-over:
+
+1. `scripts/run_markets_sequential.sh <folder>` (on Solstorm
+   `scripts/solstorm_start_markets.sh <folder>`) clears the market stages only
+   (no network redispatch, the slow part) chunk after chunk in order; each
+   chunk writes `uc_state.json` and the next one starts from it
+   (`SPAIN_UC_STATE_IN`). About 5 min per week, so 4–5 h for the year.
+2. `scripts/run_redispatch_only.sh <folder> <chunk> ...` (on Solstorm
+   `scripts/solstorm_start_redispatch.sh <folder> k/N` on N nodes) runs the
+   network redispatch of each chunk on its own (`[redispatch] from_saved =
+   "BAL"`), in parallel, into the same chunk folders. It can be started right
+   away: it waits for each chunk's markets to finish.
+3. `python scripts/merge_runs.py <out> <folder>` joins the chunks as usual.
+
+Options as environment variables for step 1: `FROM`, `TO` (default 2024-01-01
+.. 2024-12-29), `DAYS` (chunk length, 7), `GAS=on` (switches on
+`[costs.gas_unit_efficiency]`, `[unit_commitment]` (gas and coal),
+`[costs.coal_srmc]`, `[fleet]` and `[islands].exclude_from_market`; other
+settings, e.g. `intraday_starts`, come from `config.toml`), `RES` (res_input).
+`scripts/make_run_config.py` writes the two config copies
+(`<folder>/config_markets.toml`, `<folder>/config_redispatch.toml`). Reruns skip
+finished chunks; a failed market chunk stops the chain.
+
+    GAS=on scripts/solstorm_start_markets.sh /storage/users/$USER/results/2024_gas
+    scripts/solstorm_start_redispatch.sh /storage/users/$USER/results/2024_gas 1/4   # on node 1 of 4, etc.
+
 ### 2. Mid-term SDDP (hydro water values)
 
 Generates the Bellman cuts that price reservoir hydro in the market chain.
@@ -480,8 +508,35 @@ commitment itself: `results/uc_commitment.csv`.
   ENTSO-E itself does not assign categories by build year.
 - Units under 100 MW (mostly industrial cogeneration) keep 0.56 and no on/off.
 - One start type ("warm"); the start fuel's CO2 is paid.
-- First day of a run (or after a gap in the study days): a unit running in
-  hour 1 counts as already on (no start cost).
+- **First day of a run (or after a gap in the study days): free initial
+  state.** The model itself chooses which units are on at 00:00: a unit it
+  runs in hour 1 counts as already on (no start cost in hour 1), units it does
+  not need are off, and minimum up/down times are not enforced from before
+  midnight. Every later day starts from the state at the end of the day
+  before. Only day 1 is affected; a split run (below) passes the state on
+  between chunks, so in a full-year run only 1 January uses this rule.
+
+**Coal** (`[unit_commitment.coal]`, `[costs.coal_srmc]`, `[fleet]`). With
+`[unit_commitment]` on, every coal unit ≥ 35 MW is committed by the same rules,
+with Intertek's (2020) coal classes by installed MW: small 35–299 MW (min up
+12 h, down 6 h, min load 40 %, wear 112 $/MW), large 300–900 MW (12 h, 8 h,
+35 %, 64 $/MW); start fuel 5.7 MWh per MW (DIW 68, Table 25). Assumption: all
+Spanish coal units are subcritical. `[costs.coal_srmc]` prices coal per
+quarter from the German import price (BAFA/VDKI via AG Energiebilanzen,
+2024 Q1–Q3; Q4 = Q3, our assumption) plus the daily EUA, eta 0.435, VOM 3.3
+(ENTSO-E ERAA 2025). `[fleet]` removes the coal plants that were closed in
+2024 (As Pontes, La Pereda; no OMIE bid all year). Sources in `config.toml`.
+
+**Intraday starts** (`[unit_commitment].intraday_starts`, off by default). In
+ID2 and ID3 a unit that is off may start (units on stay on) if it earns its
+start cost and €/MWh cost over its new hours — the cost-based analogue of the
+block orders the intraday auctions allow (OMIE Reglas IDA 2024, Regla 39). The
+next day then starts from the ID3 state. Effect in the December test week:
+small (ID2 −0.5, CID −1.4 €/MWh on average).
+
+**Day by day.** The market stages run day by day (DA → ID2 → ID3 → CID → BAL
+for one day, then the next day), so each day's DA starts from the state the
+previous day ended in.
 
 **Test so far (8 Jul + 2 Dec 2024):** switches off give identical results.
 Switched on, the DA commits only 0–2 CCGTs because the model's DA uses about

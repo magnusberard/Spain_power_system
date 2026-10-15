@@ -6,11 +6,13 @@ publish_run.py can publish it as one run.
     python scripts/merge_runs.py <out> <part> <part> ...
 
 Every CSV is concatenated in day order with one header (the files are per hour,
-so nothing is summed); run.log files are concatenated with a line per part;
-ipopt_logs/ folders are combined. run_info.json is combined: days, first/last
-day, AC hours solved/total (summed), started (earliest), finished (latest),
-runtime_min = wall time from the first start to the last finish, cpu_min = the
-parts' runtimes added up, merged_from = the part folders. The parts must agree
+so nothing is summed); run.log files (and run_market.log of split runs) are
+concatenated with a line per part; ipopt_logs/ folders are combined.
+run_info.json is combined: days, first/last day, AC hours solved/total
+(summed), started (earliest), finished (latest), runtime_min = wall time from
+the first start to the last finish, cpu_min = the parts' runtimes added up
+(plus the market runs of a split run, run_info_market.json; their wall time is
+not in runtime_min), merged_from = the part folders. The parts must agree
 on commit, branch, res_input, linear solver and config, or the merge stops
 (--force to merge anyway). Gaps and overlapping days stop it too.
 """
@@ -63,6 +65,12 @@ def check(parts, infos, force):
     return days
 
 
+def market_min(p):
+    """Runtime of a split run's market stages (run_info_market.json), else 0."""
+    f = p / "run_info_market.json"
+    return float(json.loads(f.read_text(encoding="utf-8")).get("runtime_min", 0)) if f.exists() else 0.0
+
+
 def merge_csv(name, parts, out):
     header = None
     with open(out / name, "wb") as dst:
@@ -101,15 +109,18 @@ def main():
         merge_csv(name, parts, out)
     print(f"  {len(csvs)} CSV files joined")
 
-    with open(out / "run.log", "wb") as dst:
-        for p in parts:
-            dst.write(f"\n===== part {p.name} =====\n".encode())
-            if (p / "run.log").exists():
-                dst.write((p / "run.log").read_bytes())
+    for log in ("run_market.log", "run.log"):
+        if not any((p / log).exists() for p in parts):
+            continue
+        with open(out / log, "wb") as dst:
+            for p in parts:
+                dst.write(f"\n===== part {p.name} =====\n".encode())
+                if (p / log).exists():
+                    dst.write((p / log).read_bytes())
     for p in parts:
         if (p / "ipopt_logs").is_dir():
             shutil.copytree(p / "ipopt_logs", out / "ipopt_logs", dirs_exist_ok=True)
-    for extra in ("config_used.toml", "run_info_diff.patch"):
+    for extra in ("config_used.toml", "run_info_diff.patch", "config_used_market.toml"):
         if (parts[0] / extra).exists():
             shutil.copy2(parts[0] / extra, out / extra)
 
@@ -122,7 +133,7 @@ def main():
         ac_hours_total=sum(int(infos[p].get("ac_hours_total", 0)) for p in parts),
         started=started.strftime(FMT), finished=finished.strftime(FMT),
         runtime_min=round((finished - started).total_seconds() / 60, 1),
-        cpu_min=round(sum(float(infos[p].get("runtime_min", 0)) for p in parts), 1),
+        cpu_min=round(sum(float(infos[p].get("runtime_min", 0)) + market_min(p) for p in parts), 1),
         uncommitted_files=sorted({f for p in parts for f in infos[p].get("uncommitted_files", [])}),
         host=", ".join(sorted({str(infos[p].get("host", "")) for p in parts})),
         merged_from=[p.name for p in parts], n_parts=len(parts),

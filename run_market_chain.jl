@@ -382,6 +382,19 @@ const UC_STATE      = Dict{String,NamedTuple{(:on, :up, :down),Tuple{Bool,Int,In
 const UC_STATE_DATE = Ref("")
 # DA commitment per (date, hour) ⇒ unit ⇒ (on, min_load), kept by the later gates.
 const UC_COMMIT = Dict{Tuple{String,Int},Dict{String,Tuple{Bool,Float64}}}()
+# The starting state (carry-over) each day's DA used, so ID2/ID3 of the same day
+# start from it too (UC_STATE already holds that day's end by then).
+const UC_INIT_FOR_DAY = Dict{String,Any}()
+# (h_idx, unit) ⇒ on, from the latest committing gate of this day (intraday starts).
+function uc_prev_on_for(date_str, day_ts)
+    on = Dict{Tuple{Int,String},Bool}()
+    for (h_idx, ts) in enumerate(eachrow(day_ts))
+        for (name, v) in get(UC_COMMIT, (String(date_str), ts.hour), Dict{String,Tuple{Bool,Float64}}())
+            on[(h_idx, name)] = v[1]
+        end
+    end
+    return on
+end
 function uc_bounds_for(date_str, day_ts)
     UC_CFG === nothing && return nothing
     b = Dict{Tuple{Int,String},Tuple{Bool,Float64}}()
@@ -1468,22 +1481,37 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
         uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
               init = UC_STATE_DATE[] == prev_day ? copy(UC_STATE) : nothing,
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
+        UC_INIT_FOR_DAY[String(date_str)] = uc.init
+    elseif label in ("ID2", "ID3") && UC_CFG !== nothing && UC_CFG.intraday_starts
+        # Intraday starts: units on in the previous gate stay on, units off may
+        # start (da.jl, prev_on); new starts must pay their way (intraday_clear).
+        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+              init = get(UC_INIT_FOR_DAY, String(date_str), nothing),
+              prev_on = uc_prev_on_for(date_str, day_ts),
+              mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
     end
-    ucb = label == "DA" ? nothing : uc_bounds_for(date_str, day_ts)
+    ucb = (label == "DA" || uc !== nothing) ? nothing : uc_bounds_for(date_str, day_ts)
     solve_gate(u) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
                         gurobi_da(log_file = log_file);
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
                         hydro_budget_mwh = get(bv, :budget, nothing),
                         uc = u, uc_bounds = ucb)
-    if uc !== nothing && UC_CFG.mic_check
+    if uc !== nothing && label == "DA" && UC_CFG.mic_check
         # Minimum-income check loop (unit_commitment.jl, mic_clear)
         result, mic_log = mic_clear(solve_gate, uc, UC_CFG.max_rounds)
         for r in mic_log
-            push!(uc_rounds_all, merge((date = String(date_str),), r))
+            push!(uc_rounds_all, merge((date = String(date_str), stage = label), r))
         end
         n_rm = count(r -> r.action == "remove", mic_log); n_ri = count(r -> r.action == "reinsert", mic_log)
         @printf "    minimum-income check: %d clears, %d unit(s) removed, %d put back%s\n" length(mic_log) n_rm n_ri (any(r -> r.action == "max_rounds", mic_log) ? " — STOPPED AT max_rounds" : "")
+    elseif uc !== nothing
+        # Intraday starts: block new starts that do not pay (unit_commitment.jl)
+        result, id_log = intraday_clear(solve_gate, uc, UC_CFG.max_rounds)
+        for r in id_log
+            push!(uc_rounds_all, merge((date = String(date_str), stage = label), r))
+        end
+        @printf "    intraday starts check: %d clears, %d start(s) blocked\n" length(id_log) count(r -> r.action == "block_start", id_log)
     else
         result = solve_gate(uc)
     end
@@ -1495,10 +1523,10 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     record_prices!(label, date_str, day_ts, result.es_price)
     if uc !== nothing && result.uc !== nothing
         n_on = [count(u -> get(result.uc.on, (h, u), false), keys(uc.units)) for h in eachindex(nets)]
-        @printf "    unit commitment: %d units (CCGT + coal), on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g, carry-over %s\n" length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap (uc.init === nothing ? "no (first day)" : "yes")
+        @printf "    unit commitment (%s): %d units (CCGT + coal), on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g, carry-over %s\n" label length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap (uc.init === nothing ? "no (first day)" : "yes")
         for (h_idx, ts) in enumerate(eachrow(day_ts)), (name, u) in uc.units
             haskey(result.uc.on, (h_idx, name)) || continue
-            push!(uc_rows_all, (date = date_str, hour = ts.hour, unit_id = name,
+            push!(uc_rows_all, (date = date_str, stage = label, hour = ts.hour, unit_id = name,
                 on = result.uc.on[(h_idx, name)], start = result.uc.start[(h_idx, name)],
                 dispatch_mw = round(get(result.sched[h_idx], name, 0.0); digits = 1),
                 max_mw = round(u.mw; digits = 1), min_load = u.min_load,

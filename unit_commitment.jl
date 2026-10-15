@@ -89,6 +89,7 @@ function load_uc_config(cfg)
             time_limit_s      = Float64(get(c, "time_limit_s", 600.0)),
             mic_check         = Bool(get(c, "mic_check", false)),
             max_rounds        = Int(get(c, "max_rounds", 100)),
+            intraday_starts   = Bool(get(c, "intraday_starts", false)),
             coal              = load_uc_coal(c))
 end
 
@@ -281,6 +282,72 @@ function mic_clear(solve, uc, max_rounds::Int)
         else
             row(n, "reinsert_rejected", (unit = c.unit, gap = -c.gain), ok(trial) ? trial.objective : NaN)
         end
+    end
+    return (res, log)
+end
+
+# ── Intraday starts ([unit_commitment].intraday_starts) ──────────────────────
+# In the intraday auctions ID2/ID3 a unit that was off may start (da.jl, prev_on).
+# Spain's European IDAs (from 14 Jun 2024) have no minimum-income condition but
+# allow block orders: all-or-nothing over a set of hours, accepted only if the
+# average price covers the block (OMIE Reglas IDA 2024, Regla 39; EUPHEMIA Public
+# Description §5.4).  Cost-based analogue: a unit started in the gate must earn,
+# over its newly-on hours at the gate's prices, its starts × start cost + its
+# EUR/MWh cost.  Failing starters are blocked one at a time, largest EUR/MWh gap
+# first (as the DA check), and the gate re-cleared.  No reinsertion step.
+
+"""
+    intraday_check(res, uc) -> failing new starters, largest EUR/MWh gap first
+"""
+function intraday_check(res, uc)
+    H = length(res.sched)
+    fails = NamedTuple[]
+    for (name, u) in uc.units
+        new_h = [h for h in 1:H if get(res.uc.on, (h, name), false) && !get(uc.prev_on, (h, name), false)]
+        isempty(new_h) && continue
+        mwh    = sum(get(res.sched[h], name, 0.0) for h in new_h)
+        income = sum(get(res.es_price, h, 0.0) * get(res.sched[h], name, 0.0) for h in new_h)
+        starts = count(h -> get(res.uc.start, (h, name), false), new_h)
+        cost   = u.var_cost * mwh + starts * u.start_cost
+        income < cost - MIC_TOL_EUR || continue
+        push!(fails, (unit = name, mwh = mwh, income = income, cost = cost,
+                      gap = (cost - income) / max(mwh, 1e-6), starts = starts))
+    end
+    sort!(fails; by = f -> -f.gap)
+    return fails
+end
+
+"""
+    intraday_clear(solve, uc, max_rounds) -> (result, log)
+
+`solve(uc)` clears the intraday gate with that set-up.  Blocks failing new
+starters one at a time until every new start pays its way.
+"""
+function intraday_clear(solve, uc, max_rounds::Int)
+    blocked = Set{String}()
+    log     = NamedTuple[]
+    fld(f, k) = f === nothing ? NaN : round(Float64(get(f, k, NaN)); digits = 1)
+    row(rnd, action, f, obj) = push!(log, (round = rnd, action = String(action),
+        unit_id = f === nothing ? "" : String(f.unit),
+        mwh = fld(f, :mwh), income_eur = fld(f, :income), cost_eur = fld(f, :cost),
+        gap_eur_mwh = fld(f, :gap), objective_eur = round(Float64(obj); digits = 1)))
+    ok(r) = r.status in ("OPTIMAL", "LOCALLY_SOLVED") && r.uc !== nothing
+    n = 1
+    res = solve(merge(uc, (block_new = copy(blocked),)))
+    while ok(res)
+        fails = intraday_check(res, uc)
+        if isempty(fails)
+            row(n, "valid", nothing, res.objective)
+            break
+        end
+        if n >= max_rounds
+            row(n, "max_rounds", fails[1], res.objective)
+            break
+        end
+        row(n, "block_start", fails[1], res.objective)
+        push!(blocked, fails[1].unit)
+        n += 1
+        res = solve(merge(uc, (block_new = copy(blocked),)))
     end
     return (res, log)
 end

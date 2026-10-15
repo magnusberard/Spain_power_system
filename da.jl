@@ -296,20 +296,40 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     uc_on    = Dict{Tuple{Int,String},JuMP.VariableRef}()
     uc_start = Dict{Tuple{Int,String},JuMP.VariableRef}()
     start_cost_expr = JuMP.AffExpr(0.0)
+    # Intraday starts ([unit_commitment].intraday_starts; ID2/ID3): `uc.prev_on`
+    # holds the committed on/off from the previous gate.  A unit on there stays
+    # on (it can still move between min load and max); a unit off there may
+    # start, paying its start cost; units in `uc.block_new` may not start
+    # (removed by intraday_clear).  Frozen hours (ID3 hours 0–11) keep the
+    # previous on/off and their fixed output.
+    prev_on   = get(uc === nothing ? (;) : uc, :prev_on, nothing)
+    block_new = get(uc === nothing ? (;) : uc, :block_new, ())
     if uc !== nothing
-        free == Set(1:H) || error("solve_da: unit commitment is for the DA gate only (all hours free)")
+        prev_on === nothing && free != Set(1:H) &&
+            error("solve_da: unit commitment with frozen hours needs prev_on (intraday gates)")
         for (name, u) in uc.units
             all(h -> haskey(pg_by_name, (h, name)), 1:H) || continue
             init = get(uc, :init, nothing) === nothing ? nothing : get(uc.init, name, nothing)
             for h in 1:H
                 p  = pg_by_name[(h, name)]
-                pm = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : 0.0
                 on = JuMP.@variable(model, binary = true)
                 st = JuMP.@variable(model, binary = true)
                 uc_on[(h, name)] = on
                 uc_start[(h, name)] = st
-                JuMP.@constraint(model, p <= pm * on)
-                JuMP.@constraint(model, p >= u.min_load * pm * on)
+                was_on = prev_on === nothing ? nothing : get(prev_on, (h, name), false)
+                if !(h in free)
+                    # frozen hour: output already fixed; on/off as committed before
+                    JuMP.fix(on, was_on === true ? 1.0 : 0.0; force = true)
+                else
+                    pm = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : 0.0
+                    JuMP.@constraint(model, p <= pm * on)
+                    JuMP.@constraint(model, p >= u.min_load * pm * on)
+                    if was_on === true
+                        JuMP.@constraint(model, on == 1)
+                    elseif was_on === false && name in block_new
+                        JuMP.@constraint(model, on == 0)
+                    end
+                end
                 if h > 1
                     JuMP.@constraint(model, st >= on - uc_on[(h - 1, name)])
                 elseif init !== nothing

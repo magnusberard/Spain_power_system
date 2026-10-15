@@ -284,6 +284,17 @@ time_limit_s          = 600.0    # per DA solve; the best solution found is used
 # 2026).  Log: results/uc_rounds.csv.
 mic_check             = true
 max_rounds            = 100
+# Intraday starts: in ID2 and ID3 a committed unit off after the previous gate
+# may start, paying its start cost (min load, min up/down, carry-over apply);
+# units already on stay on.  A new start must earn, over its newly-on hours at
+# the gate's prices, its starts × start cost + its EUR/MWh cost — the cost-based
+# analogue of the all-or-nothing block orders the European IDAs allow (OMIE
+# Reglas IDA 2024, Regla 39; EUPHEMIA Public Description §5.4); the IDAs have
+# no minimum-income condition.  Failing starts are blocked one at a time and the
+# gate re-cleared (log: results/uc_rounds.csv, stage ID2/ID3).  The end-of-day
+# state handed to the next day then comes from ID3.  CID and BAL still cannot
+# start or stop a unit.
+intraday_starts       = false
 
 [unit_commitment.coal]
 # ── The same rules for the coal fleet (unit_commitment.jl) ───────────────────

@@ -157,8 +157,10 @@ Options as environment variables for step 1: `MARKUP=on` (`[costs.markup]`),
 `aligned_rc_observed`), `FROM`, `TO` (default 2024-01-01
 .. 2024-12-29), `DAYS` (chunk length, 7), `GAS=on` (switches on
 `[costs.gas_unit_efficiency]`, `[unit_commitment]` (gas and coal),
-`[costs.coal_srmc]`, `[fleet]` and `[islands].exclude_from_market`; other
-settings, e.g. `intraday_starts`, come from `config.toml`), `RES` (res_input).
+`[costs.coal_srmc]`, `[fleet]`, `[islands].exclude_from_market` and
+`remove_isolated` (Ceuta), and lets the redispatch move coal: `[redispatch]
+frozen_fuels = ["Nuclear", "Biomass"]`; other settings, e.g. `intraday_starts`,
+come from `config.toml`), `RES` (res_input).
 `scripts/make_run_config.jl` writes the two config copies
 (`<folder>/config_markets.toml`, `<folder>/config_redispatch.toml`). Reruns skip
 finished chunks; a failed market chunk stops the chain.
@@ -499,7 +501,10 @@ Reglas de funcionamiento §6.3.1.2), and the day re-cleared; removed units that
 would then profit are tried back one at a time (EUPHEMIA Public Description
 §7.7). At most `max_rounds = 100` clears per day (default of the Comillas
 iberian-day-ahead-market-simulator). Log: `results/uc_rounds.csv`; the
-commitment itself: `results/uc_commitment.csv`.
+commitment itself: `results/uc_commitment.csv`. Income is compared with each
+hour's own cost (costs differ by hour with `[costs.markup]`), and a removal
+after which the day has no feasible solution is undone and the unit kept
+(`remove_infeasible_kept` in the log); the intraday-start check does the same.
 
 **Assumptions (ours, not from a source):**
 - **Units ≥ 700 MW are "2x1"** (two gas turbines + one steam turbine) and get
@@ -540,7 +545,10 @@ small (ID2 −0.5, CID −1.4 €/MWh on average).
 in the split-run scripts). In the market stages every taxed plant (gas, coal,
 nuclear, biomass, oil) bids cost ÷ (1 − tax), with Spain's 7 % tax on the value
 of electricity production (IVPEE, Ley 15/2012; 2024: 3.5 % in Q1 and 5.25 % in Q2
-after Real Decreto-ley 8/2023). Gas and coal also get a mark-up: bid = cost ÷
+after Real Decreto-ley 8/2023). Wind and solar bid about 0, so the tax does not
+change their bids; the [chp] blocks are calibrated real bids that already
+include it; hydro, which bids its water value, is left untaxed (a
+simplification: real hydro owners pay the tax too). Gas and coal also get a mark-up: bid = cost ÷
 (1 − tax) ÷ (1 − L), where L depends on how tight the hour is, measured by the
 Residual Supply Index RSI = (offered capacity − the largest firm's offered
 capacity) ÷ demand (Sheffrin 2002; Newbery 2008). L(RSI) is the median Lerner
@@ -559,11 +567,17 @@ bids in tight hours.
 for one day, then the next day), so each day's DA starts from the state the
 previous day ended in.
 
-**Test so far (8 Jul + 2 Dec 2024):** switches off give identical results.
-Switched on, the DA commits only 0–2 CCGTs because the model's DA uses about
-twice the real hydro (2 Dec: 167 vs OMIE 88 GWh), so gas is barely needed and
-the price barely moves. Carry-over, the later-gate bounds and the
-minimum-income check are not yet tested in a full run.
+**Tests.** 8 Jul + 2 Dec 2024: switches off give identical results; switched
+on, the DA commits only 0–2 CCGTs because the model's DA uses about twice the
+real hydro (2 Dec: 167 vs OMIE 88 GWh). 11–17 Dec 2024, market stages, all
+gas/coal switches on: carry-over, later-gate bounds and the minimum-income
+check work (0 bound violations); DA error vs OMIE 36.3 → 33.9 €/MWh with coal
+on/off and coal cost, → 18.9 €/MWh with `[costs.markup]` (mean price 95 → 116,
+OMIE 129). With coal on/off, coal frozen at its market output in the redispatch
+made night hours infeasible (the northern grid cannot take full-size Asturian
+coal at night; 5 of 48 AC hours on 11–12 Dec); with coal redispatchable all
+hours solve and coal is lowered by about 430 MW in Asturias. Split runs on
+Solstorm: 1–14 Jan 2024 in two weekly chunks, 8 min per week for the markets.
 
 ## Storage (pumped hydro and Li-Ion BESS)
 

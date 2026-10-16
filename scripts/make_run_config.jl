@@ -15,9 +15,11 @@
 #   --gas on             the gas/coal switches, all off in config.toml:
 #                        [costs.gas_unit_efficiency] enabled, [unit_commitment]
 #                        enabled, [costs.coal_srmc] enabled, [fleet] enabled and
-#                        [islands] exclude_from_market (the coal fleet without its
+#                        [islands] exclude_from_market and remove_isolated (Ceuta)
+#                        (the coal fleet without its
 #                        availability factor needs the island plants out of the
-#                        market and the closed plants removed)
+#                        market and the closed plants removed), and [redispatch]
+#                        frozen_fuels = ["Nuclear", "Biomass"] (coal redispatchable)
 #   --markup on          [costs.markup] enabled (generation tax + RSI mark-ups)
 #   --hydro LABEL        [bellman] volume/turbine/bellman files from Magnus's
 #                        hydro_state variant LABEL (e.g. aligned_rc_observed):
@@ -31,7 +33,12 @@ const GAS_ON = [("costs.gas_unit_efficiency", "enabled", "true"),
                 ("unit_commitment", "enabled", "true"),
                 ("costs.coal_srmc", "enabled", "true"),
                 ("fleet", "enabled", "true"),
-                ("islands", "exclude_from_market", "true")]
+                ("islands", "exclude_from_market", "true"),
+                ("islands", "remove_isolated", "true"),           # Ceuta (G0116), not connected in 2024
+                # coal now has its own on/off and runs at full size: the redispatch
+                # must be able to move it (REE redispatches coal for grid limits,
+                # e.g. Asturian coal at night); only nuclear and biomass stay frozen
+                ("redispatch", "frozen_fuels", "[\"Nuclear\", \"Biomass\"]")]
 
 "Set `key = value` in [section] (the first such line before the next header)."
 function set_key(lines, section, key, value)

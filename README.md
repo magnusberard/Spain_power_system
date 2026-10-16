@@ -157,7 +157,7 @@ Options as environment variables for step 1: `FROM`, `TO` (default 2024-01-01
 `[costs.gas_unit_efficiency]`, `[unit_commitment]` (gas and coal),
 `[costs.coal_srmc]`, `[fleet]` and `[islands].exclude_from_market`; other
 settings, e.g. `intraday_starts`, come from `config.toml`), `RES` (res_input).
-`scripts/make_run_config.py` writes the two config copies
+`scripts/make_run_config.jl` writes the two config copies
 (`<folder>/config_markets.toml`, `<folder>/config_redispatch.toml`). Reruns skip
 finished chunks; a failed market chunk stops the chain.
 

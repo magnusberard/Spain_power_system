@@ -13,7 +13,7 @@
 #   <out>     parent folder; one folder per chunk, <out>/<from>_<to>/
 #   FROM, TO  first and last study day (default 2024-01-01 .. 2024-12-29)
 #   DAYS      chunk length in days (default 7)
-#   GAS       on: the gas/coal switches on (scripts/make_run_config.py); off
+#   GAS       on: the gas/coal switches on (scripts/make_run_config.jl); off
 #             (default): config.toml as it is
 #   RES       optional [run].res_input (accepted or offered)
 #
@@ -33,13 +33,12 @@ set -u
 OUT="$1"
 FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-29}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PY="${PYTHON:-python3}"
 mkdir -p "$OUT"
 
 RES_ARG=()
 [ -n "${RES:-}" ] && RES_ARG=(--res-input "$RES")
-"$PY" "$REPO/scripts/make_run_config.py" "$OUT/config_markets.toml" --stage markets --gas "$GAS" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
-"$PY" "$REPO/scripts/make_run_config.py" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
+julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
+julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 
 # chunks of DAYS days in FROM .. TO
 chunks=()

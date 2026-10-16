@@ -26,6 +26,8 @@ K="${PART%%/*}"; N="${PART##*/}"
 [ "$K" -ge 1 ] && [ "$K" -le "$N" ] || { echo "part must be k/N with 1 <= k <= N"; exit 1; }
 LANES="${LANES:-6}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# step 1 writes chunks.txt within seconds of starting; wait up to 2 min for it
+for _ in $(seq 1 24); do [ -f "$OUT/chunks.txt" ] && break; sleep 5; done
 [ -f "$OUT/chunks.txt" ] || { echo "$OUT/chunks.txt not found - start step 1 (solstorm_start_markets.sh) first"; exit 1; }
 
 mapfile -t chunks < "$OUT/chunks.txt"

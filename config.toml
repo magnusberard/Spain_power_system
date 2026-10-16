@@ -213,7 +213,7 @@ vom                 = 3.3
 # CID, BAL; not the redispatch):
 #   all taxed fuels   bid = cost / (1 - tax)
 #   gas (CC, OCGT)    bid = cost / (1 - tax) / (1 - L_gas(RSI))
-#   coal              bid = cost / (1 - tax) / (1 - L_coal(RSI))
+#   coal              bid = cost / (1 - tax) / (1 - L_coal)
 # tax: Spain's tax on the value of electricity production (IVPEE, Ley 15/2012),
 #   7 %, passed into bids.  2024: base cut by 50 % in Q1 and 25 % in Q2
 #   (Real Decreto-ley 8/2023; CNMC) → 3.5 % / 5.25 % / 7 % / 7 %.  Not applied to
@@ -223,21 +223,25 @@ vom                 = 3.3
 #   EPRG 0821).  2024: from OMIE's day-ahead bid curves and unit owners
 #   (omie_conversion/markup_rsi.py → Data/markup/rsi_2024.csv).  A model-side
 #   RSI for other years (e.g. 2035) is not built yet.
-# L: Lerner index (bid − cost)/bid, median of 2024 OMIE gas / coal bids within
-#   ±20 % of the price per RSI interval (0.1 wide, ends merged), over the model's
-#   own cost incl. tax (scripts/build_markup_table.py → markup_table_2024.csv).
-#   Interpolated linearly between interval points, constant beyond the ends,
-#   0 <= L <= cap.  Gas: 0.19 at RSI 1.23 falling to 0 at RSI ≈ 1.83; coal: about
-#   0.18–0.23 everywhere (coal bids do not follow RSI).  Checked on 2018, 2019 and
-#   2023 bids: same gas shape in tight hours.
-# Our assumptions: one table for all gas units and one for all coal units;
-#   2024 values only; the hourly bid factor applies to the whole unit.
+# L: Lerner index (bid − cost)/bid of 2024 OMIE bids within ±20 % of the price,
+#   over the model's own cost incl. tax (scripts/build_markup_table.py).
+#   Gas: median per RSI interval (0.1 wide, ends merged) → markup_table_2024.csv,
+#   interpolated linearly between interval points, constant beyond the ends;
+#   0.19 at RSI 1.23 falling to 0 at RSI ≈ 1.83.  Checked on 2018, 2019 and 2023
+#   bids: same gas shape in tight hours.
+#   Coal: one constant L_coal, the median over all 2024 coal hours near the
+#   price (1,714 hours): coal bids do not follow RSI (correlation −0.16; interval
+#   medians 0.18–0.23).
+#   Both kept within 0 <= L <= cap.
+# Our assumptions: one table for all gas units and one constant for all coal
+#   units; 2024 values only; the hourly bid factor applies to the whole unit.
 enabled     = false
 tax         = { "2024Q1" = 0.035, "2024Q2" = 0.0525, "2024Q3" = 0.07, "2024Q4" = 0.07 }
 tax_default = 0.07
 tax_fuels   = ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]
 rsi_file    = "Data/markup/rsi_2024.csv"
 table_file  = "Data/markup/markup_table_2024.csv"
+L_coal      = 0.188
 cap         = 0.5
 
 [fleet]

@@ -5,7 +5,7 @@
 #
 #   bid = c / (1 - tax)                       taxed fuels (Gas, Coal, Nuclear, ...)
 #   bid = c / (1 - tax) / (1 - L_gas(RSI))    gas units (Combined_cycle, Gas_turbine)
-#   bid = c / (1 - tax) / (1 - L_coal(RSI))   coal units
+#   bid = c / (1 - tax) / (1 - L_coal)        coal units (one constant L)
 #
 # tax : Spain's tax on the value of electricity production (IVPEE, Ley 15/2012,
 #       7 %), paid on all generation and passed into bids. 2024: the tax base was
@@ -18,11 +18,13 @@
 #       0821). For 2024 read from Data/markup/rsi_2024.csv, computed from OMIE's
 #       day-ahead bids (omie_conversion/markup_rsi.py); a model-side RSI for other
 #       years is still to be built.
-# L   : Lerner index (bid - cost)/bid, the median of real 2024 gas and coal bids
-#       near the price per RSI interval, over the model's own cost incl. tax
-#       (scripts/build_markup_table.py). Linear interpolation between the
-#       interval points, held constant beyond the first and last point, limited
-#       to 0 <= L <= cap (no bid below cost + tax).
+# L   : Lerner index (bid - cost)/bid over the model's own cost incl. tax, from
+#       real 2024 bids near the price (scripts/build_markup_table.py).
+#       Gas: the median per RSI interval (table_file), linear interpolation
+#       between the interval points, held constant beyond the first and last.
+#       Coal: one constant (L_coal in the config), the median over all hours,
+#       since coal bids do not follow RSI. Both limited to 0 <= L <= cap (no bid
+#       below cost + tax).
 using CSV, DataFrames, Dates
 
 struct MarkupCfg
@@ -32,7 +34,7 @@ struct MarkupCfg
     rsi::Dict{Tuple{String,Int},Float64} # (date, hour 0-23) => RSI
     x::Vector{Float64}                   # table: RSI points (increasing)
     l_gas::Vector{Float64}
-    l_coal::Vector{Float64}
+    l_coal::Float64                      # constant, all hours
     cap::Float64
 end
 
@@ -48,7 +50,7 @@ function load_markup(cfg; root = @__DIR__)
               Float64(get(m, "tax_default", 0.07)),
               Set(String.(get(m, "tax_fuels", ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]))),
               Dict((string(r.date), Int(r.hour)) => Float64(r.rsi) for r in eachrow(rs)),
-              Float64.(tb.rsi), Float64.(tb.L_gas), Float64.(tb.L_coal),
+              Float64.(tb.rsi), Float64.(tb.L_gas), Float64(get(m, "L_coal", 0.0)),
               Float64(get(m, "cap", 0.5)))
 end
 
@@ -63,13 +65,13 @@ function markup_interp(x, y, r)
     return y[i] + (r - x[i]) / (x[i+1] - x[i]) * (y[i+1] - y[i])
 end
 
-"(tax, rsi, L_gas, L_coal) for one hour; RSI missing → no mark-up (L = 0)."
+"(tax, rsi, L_gas, L_coal) for one hour; RSI missing → no gas mark-up (L_gas = 0)."
 function markup_for(mk::MarkupCfg, date_str, hour::Int)
     tax = markup_tax(mk, Date(String(date_str)))
     r = get(mk.rsi, (String(date_str), hour), NaN)
-    isnan(r) && return (tax, r, 0.0, 0.0)
     lim(v) = clamp(v, 0.0, mk.cap)
-    return (tax, r, lim(markup_interp(mk.x, mk.l_gas, r)), lim(markup_interp(mk.x, mk.l_coal, r)))
+    isnan(r) && return (tax, r, 0.0, lim(mk.l_coal))
+    return (tax, r, lim(markup_interp(mk.x, mk.l_gas, r)), lim(mk.l_coal))
 end
 
 "Scale the generators' linear costs of one day's hourly networks in place; returns one log row per hour."

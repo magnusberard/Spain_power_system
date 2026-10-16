@@ -549,15 +549,16 @@ after Real Decreto-ley 8/2023). Wind and solar bid about 0, so the tax does not
 change their bids; the [chp] blocks are calibrated real bids that already
 include it; hydro, which bids its water value, is left untaxed (a
 simplification: real hydro owners pay the tax too). Gas and coal also get a mark-up: bid = cost ÷
-(1 − tax) ÷ (1 − L), where L depends on how tight the hour is, measured by the
+(1 − tax) ÷ (1 − L). For gas, L depends on how tight the hour is, measured by the
 Residual Supply Index RSI = (offered capacity − the largest firm's offered
 capacity) ÷ demand (Sheffrin 2002; Newbery 2008). L(RSI) is the median Lerner
-index (bid − cost) ÷ bid of real 2024 OMIE gas/coal bids near the price per
+index (bid − cost) ÷ bid of real 2024 OMIE gas bids near the price per
 RSI interval of 0.1, over the model's own cost incl. tax, interpolated
 linearly and kept between 0 and 0.5 (`Data/markup/markup_table_2024.csv`, built
 by `omie_conversion/markup_rsi.py` and `scripts/build_markup_table.py`). Gas:
-0.19 in the tightest hours, falling to 0 at RSI ≈ 1.83; coal: about 0.18–0.23 in
-all hours (coal bids do not follow RSI). For 2024 the hourly RSI is read from
+0.19 in the tightest hours, falling to 0 at RSI ≈ 1.83. Coal bids do not follow
+RSI (interval medians 0.18–0.23), so coal gets one constant, `L_coal = 0.188`,
+the median over all 2024 coal hours near the price. For 2024 the hourly RSI is read from
 OMIE data (`Data/markup/rsi_2024.csv`); computing it from the model's own inputs
 (needed for 2035) is not built yet. Each run writes `results/markup_hours.csv`
 (RSI, tax, L per hour). The same gas shape was found in 2018, 2019 and 2023

@@ -10,9 +10,12 @@ Inputs (Data/markup/):
                          daily_costs_2024.csv from scripts/export_daily_costs.jl).
 Outputs (Data/markup/):
   rsi_2024.csv           date, hour (0-23, the model's hours), rsi
-  markup_table_2024.csv  rsi, L_gas, L_coal: one point per RSI interval (the
-                         interval's median RSI and median L), read by markup.jl and
+  markup_table_2024.csv  rsi, L_gas: one point per RSI interval (the interval's
+                         median RSI and median gas L), read by markup.jl and
                          interpolated linearly between points.
+  printed                the coal constant: median L over all coal hours, set by
+                         hand as L_coal in config.toml [costs.markup] (coal bids
+                         do not follow RSI).
 
 Choices (documented in config.toml [costs.markup]):
   - L is measured over cost INCLUDING the generation tax (IVPEE, 7 % of the
@@ -47,12 +50,19 @@ def points(tag, costcol, edges):
         rsi=("rsi", "median"), L=("L", "median"), hours=("L", "size"))
 
 
-gas, coal = points("gas", "gas_060", EDGES), points("coal", "coal", EDGES)
-# one table: the gas interval medians of RSI as x; coal L read at the same intervals
-tab = pd.DataFrame({"rsi": gas.rsi.round(4), "L_gas": gas.L.round(4), "L_coal": coal.L.values.round(4),
-                    "hours_gas": gas.hours.values, "hours_coal": coal.hours.values})
+gas = points("gas", "gas_060", EDGES)
+tab = pd.DataFrame({"rsi": gas.rsi.round(4), "L_gas": gas.L.round(4), "hours_gas": gas.hours.values})
 tab.to_csv(D / "markup_table_2024.csv", index=False)
 print(tab.to_string(index=False))
+
+# coal: one constant over all hours (interval medians 0.18-0.23, no RSI pattern)
+coal = points("coal", "coal", [0, 99])
+cx = h.dropna(subset=["L_coal"])
+cx = cx[cx.price >= 0.8 * cx.coal]
+cl = 1 - (1 - cx.L_coal) / (1 - cx.tax)
+print(f"coal: L_coal = {coal.L.iloc[0]:.3f} over {int(coal.hours.iloc[0])} hours "
+      f"(corr with RSI {cl.corr(cx.rsi):.2f}; per interval {points('coal', 'coal', EDGES).L.min():.2f}-"
+      f"{points('coal', 'coal', EDGES).L.max():.2f}) -> set L_coal in config.toml [costs.markup]")
 
 # sensitivity: 0.05 and 0.2 wide intervals, gas, read at the 0.1 points
 for w in (0.05, 0.2):

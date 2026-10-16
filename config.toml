@@ -207,6 +207,39 @@ co2_t_per_gj_fuel   = 0.0913
 eta                 = 0.435
 vom                 = 3.3
 
+[costs.markup]
+# ── Generation tax and RSI-based mark-ups on market bids (markup.jl) ─────────
+# enabled = true raises the per-MWh bids in the market stages (DA, ID2, ID3,
+# CID, BAL; not the redispatch):
+#   all taxed fuels   bid = cost / (1 - tax)
+#   gas (CC, OCGT)    bid = cost / (1 - tax) / (1 - L_gas(RSI))
+#   coal              bid = cost / (1 - tax) / (1 - L_coal(RSI))
+# tax: Spain's tax on the value of electricity production (IVPEE, Ley 15/2012),
+#   7 %, passed into bids.  2024: base cut by 50 % in Q1 and 25 % in Q2
+#   (Real Decreto-ley 8/2023; CNMC) → 3.5 % / 5.25 % / 7 % / 7 %.  Not applied to
+#   the [chp] blocks (calibrated market bids), wind, solar or hydro (water value).
+# RSI: Residual Supply Index per hour = (offered capacity − largest firm's
+#   offered capacity) / matched demand (Sheffrin 2002, CAISO; Newbery 2008,
+#   EPRG 0821).  2024: from OMIE's day-ahead bid curves and unit owners
+#   (omie_conversion/markup_rsi.py → Data/markup/rsi_2024.csv).  A model-side
+#   RSI for other years (e.g. 2035) is not built yet.
+# L: Lerner index (bid − cost)/bid, median of 2024 OMIE gas / coal bids within
+#   ±20 % of the price per RSI interval (0.1 wide, ends merged), over the model's
+#   own cost incl. tax (scripts/build_markup_table.py → markup_table_2024.csv).
+#   Interpolated linearly between interval points, constant beyond the ends,
+#   0 <= L <= cap.  Gas: 0.19 at RSI 1.23 falling to 0 at RSI ≈ 1.83; coal: about
+#   0.18–0.23 everywhere (coal bids do not follow RSI).  Checked on 2018, 2019 and
+#   2023 bids: same gas shape in tight hours.
+# Our assumptions: one table for all gas units and one for all coal units;
+#   2024 values only; the hourly bid factor applies to the whole unit.
+enabled     = false
+tax         = { "2024Q1" = 0.035, "2024Q2" = 0.0525, "2024Q3" = 0.07, "2024Q4" = 0.07 }
+tax_default = 0.07
+tax_fuels   = ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]
+rsi_file    = "Data/markup/rsi_2024.csv"
+table_file  = "Data/markup/markup_table_2024.csv"
+cap         = 0.5
+
 [fleet]
 # ── Plants closed in reality, left out of every stage ────────────────────────
 # enabled = true removes these units (generations.csv unit_id) from the market

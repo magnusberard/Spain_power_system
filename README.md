@@ -152,7 +152,9 @@ start from the first-day rule. A split run keeps the exact carry-over:
    away: it waits for each chunk's markets to finish.
 3. `python scripts/merge_runs.py <out> <folder>` joins the chunks as usual.
 
-Options as environment variables for step 1: `FROM`, `TO` (default 2024-01-01
+Options as environment variables for step 1: `MARKUP=on` (`[costs.markup]`),
+`HYDRO=<label>` (Magnus's hydro_state files for `[bellman]`, e.g.
+`aligned_rc_observed`), `FROM`, `TO` (default 2024-01-01
 .. 2024-12-29), `DAYS` (chunk length, 7), `GAS=on` (switches on
 `[costs.gas_unit_efficiency]`, `[unit_commitment]` (gas and coal),
 `[costs.coal_srmc]`, `[fleet]` and `[islands].exclude_from_market`; other
@@ -533,6 +535,25 @@ start cost and €/MWh cost over its new hours — the cost-based analogue of th
 block orders the intraday auctions allow (OMIE Reglas IDA 2024, Regla 39). The
 next day then starts from the ID3 state. Effect in the December test week:
 small (ID2 −0.5, CID −1.4 €/MWh on average).
+
+**Generation tax and mark-ups** (`[costs.markup]`, off by default; `MARKUP=on`
+in the split-run scripts). In the market stages every taxed plant (gas, coal,
+nuclear, biomass, oil) bids cost ÷ (1 − tax), with Spain's 7 % tax on the value
+of electricity production (IVPEE, Ley 15/2012; 2024: 3.5 % in Q1 and 5.25 % in Q2
+after Real Decreto-ley 8/2023). Gas and coal also get a mark-up: bid = cost ÷
+(1 − tax) ÷ (1 − L), where L depends on how tight the hour is, measured by the
+Residual Supply Index RSI = (offered capacity − the largest firm's offered
+capacity) ÷ demand (Sheffrin 2002; Newbery 2008). L(RSI) is the median Lerner
+index (bid − cost) ÷ bid of real 2024 OMIE gas/coal bids near the price per
+RSI interval of 0.1, over the model's own cost incl. tax, interpolated
+linearly and kept between 0 and 0.5 (`Data/markup/markup_table_2024.csv`, built
+by `omie_conversion/markup_rsi.py` and `scripts/build_markup_table.py`). Gas:
+0.19 in the tightest hours, falling to 0 at RSI ≈ 1.83; coal: about 0.18–0.23 in
+all hours (coal bids do not follow RSI). For 2024 the hourly RSI is read from
+OMIE data (`Data/markup/rsi_2024.csv`); computing it from the model's own inputs
+(needed for 2035) is not built yet. Each run writes `results/markup_hours.csv`
+(RSI, tax, L per hour). The same gas shape was found in 2018, 2019 and 2023
+bids in tight hours.
 
 **Day by day.** The market stages run day by day (DA → ID2 → ID3 → CID → BAL
 for one day, then the next day), so each day's DA starts from the state the

@@ -15,6 +15,8 @@
 #   DAYS      chunk length in days (default 7)
 #   GAS       on: the gas/coal switches on (scripts/make_run_config.jl); off
 #             (default): config.toml as it is
+#   MARKUP    on: [costs.markup] on as well (generation tax + RSI mark-ups); off (default)
+#   HYDRO     optional hydro_state variant for [bellman] (e.g. aligned_rc_observed)
 #   RES       optional [run].res_input (accepted or offered)
 #
 # Writes <out>/config_markets.toml, <out>/config_redispatch.toml and
@@ -31,14 +33,15 @@ set -u
 
 [ $# -ge 1 ] || { sed -n '2,30p' "$0"; exit 1; }
 OUT="$1"
-FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-29}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"
+FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-29}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"; MARKUP="${MARKUP:-off}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$OUT"
 
 RES_ARG=()
 [ -n "${RES:-}" ] && RES_ARG=(--res-input "$RES")
-julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
-julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
+[ -n "${HYDRO:-}" ] && RES_ARG+=(--hydro "$HYDRO")
+julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
+julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 
 # chunks of DAYS days in FROM .. TO
 chunks=()

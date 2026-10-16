@@ -52,6 +52,7 @@ const GRB_ENV = Gurobi.Env()
 include("data_preparation.jl")
 include("bellman.jl")
 include("fuel_prices.jl")
+include("markup.jl")
 include("unit_commitment.jl")
 include("crossborder.jl")
 include("da.jl")
@@ -96,6 +97,14 @@ if !GAS_SRMC_ON && get(get(get(cfg, "costs", Dict()), "coal_srmc", Dict()), "ena
     println("WARNING: [costs.coal_srmc] ignored — needs [costs.gas_srmc] on and the 2024 path")
 end
 COAL_SRMC !== nothing && println("Coal marginal cost: quarterly coal price + EUA (per study day, [costs.coal_srmc])")
+# [costs.markup]: generation tax on all taxed fuels + RSI-based mark-ups on gas
+# and coal bids in the market stages (markup.jl).  2024 path only.
+const MARKUP = load_markup(cfg)
+const MARKUP_LOG = Dict{Tuple{String,Int},NamedTuple}()   # (date, hour) ⇒ tax, RSI, L
+MARKUP !== nothing && @printf("Mark-ups       : tax %s (default %.1f %%) on %s; gas/coal L from RSI (%d table points, RSI %.2f–%.2f, cap %.2f)
+",
+    join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),
+    length(MARKUP.x), MARKUP.x[1], MARKUP.x[end], MARKUP.cap)
 # [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
 # CCGT is priced from its own gas burn (gas_srmc_eta).  Builds on gas_srmc, so
 # 2024 path only.
@@ -1353,7 +1362,7 @@ end
 # nuclear_sched: the full da_schedule dict — when provided, Nuclear units are frozen
 # at their DA dispatch values (pmin=pmax) for this copper-plate stage.
 function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
-    [prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour),
+    nets = [prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour),
                      ts.solar_mw, ts.wind_mw;
                      hydro_reservoir_cost = 0.0,
                      crossborder_inj = crossborder_inj_for(date_str, ts.hour),
@@ -1390,6 +1399,12 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      rating_scale = RATING_SCALE,
                      extra_lines = EXTRA_LINES)
      for ts in eachrow(day_ts)]
+    if MARKUP !== nothing && !WEEKS_ACTIVE
+        for r in apply_markup!(nets, MARKUP, date_str, day_ts)
+            MARKUP_LOG[(r.date, r.hour)] = r
+        end
+    end
+    return nets
 end
 
 # Reservoir gen ids (stable across hours) for a day's assembled networks.
@@ -2433,6 +2448,14 @@ if RD_ENABLED
         end
         @printf "  Domestic adequacy diagnostic: %.1f MWh load shedding (not an exchange-relaxation variable)\n" shed_total
     end
+end
+
+# ── Mark-ups applied per hour → results/markup_hours.csv ([costs.markup]) ──────
+if RUN_MARKET && MARKUP !== nothing && !isempty(MARKUP_LOG)
+    mk_df = sort(DataFrame(collect(values(MARKUP_LOG))), [:date, :hour])
+    CSV.write(joinpath(RESULTS, "markup_hours.csv"), mk_df)
+    @printf "  markup_hours.csv : %d hours, mean L gas %.3f, coal %.3f
+" nrow(mk_df) mean(mk_df.L_gas) mean(mk_df.L_coal)
 end
 
 # ── End-of-run unit-commitment state → results/uc_state.json ──────────────────

@@ -1,0 +1,17 @@
+# Variant "aligned": the SDDP's Spain gets the weekly supply the market chain uses (nuclear and
+# coal availability, CHP / waste / mini-hydro sizes), and nothing else changes: dataset start
+# level (30 %) and the replayed climate year, as the baseline. Isolates the supply fix.
+#   HYDRO_STATE_CONFIG=hydro_state/hydro_state_aligned.toml julia --project=. hydro_state/midterm_observed.jl
+label = "aligned"
+
+[system]
+es_stage_supply_file = "Data/hydro_state/es_stage_supply_2024.csv"
+
+[observed]
+ree_file = "Data/hydro_state/ree_hydro_monthly.csv"
+observed_start = false
+inflow = "climate_year"
+
+[training]
+es_start_fills = [0.20, 0.35, 0.50, 0.65, 0.80, 0.95]
+iterations_per_start = 15

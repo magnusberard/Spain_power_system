@@ -341,6 +341,68 @@ therm_cost(i::Int, t::Int) =
     (GAS_STAGE === nothing || GAS_KIND[i] === nothing) ? therm[i].cost :
     GAS_STAGE[GAS_KIND[i]][t]
 
+# ── Optional per-stage Spanish supply ([midterm4].es_stage_supply_file) ──────
+# Empty (the default): every unit keeps its fixed pmax above, as before.  Set
+# (2024 path only): weekly ES nuclear and coal availability and the [chp] block
+# sizes (cogeneration / waste / mini-hydro) per stage, from a file built out of
+# the market chain's own per-day tables (hydro_state/build_stage_supply.jl), so
+# the water values are computed against the supply the day-ahead stage sees.
+# Without it the SDDP runs nuclear at full nameplate and the [chp] blocks at
+# their annual defaults.  Columns: stage, nuclear_avail, coal_avail,
+# chp_gas_mw, chp_waste_mw, chp_minihydro_mw (one row per stage, ≥ n_stages).
+const ES_STAGE_FILE = String(get(mcfg, "es_stage_supply_file", ""))
+# unit index ⇒ per-stage pmax [MW], for the ES units the file covers
+const ES_STAGE_PMAX = if ES_STAGE_FILE == ""
+    Dict{Int,Vector{Float64}}()
+else
+    SCEN_ACTIVE && error("[midterm4].es_stage_supply_file is for the 2024 path only")
+    es_sdf = CSV.read(joinpath(@__DIR__, ES_STAGE_FILE), DataFrame)
+    nrow(es_sdf) >= N_STAGES || error("$ES_STAGE_FILE: $(nrow(es_sdf)) rows < n_stages = $N_STAGES")
+    es_sdf = es_sdf[1:N_STAGES, :]
+    es_pmax = Dict{Int,Vector{Float64}}()
+    for (i, u) in enumerate(therm)
+        u.zone == "ES" || continue
+        if u.tech == "Nuclear"            # nameplate × weekly availability
+            es_pmax[i] = u.pmax .* es_sdf.nuclear_avail
+        elseif u.tech == "Coal"           # pmax above is nameplate × ES_COAL_AVAIL
+            es_pmax[i] = (ES_COAL_AVAIL > 0 ? u.pmax / ES_COAL_AVAIL : 0.0) .* es_sdf.coal_avail
+        elseif u.tech == "Cogeneration"
+            es_pmax[i] = Float64.(es_sdf.chp_gas_mw)
+        elseif u.tech == "Waste_CHP"
+            es_pmax[i] = Float64.(es_sdf.chp_waste_mw)
+        elseif u.tech == "Mini_hydro"
+            es_pmax[i] = Float64.(es_sdf.chp_minihydro_mw)
+        end
+    end
+    @printf("ES stage supply from %s: nuclear avail %.2f…%.2f, cogeneration %.0f…%.0f MW (%d units per stage)\n",
+            ES_STAGE_FILE, extrema(es_sdf.nuclear_avail)..., extrema(es_sdf.chp_gas_mw)..., length(es_pmax))
+    es_pmax
+end
+
+# ── Optional seasonal envelope on the ES reservoir ([midterm4].es_rule_curve_file) ──
+# Empty (the default): no limits beyond 0 ≤ V ≤ vmax, as before.  Set (2024 path
+# only): the end-of-stage ES volume is kept within lower_fill · vmax … upper_fill ·
+# vmax per stage (rule curves: flood-control margins above, minimum reserves below),
+# from a file built out of REE's observed fill over calibration years
+# (hydro_state/build_rule_curves.py).  Soft: each MWh outside costs
+# es_rule_curve_penalty EUR (default = end_penalty), so a very wet or dry week stays
+# feasible — above the curve the policy spills or turbines, as a real operator must.
+# Columns: stage, lower_fill, upper_fill (fractions of vmax; one row per stage).
+const ES_RULE_FILE = String(get(mcfg, "es_rule_curve_file", ""))
+const ES_RULE_PENALTY = Float64(get(mcfg, "es_rule_curve_penalty", END_PENALTY))
+const ES_RULE_CURVE = if ES_RULE_FILE == ""
+    nothing
+else
+    SCEN_ACTIVE && error("[midterm4].es_rule_curve_file is for the 2024 path only")
+    es_rc = CSV.read(joinpath(@__DIR__, ES_RULE_FILE), DataFrame)
+    nrow(es_rc) >= N_STAGES || error("$ES_RULE_FILE: $(nrow(es_rc)) rows < n_stages = $N_STAGES")
+    all(0 .<= es_rc.lower_fill .<= es_rc.upper_fill .<= 1) ||
+        error("$ES_RULE_FILE: need 0 ≤ lower_fill ≤ upper_fill ≤ 1")
+    @printf("ES rule curves from %s: fill %.0f…%.0f %% (lower) / %.0f…%.0f %% (upper), penalty %.0f EUR/MWh\n",
+            ES_RULE_FILE, 100 .* extrema(es_rc.lower_fill)..., 100 .* extrema(es_rc.upper_fill)..., ES_RULE_PENALTY)
+    (lower = Float64.(es_rc.lower_fill[1:N_STAGES]), upper = Float64.(es_rc.upper_fill[1:N_STAGES]))
+end
+
 df_tr = CSV.read(joinpath(DATA_DIR, "Transmission.csv"), DataFrame)
 lines = [(from = node_of(String(r[1])), to = node_of(String(r.ToNode)),
           fmax = Float64(r.Capacity_MW)) for r in eachrow(df_tr)]
@@ -648,6 +710,9 @@ model = SDDP.LinearPolicyGraph(;
     @constraint(sp, ptbudget, Δh * sum(turbpt) <= 0.0)                          # RHS ← inflow
 
     @variable(sp, 0 <= gth[i in 1:length(therm), 1:NB] <= therm[i].pmax)
+    for (i, pmax_t) in ES_STAGE_PMAX, b in 1:NB       # empty unless es_stage_supply_file is set
+        set_upper_bound(gth[i, b], pmax_t[t])
+    end
     @variable(sp, gres[z in 1:length(ZONES), 1:NB] >= 0)
 
     ns = length(sts)
@@ -675,6 +740,15 @@ model = SDDP.LinearPolicyGraph(;
     cost = BLOCK_HOURS * (
         sum(therm_cost(i, t) * gth[i, b] for i in 1:length(therm), b in 1:NB)
       + VOLL * sum(shed))
+
+    # Soft seasonal envelope on the ES reservoir (none unless es_rule_curve_file is set)
+    if ES_RULE_CURVE !== nothing
+        @variable(sp, rc_over >= 0)                                # MWh above the upper curve
+        @variable(sp, rc_under >= 0)                               # MWh below the lower curve
+        @constraint(sp, vres["ES"].out <= ES_RULE_CURVE.upper[t] * reservoirs["ES"].vmax + rc_over)
+        @constraint(sp, vres["ES"].out + rc_under >= ES_RULE_CURVE.lower[t] * reservoirs["ES"].vmax)
+        cost = cost + ES_RULE_PENALTY * (rc_over + rc_under)
+    end
 
     # Soft end-of-horizon target: penalise only the shortfall, so a dry final
     # week stays feasible instead of forcing load shedding to refill.

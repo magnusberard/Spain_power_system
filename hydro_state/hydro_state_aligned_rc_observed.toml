@@ -1,0 +1,18 @@
+# Variant "aligned_rc_observed": the "aligned_rc" policy (reused through train_label) simulated
+# from REE's observed start level with the observed inflow index (W2, W4). Run "aligned_rc" first.
+#   HYDRO_STATE_CONFIG=hydro_state/hydro_state_aligned_rc_observed.toml julia --project=. hydro_state/midterm_observed.jl
+label = "aligned_rc_observed"
+train_label = "aligned_rc"
+
+[system]
+es_stage_supply_file = "Data/hydro_state/es_stage_supply_2024.csv"
+es_rule_curve_file = "Data/hydro_state/es_rule_curves_2014_2023.csv"
+
+[observed]
+ree_file = "Data/hydro_state/ree_hydro_monthly.csv"
+observed_start = true
+inflow = "index"
+
+[training]
+es_start_fills = [0.20, 0.35, 0.50, 0.65, 0.80, 0.95]
+iterations_per_start = 15

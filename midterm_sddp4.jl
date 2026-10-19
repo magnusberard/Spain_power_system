@@ -643,10 +643,41 @@ println(END_PENALTY > 0 ?
 # day-ahead with zero reservoir hydro on 8 July 2024 against ~74 GWh actually
 # generated.  "empire_scaled" keeps EMPIRE's seasonality but rescales to the
 # SS_SeasonalStorage annual total, so the shape can be tested on its own.
+#
+# "edf_ree" (hydro_state, off by default): EDF's climate years, each calendar
+# month rescaled so that the mean year has REE's 2014–2023 monthly shape of
+# producible energy ([midterm4].es_inflow_ree_file); the annual total stays
+# SS_SeasonalStorage's.  REE vs the two sources, share of the year:
+#
+#            Mar    Apr    Jul   Aug   Sep  |  Jun-Sep   mean |error| per month
+#   REE     13.7%  12.5%  2.4%  1.6%  2.1% |   12.0%
+#   EDF     11.0%  16.0%  3.0%  1.5%  2.1% |   11.8%   1.2 pp
+#   EMPIRE  12.6%  10.8%  6.5%  5.5%  5.7% |   25.4%   2.5 pp
+#
+# EMPIRE's wet summer was a fix for the 30 % start; with the observed start and
+# the rule curves (hydro_state) the summer release no longer depends on it.
 const ES_INFLOW_SRC = lowercase(String(get(mcfg, "es_inflow_source", "edf")))
-ES_INFLOW_SRC ∈ ("edf", "empire", "empire_scaled") ||
+ES_INFLOW_SRC ∈ ("edf", "empire", "empire_scaled", "edf_ree") ||
     error("config.toml: [midterm4].es_inflow_source must be " *
-          "\"edf\", \"empire\" or \"empire_scaled\"")
+          "\"edf\", \"empire\", \"empire_scaled\" or \"edf_ree\"")
+# calendar month of each EDF weekly profile row (row k starts on day 7(k-1)+1 of 2023)
+const ES_INF_ROW_MONTH = [month(Date(2023, 1, 1) + Day(7 * (k - 1))) for k in 1:size(prof_inf_es.data, 1)]
+# "edf_ree": factor per calendar month = REE share / EDF climatological share
+const ES_INFLOW_MONTH_FACTOR = if ES_INFLOW_SRC == "edf_ree"
+    rf = CSV.read(joinpath(@__DIR__, String(mcfg["es_inflow_ree_file"])), DataFrame;
+                  types = Dict(:month => String))
+    rf = filter(r -> r.month < "2024", rf)          # calibration years only, never 2024
+    rm_ = [parse(Int, r[6:7]) for r in rf.month]
+    ree = [mean(rf.producible_gwh[rm_ .== m]) for m in 1:12]
+    ree ./= sum(ree)
+    D = prof_inf_es.data
+    edf = [mean(sum(D[ES_INF_ROW_MONTH .== m, y]) / sum(D[:, y]) for y in 1:size(D, 2)) for m in 1:12]
+    ree ./ edf
+else
+    ones(12)
+end
+es_inflow_factor(t, b) =
+    ES_INFLOW_MONTH_FACTOR[ES_INF_ROW_MONTH[profile_row(:weekly, (t-1)*168 + (b-1)*BLOCK_HOURS)]]
 # mean MW over every hour of the EMPIRE series ⇒ its implied annual MWh
 const ES_INFLOW_SCALE = if ES_INFLOW_SRC == "empire_scaled"
     emp_yr = mean(EMP_INF["ES"]) * 8760
@@ -656,6 +687,8 @@ else
 end
 if ES_INFLOW_SRC == "edf"
     @printf "ES seasonal inflow: edf  (%.2f TWh/yr × EDF weekly coefficient)\n" (reservoirs["ES"].inflow_yr / 1e6)
+elseif ES_INFLOW_SRC == "edf_ree"
+    @printf "ES seasonal inflow: edf_ree  (%.2f TWh/yr × EDF weekly coefficient × REE 2014–2023 month factor %s)\n" (reservoirs["ES"].inflow_yr / 1e6) join([@sprintf("%.2f", f) for f in ES_INFLOW_MONTH_FACTOR], "/")
 else
     @printf "ES seasonal inflow: %s  (EMPIRE hydroseasonal, %.2f TWh/yr, scale ×%.3f)\n" ES_INFLOW_SRC (ES_INFLOW_SCALE * mean(EMP_INF["ES"]) * 8760 / 1e6) ES_INFLOW_SCALE
 end
@@ -680,8 +713,8 @@ for t in 1:N_STAGES, w in 1:NSCEN
         AVL[t, w, zidx["PT"], b] = emp_block(EMP_VRE["PT"], w, t, b)
         AVL[t, w, zidx["FR"], b] = emp_block(EMP_VRE["FR"], w, t, b)
         AVL[t, w, zidx["EU"], b] = emp_block(EMP_VRE["EU"], w, t, b)
-        INF[t, w, 1, b] = ES_INFLOW_SRC == "edf" ?
-            reservoirs["ES"].inflow_yr * edf_block(prof_inf_es, w, t, b) * BLOCK_HOURS :
+        INF[t, w, 1, b] = ES_INFLOW_SRC in ("edf", "edf_ree") ?
+            reservoirs["ES"].inflow_yr * edf_block(prof_inf_es, w, t, b) * BLOCK_HOURS * es_inflow_factor(t, b) :
             ES_INFLOW_SCALE * emp_block(EMP_INF["ES"], w, t, b) * BLOCK_HOURS
         INF[t, w, 2, b] = emp_block(EMP_INF["FR"], w, t, b) * BLOCK_HOURS
         INF[t, w, 3, b] = emp_block(EMP_INF["EU"], w, t, b) * BLOCK_HOURS

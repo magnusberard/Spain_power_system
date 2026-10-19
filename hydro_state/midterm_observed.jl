@@ -74,6 +74,11 @@ HS_STAGE_FILE == "" || (hs_cfg["midterm4"]["es_stage_supply_file"] = HS_STAGE_FI
 # off by default); also a different system, so it needs its own training.
 const HS_RULE_FILE = String(get(get(HS, "system", Dict()), "es_rule_curve_file", ""))
 HS_RULE_FILE == "" || (hs_cfg["midterm4"]["es_rule_curve_file"] = HS_RULE_FILE)
+# [system].es_inflow_source / es_inflow_ree_file: the ES inflow dataset the SDDP trains on
+# ("edf_ree" = EDF climate years with REE's 2014–2023 monthly shape); also a different system.
+for k in ("es_inflow_source", "es_inflow_ree_file")
+    haskey(get(HS, "system", Dict()), k) && (hs_cfg["midterm4"][k] = String(HS["system"][k]))
+end
 haskey(get(HS, "system", Dict()), "es_rule_curve_penalty") &&
     (hs_cfg["midterm4"]["es_rule_curve_penalty"] = Float64(HS["system"]["es_rule_curve_penalty"]))
 const HS_TMP_CONFIG = joinpath(HS_RESULTS, "midterm_config_$(HS_LABEL).toml")

@@ -886,6 +886,7 @@ fuel_rows_all   = []
 branch_rows_all = []
 bus_rows_all    = []
 xb_redispatch_rows = []
+ac_failure_rows = []        # one row per failed AC hour: where the last iterate breaks limits
 branch_peak_rows = Dict{String,Any}()
 
 function record_branch_result!(branch_rows_all, branch_peak_rows, row)
@@ -920,6 +921,102 @@ function reinforcement_result_metadata(branch_name, network, from_bus, to_bus)
     return merge(meta, (diagnostic_multiplier = mult,
                         capacity_policy = policy,
                         base_line_rating_factor = LINE_RATING_FACTOR))
+end
+
+# Why a failed AC hour failed: Ipopt still returns the point it stopped at (the
+# "last iterate"), so the constraints that point breaks show where the network
+# could not be balanced. Checked here, all in MW / MVAr / % / pu:
+#   - power balance (KCL) per bus: generation − load − shunts − flows out
+#   - line and transformer limits: apparent power at either end vs rate_a
+#   - bus voltage limits: vm outside [vmin, vmax]
+# plus the France/Portugal exchange of the hour (sum of the XB_ units).
+# Variable bounds (generator limits) are not checked: Ipopt keeps them.
+# Returns a NamedTuple for results/ac_failures.csv and a one-line summary.
+function ac_failure_diagnosis(sol_hour, network, date_str, hour, status)
+    sol_gen, sol_br = sol_hour["gen"], sol_hour["branch"]
+    sol_bus, sol_dc = sol_hour["bus"], sol_hour["dcline"]
+    bus_name(i) = String(network["bus"][string(i)]["name"])
+    nan_row = (fr_mw = NaN, pt_mw = NaN,
+               worst_balance_bus = "", worst_balance_mw = NaN, n_buses_off_1mw = 0,
+               worst_branch = "", worst_branch_loading_pct = NaN, n_branches_over_100 = 0,
+               worst_voltage_bus = "", worst_voltage_pu = NaN, n_voltage_violations = 0)
+    if isempty(sol_gen) || isempty(sol_bus)
+        return merge((date = date_str, hour = hour, status = status), nan_row,
+                     (summary = "Ipopt returned no point to inspect",)), "no point returned"
+    end
+    vm(i) = (v = get(get(sol_bus, string(i), Dict()), "vm", 1.0); isnan(v) ? 1.0 : v)
+
+    # power balance per bus at the last iterate
+    p = Dict{Int,Float64}(); q = Dict{Int,Float64}()
+    addp(i, x) = (p[i] = get(p, i, 0.0) + x); addq(i, x) = (q[i] = get(q, i, 0.0) + x)
+    fr = 0.0; pt = 0.0
+    for (k, v) in sol_gen
+        g = network["gen"][k]
+        addp(g["gen_bus"], v["pg"]); addq(g["gen_bus"], reactive_or_zero(v, "qg"))
+        if startswith(g["name"], "XB_")
+            c = get(g, "country", "")
+            c == "FR" ? (fr += v["pg"]) : c == "PT" ? (pt += v["pg"]) : nothing
+        end
+    end
+    for (_, l) in get(network, "load", Dict())
+        get(l, "status", 1) == 0 && continue
+        addp(l["load_bus"], -l["pd"]); addq(l["load_bus"], -get(l, "qd", 0.0))
+    end
+    for (_, s) in get(network, "shunt", Dict())
+        get(s, "status", 1) == 0 && continue
+        i = s["shunt_bus"]
+        addp(i, -s["gs"] * vm(i)^2); addq(i, s["bs"] * vm(i)^2)
+    end
+    worst_br, worst_load, n_over = "", 0.0, 0
+    for (k, v) in sol_br
+        br = network["branch"][k]
+        addp(br["f_bus"], -v["pf"]); addp(br["t_bus"], -get(v, "pt", -v["pf"]))
+        addq(br["f_bus"], -reactive_or_zero(v, "qf")); addq(br["t_bus"], -reactive_or_zero(v, "qt"))
+        rate = get(br, "rate_a", 0.0)
+        rate > 0 || continue
+        s = max(hypot(v["pf"], reactive_or_zero(v, "qf")),
+                hypot(get(v, "pt", -v["pf"]), reactive_or_zero(v, "qt")))
+        ld = 100 * s / rate
+        ld > 100.5 && (n_over += 1)
+        ld > worst_load && (worst_load = ld; worst_br = String(br["name"]))
+    end
+    for (k, v) in sol_dc
+        dc = network["dcline"][k]
+        addp(dc["f_bus"], -v["pf"]); addp(dc["t_bus"], -v["pt"])
+        # the converters also exchange reactive power with their AC buses (PowerModels' q_dc)
+        addq(dc["f_bus"], -reactive_or_zero(v, "qf")); addq(dc["t_bus"], -reactive_or_zero(v, "qt"))
+    end
+    worst_bus, worst_mis, n_mis = "", 0.0, 0
+    for i in union(keys(p), keys(q))
+        mis = hypot(get(p, i, 0.0), get(q, i, 0.0)) * BASEMVA
+        mis > 1.0 && (n_mis += 1)
+        mis > abs(worst_mis) && (worst_mis = mis; worst_bus = bus_name(i))
+    end
+
+    # voltage limits
+    worst_vbus, worst_v, worst_dv, n_v = "", NaN, 0.0, 0
+    for (k, b) in network["bus"]
+        haskey(sol_bus, k) && haskey(sol_bus[k], "vm") || continue
+        v = sol_bus[k]["vm"]; isnan(v) && continue
+        dv = max(b["vmin"] - v, v - b["vmax"], 0.0)
+        dv > 1e-3 && (n_v += 1)
+        dv > worst_dv && (worst_dv = dv; worst_v = v; worst_vbus = String(b["name"]))
+    end
+
+    parts = String[]
+    n_mis > 0 && push!(parts, @sprintf("power balance off by %.0f MW/MVAr at %s (%d buses off > 1 MW)", worst_mis, worst_bus, n_mis))
+    n_over > 0 && push!(parts, @sprintf("%s at %.0f %% of its limit (%d over 100 %%)", worst_br, worst_load, n_over))
+    n_v > 0 && push!(parts, @sprintf("voltage %.3f pu at %s (%d buses outside limits)", worst_v, worst_vbus, n_v))
+    isempty(parts) && push!(parts, "no limit broken at the last point (stopped before converging)")
+    push!(parts, @sprintf("exchange France %+.0f MW, Portugal %+.0f MW (+ = import)", fr * BASEMVA, pt * BASEMVA))
+    summary = join(parts, "; ")
+    row = (date = date_str, hour = hour, status = status,
+           fr_mw = round(fr * BASEMVA; digits = 1), pt_mw = round(pt * BASEMVA; digits = 1),
+           worst_balance_bus = worst_bus, worst_balance_mw = round(worst_mis; digits = 1), n_buses_off_1mw = n_mis,
+           worst_branch = worst_br, worst_branch_loading_pct = round(worst_load; digits = 1), n_branches_over_100 = n_over,
+           worst_voltage_bus = worst_vbus, worst_voltage_pu = round(worst_v; digits = 4), n_voltage_violations = n_v,
+           summary = summary)
+    return row, summary
 end
 
 # Accepts one hour's solution dict and pushes rows into the accumulators.
@@ -1112,7 +1209,13 @@ function process_hour_solution!(summary_rows, gen_rows_all, fuel_rows_all,
             load_shed_mw    = NaN,
             mismatch_mw     = NaN,
         ))
-        @printf "  h%02d  FAILED: %s\n" hour status
+        diag_row, diag = try
+            ac_failure_diagnosis(sol_hour, network, date_str, hour, status)
+        catch e
+            (nothing, "diagnosis failed: " * sprint(showerror, e))
+        end
+        diag_row === nothing || push!(ac_failure_rows, diag_row)
+        @printf "  h%02d  FAILED: %s — %s\n" hour status diag
         return false
     end
 end
@@ -2411,6 +2514,10 @@ end
 if RD_ENABLED
     CSV.write(joinpath(RESULTS, "summary.csv"),      DataFrame(summary_rows))
     @printf "  summary.csv      : %d rows\n" length(summary_rows)
+    if !isempty(ac_failure_rows)
+        CSV.write(joinpath(RESULTS, "ac_failures.csv"), DataFrame(ac_failure_rows))
+        @printf "  ac_failures.csv  : %d rows (where each failed AC hour breaks limits)\n" length(ac_failure_rows)
+    end
     if !isempty(xb_redispatch_rows)
         CSV.write(joinpath(RESULTS, "xb_redispatch.csv"), DataFrame(xb_redispatch_rows))
         @printf "  xb_redispatch.csv: %d rows (DA shares versus physical redispatch split)\n" length(xb_redispatch_rows)

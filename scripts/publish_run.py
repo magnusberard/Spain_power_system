@@ -107,6 +107,91 @@ class Hours:
         return frame["date"].map(self.day_i).to_numpy() * 24 + frame["hour"].to_numpy()
 
 
+IPOPT_PATTERNS = {
+    "iterations": re.compile(r"^Number of Iterations\.*:\s*(\d+)", re.M),
+    "violation": re.compile(r"^Constraint violation\.*:\s*\S+\s+(\S+)", re.M),
+    "seconds": re.compile(r"^Total (?:CPU )?seconds in IPOPT[^=]*=\s*([\d.]+)", re.M),
+    "exit": re.compile(r"^EXIT:\s*(.+)$", re.M),
+}
+
+
+def fail_info(rdir, summ, hours):
+    """Why each failed AC hour failed, for the viewer: Ipopt's status (summary.csv), the end of
+    its log (ipopt_logs/<date>_hHH.log: iterations, time, how far from feasible, exit message),
+    and, for runs made after 2026-10-19, where the last point breaks limits (ac_failures.csv,
+    written by run_market_chain.jl). Keyed by the hour's index in the run."""
+    failed = summ[summ.status != "LOCALLY_SOLVED"]
+    where = {}
+    if (rdir / "ac_failures.csv").exists():
+        af = pd.read_csv(rdir / "ac_failures.csv")
+        where = {(r.date, int(r.hour)): str(r.summary) for r in af.itertuples()}
+    out = {}
+    for r, i in zip(failed.itertuples(), hours.of(failed)):
+        f = {"status": str(r.status)}
+        log = rdir / "ipopt_logs" / f"{r.date}_h{int(r.hour):02d}.log"
+        if log.exists():
+            text = log.read_text(encoding="utf-8", errors="replace")[-6000:]
+            m = {k: p.findall(text) for k, p in IPOPT_PATTERNS.items()}
+            parts = []
+            if m["exit"]:
+                parts.append(m["exit"][-1].strip().rstrip("."))
+            if m["iterations"]:
+                parts.append(f"{m['iterations'][-1]} iterations")
+            if m["seconds"]:
+                parts.append(f"{float(m['seconds'][-1]):.0f} s")
+            if m["violation"]:
+                parts.append(f"constraint violation {float(m['violation'][-1]):.3g} pu at the end")
+            if parts:
+                f["ipopt"] = ", ".join(parts)
+        if (r.date, int(r.hour)) in where:
+            f["where"] = where[(r.date, int(r.hour))]
+        out[str(int(i))] = f
+    print(f"  {len(out)} failed AC hours; {sum('ipopt' in f for f in out.values())} with an Ipopt log, "
+          f"{sum('where' in f for f in out.values())} with a location (ac_failures.csv)")
+    return out
+
+
+DAY_BY_DAY_COMMIT = "b1f4b55"   # "Day-by-day market chain" (branch day-by-day-chain, 2026-10-15)
+
+
+def stage_order(commit):
+    """"day" if the run's code has the day-by-day market chain (the commit descends from
+    DAY_BY_DAY_COMMIT), "stage" if not, None if the commit is unknown here."""
+    if not commit:
+        return None
+    r = subprocess.run(["git", "-C", str(MODEL_REPO), "merge-base", "--is-ancestor", DAY_BY_DAY_COMMIT, commit],
+                       capture_output=True)
+    return {0: "day", 1: "stage"}.get(r.returncode)
+
+
+def detect_features(rdir):
+    """Which model changes the run used, for the viewer's filters (meta.features), read from the
+    config the run saved: config_used_market.toml (split runs: the market stages) or else
+    config_used.toml. None if neither exists. The same keys as scripts/make_run_config.jl sets:
+    res = [run].res_input (model change §12); xb = [redispatch].crossborder_split = "country_total"
+    (§11); gas = [unit_commitment].enabled, i.e. --gas on (§13, §14, §16); markup =
+    [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15)."""
+    import tomllib
+    path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
+    if path is None:
+        return None
+    c = tomllib.loads(path.read_text(encoding="utf-8"))
+
+    def sec(*keys):
+        d = c
+        for k in keys:
+            d = d.get(k, {}) if isinstance(d, dict) else {}
+        return d if isinstance(d, dict) else {}
+
+    return dict(
+        res=str(sec("run").get("res_input", "accepted")),
+        xb=sec("redispatch").get("crossborder_split") == "country_total",
+        gas=bool(sec("unit_commitment").get("enabled", False)),
+        markup=bool(sec("costs", "markup").get("enabled", False)),
+        hydro="hydro_state" in str(sec("bellman").get("volume_file", "")),
+    )
+
+
 def read_run_info(rdir, args, hours, status):
     path = rdir / "run_info.json"
     if path.exists():
@@ -392,7 +477,7 @@ def build(rdir, runs_repo, args):
     data = dict(
         schema=SCHEMA, days=hours.days, price=price,
         real_price=r1(real["price"].to_numpy()),
-        status=status.tolist(), shed=r1(shed),
+        status=status.tolist(), shed=r1(shed), fail_info=fail_info(rdir, summ, hours),
         categories=OMIE_CATS, categories_phys=PHYS_CATS,
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
@@ -460,6 +545,7 @@ def main():
     out = runs_repo / "runs" / run_id
     if out.exists() and not args.force:
         sys.exit(f"runs/{run_id} already exists; use --force to replace it or --id to choose another name")
+    old_meta = json.loads((out / "meta.json").read_text(encoding="utf-8")) if (out / "meta.json").exists() else {}
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("*.js"):
         old.unlink()
@@ -480,6 +566,16 @@ def main():
                 info={k: info.get(k) for k in ("ran_by", "branch", "commit", "commit_message", "uncommitted_files",
                                                "started", "finished", "runtime_min", "power_flow", "linear_solver",
                                                "label", "reconstructed")})
+    # model changes for the viewer's filters: from the run's config, else kept from the package
+    # being replaced (runs published before configs were saved were tagged by hand)
+    features = detect_features(rdir)
+    if features is None and old_meta.get("features"):
+        features = old_meta["features"]
+    if features is not None and stage_order(info.get("commit")):
+        features["chain"] = stage_order(info.get("commit"))
+    if features is not None:
+        meta["features"] = features
+        print(f"  model changes: {features}")
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     n = write_manifest(runs_repo)
     print(f"  wrote runs/{run_id}/ ({size_mb:.1f} MB, {len(months)} month file(s)); the menu now lists {n} run(s)")

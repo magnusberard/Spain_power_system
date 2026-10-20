@@ -230,6 +230,21 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          gen_bus_voltage_control::Bool   = false,
                          gen_bus_vmin::Float64           = 0.98,
                          gen_bus_vmax::Float64           = 1.03,
+                         # [redispatch].q_requires_online (step RD3, off by default):
+                         # reactive power has to come from equipment that is running.
+                         #   • a synchronous unit whose anchored schedule is below
+                         #     q_online_min_frac × installed is OFF: qmin = qmax = 0
+                         #     (a turbine must be synchronised, i.e. at minimum load,
+                         #     to give reactive power — that is why REE starts units
+                         #     for voltage control).  "Fuel:technology" entries in
+                         #     q_condenser_ok may still give reactive power at 0 MW.
+                         #   • a load-shedding unit gives reactive power only in
+                         #     proportion to the load it sheds (|Q| ≤ P·qd/pd); before,
+                         #     every load bus had a free ±pd reactive source.
+                         # Only meaningful with da_dispatch (the redispatch anchor).
+                         q_requires_online::Bool = false,
+                         q_online_min_frac::Float64 = 0.01,
+                         q_condenser_ok = String[],
                          # [scenario] overrides (EMPIRE future system; see
                          # empire_scenario.jl — all `nothing` for the 2024 run):
                          #   unit_scale    : (fuel, technology) ⇒ capacity factor the
@@ -567,6 +582,8 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                              (p[1], lowercase(p[2]))
                          end for f in frozen_fuels if occursin(':', String(f)))
     is_fuel_frozen(fuel, tech) = fuel in _frozen_bare || (fuel, lowercase(tech)) in _frozen_pairs
+    _condenser = Set(lowercase(String(f)) for f in q_condenser_ok)
+    is_condenser_ok(fuel, tech) = lowercase(fuel) in _condenser || lowercase("$fuel:$tech") in _condenser
 
     gens      = Dict{String,Any}()
     gen_count = 0
@@ -673,6 +690,15 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         if islands_off_market && island_unit
             pmin_g = pmax_g = pg_strt = 0.0
         end
+        # RD3: a synchronous unit its anchor schedule leaves off gives no reactive
+        # power (pumping counts as running: the machine is synchronised).  Island
+        # units are exempt: they are out of the market and run by the redispatch.
+        if q_requires_online && da_dispatch !== nothing && !island_unit &&
+           !(String(row.primary_fuel) in ("Wind", "Solar")) &&
+           !is_condenser_ok(String(row.primary_fuel), String(row.technology)) &&
+           (frozen_pu === nothing || abs(frozen_pu) < q_online_min_frac * cap_mw / BASEMVA)
+            qmax_pu = qmin_pu = 0.0
+        end
 
         gen_count += 1
         gens[string(gen_count)] = Dict{String,Any}(
@@ -761,6 +787,9 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                 da_pu = (!isnothing(da_dispatch) && haskey(da_dispatch, name)) ?
                         da_dispatch[name] / BASEMVA : nothing
                 s_pu  = apparent_power_limit ? p_pu / rated_power_factor : p_pu
+                # RD3: a block cleared at (about) 0 MW is not running.
+                q_pu  = (q_requires_online && da_dispatch !== nothing &&
+                         (da_pu === nothing || da_pu < q_online_min_frac * p_pu)) ? 0.0 : s_pu
                 gen_count += 1
                 gens[string(gen_count)] = Dict{String,Any}(
                     "index"        => gen_count,
@@ -773,7 +802,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                     "pmin"         => da_pu === nothing ? lo_pu : da_pu,
                     "pg0"          => da_pu === nothing ? p_pu  : da_pu,
                     "pg"           => da_pu === nothing ? p_pu  : da_pu,
-                    "qmax"         => s_pu,   "qmin" => -s_pu,
+                    "qmax"         => q_pu,   "qmin" => -q_pu,
                     "smax"         => s_pu,   "qp_ratio" => Inf,
                     "qg"           => 0.0,
                     "vg"           => 1.0,
@@ -942,6 +971,9 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     for (_, load) in loads
         bus_i  = load["load_bus"]
         pd_pu  = load["pd"]
+        # RD3: shedding x MW removes x·qd/pd of reactive demand, no more; the
+        # |Q| ≤ k·P link is enforced by add_gen_capability! through qp_ratio.
+        ls_q   = q_requires_online ? pd_pu * const_qd : pd_pu
         gen_count += 1
         gens[string(gen_count)] = Dict{String,Any}(
             "index"        => gen_count,
@@ -951,7 +983,8 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
             "technology"   => "LoadShed",
             "installed_mw" => pd_pu * BASEMVA,
             "pmax"         => pd_pu,   "pmin" => 0.0,
-            "qmax"         => pd_pu,   "qmin" => -pd_pu,
+            "qmax"         => ls_q,    "qmin" => -ls_q,
+            "qp_ratio"     => q_requires_online ? const_qd : Inf,
             "pg"           => 0.0,     "qg"   => 0.0,
             "vg"           => 1.0,
             "mbase"        => BASEMVA,

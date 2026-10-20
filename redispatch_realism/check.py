@@ -139,17 +139,90 @@ def rd2(a, b):
           f"A {ha.losses_mw.sum() / 1e3:.1f}, B {hb.losses_mw.sum() / 1e3:.1f} GWh")
 
 
+# ── rd3 / rd4: reactive power only from running equipment ───────────────────
+def q_table(run, keys):
+    g = pd.read_csv(run / "gen_dispatch.csv",
+                    usecols=["date", "hour", "unit_name", "fuel", "capacity_mw", "dispatch_mw", "dispatch_mvar"]).merge(keys)
+    a = pd.read_csv(run / "bal_dispatch.csv", usecols=["date", "hour", "gen_id", "dispatch_mw"])
+    a = a.rename(columns={"gen_id": "unit_name", "dispatch_mw": "anchor_mw"})
+    g = g.merge(a, on=["date", "hour", "unit_name"], how="left")
+    g["kind"] = np.select([g.unit_name.str.startswith("LS_"), g.unit_name.str.startswith("SLACK"),
+                           g.unit_name.str.startswith("XB_"), g.fuel.isin(["Wind", "Solar"])],
+                          ["Load shedding", "Slack", "Border", "Wind and solar"], "Synchronous")
+    g["idle"] = (g.kind == "Synchronous") & (g.anchor_mw.fillna(0).abs() < 0.01 * g.capacity_mw)
+    return g
+
+
+def q_mix(g, hours):
+    t = g.assign(absq=g.dispatch_mvar.abs()).groupby(np.where(g.idle, "Synchronous, scheduled off", g.kind)).absq.sum()
+    return (t / hours).round(0)
+
+
+def rd3(a, b, load_pf=0.98, tol=1.0):
+    print(f"\nRD3 q_requires_online: A = {a} (off), B = {b} (on)")
+    sa, sb = solved(a), solved(b)
+    lost = sa.merge(sb, on=["date", "hour"], how="left", indicator=True)
+    lost = lost[lost._merge != "both"]
+    check("no hour that solved in A fails in B", lost.empty,
+          f"{len(lost)} lost" + (": " + ", ".join(f"{d} h{h:02d}" for d, h in zip(lost.date, lost.hour))[:200] if len(lost) else ""))
+    keys = sa.merge(sb, on=["date", "hour"])[["date", "hour"]]
+    ga, gb = q_table(a, keys), q_table(b, keys)
+    idle = gb[gb.idle]
+    worst = idle.dispatch_mvar.abs().max() if len(idle) else 0.0
+    check(f"units scheduled off give no reactive power (|Q| ≤ {tol} Mvar)", worst <= tol,
+          f"largest {worst:.2f} Mvar over {idle.unit_name.nunique()} idle units")
+    k = np.tan(np.arccos(load_pf))
+    ls = gb[gb.kind == "Load shedding"]
+    over = (ls.dispatch_mvar.abs() - k * ls.dispatch_mw.clip(lower=0) - tol).max()
+    check("load shedding gives reactive power only in proportion to shed load", over <= 0,
+          f"worst excess {max(over, 0):.2f} Mvar")
+    n = len(keys)
+    print("\n  reactive power, average |Mvar| per hour (A → B):")
+    ma, mb = q_mix(ga, n), q_mix(gb, n)
+    for kname in sorted(set(ma.index) | set(mb.index)):
+        print(f"    {kname:28s} {ma.get(kname, 0):8.0f} → {mb.get(kname, 0):8.0f}")
+    ha, *_ = settle.settle(a)
+    hb, *_ = settle.settle(b)
+    ha, hb = ha.merge(keys), hb.merge(keys)
+    print("\n  effect (A → B):")
+    print(f"    turned up            {ha.up_mwh.sum() / 1e3:8.1f} → {hb.up_mwh.sum() / 1e3:8.1f} GWh")
+    print(f"    extra cost           {ha.extra_cost_eur.sum() / 1e6:8.2f} → {hb.extra_cost_eur.sum() / 1e6:8.2f} M€")
+    shed_a = ga[ga.kind == "Load shedding"].dispatch_mw.sum()
+    shed_b = gb[gb.kind == "Load shedding"].dispatch_mw.sum()
+    print(f"    load shed            {shed_a:8.1f} → {shed_b:8.1f} MWh")
+    sync_on = lambda g: g[(g.kind == "Synchronous") & ~g.idle]
+    print(f"    synchronous units running per hour   {sync_on(ga).groupby(['date', 'hour']).size().mean():6.1f} → "
+          f"{sync_on(gb).groupby(['date', 'hour']).size().mean():6.1f}  (by the anchor schedule; starting units is RD9)")
+
+
+def rd4(a, b, pf=1.0, tol=1.0):
+    print(f"\nRD4 renewable_power_factor = {pf}: A = {a}, B = {b}")
+    keys = solved(a).merge(solved(b), on=["date", "hour"])[["date", "hour"]]
+    gb = q_table(b, keys)
+    res = gb[gb.kind == "Wind and solar"]
+    k = np.tan(np.arccos(pf))
+    over = (res.dispatch_mvar.abs() - k * res.dispatch_mw.clip(lower=0) - tol).max()
+    check(f"wind and solar |Q| ≤ tan(acos({pf}))·P", over <= 0, f"worst excess {max(over, 0):.2f} Mvar")
+    ga = q_table(a, keys)
+    print(f"  wind and solar reactive power, average |Mvar| per hour: "
+          f"{ga[ga.kind == 'Wind and solar'].dispatch_mvar.abs().sum() / len(keys):.0f} → {res.dispatch_mvar.abs().sum() / len(keys):.0f}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("what", choices=["logic", "same", "rd2"])
+    ap.add_argument("what", choices=["logic", "same", "rd2", "rd3", "rd4"])
     ap.add_argument("runs", nargs="*", type=Path)
+    ap.add_argument("--pf", type=float, default=1.0, help="rd4: renewable_power_factor of run B")
     a = ap.parse_args()
     if a.what == "logic":
         logic()
     else:
         if len(a.runs) != 2:
             ap.error(f"{a.what} needs two run folders: A B")
-        {"same": same, "rd2": rd2}[a.what](*a.runs)
+        if a.what == "rd4":
+            rd4(*a.runs, pf=a.pf)
+        else:
+            {"same": same, "rd2": rd2, "rd3": rd3}[a.what](*a.runs)
     n_fail = RESULTS.count(False)
     print(f"\n{len(RESULTS) - n_fail} passed, {n_fail} failed")
     sys.exit(1 if n_fail else 0)

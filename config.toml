@@ -490,6 +490,11 @@ power_factor = 0.98
 #                          Spanish grid-code reactive requirement.
 apparent_power_limit   = true
 rated_power_factor     = 0.90
+# 2024 (step RD4): Spanish wind and solar followed power-factor set-points and
+# did not offer dynamic voltage control; that service (P.O. 7.4) was approved by
+# CNMC on 12 June 2025.  For a 2024 redispatch set renewable_power_factor = 1.0
+# (no reactive power), so wind and solar cannot stand in for synchronous units.
+# 0.95 lets the OPF choose their reactive power freely — the 2025+ rules.
 renewable_power_factor = 0.95
 
 [bellman]
@@ -3464,6 +3469,21 @@ crossborder_split = "country_total"
 #             (python redispatch_realism/settle.py results/<run> prints it).
 # Leave at 0.0 for 2035 weeks runs: EMPIRE demand is not an OMIE busbar figure.
 loss_share = 0.0
+
+# Reactive power only from equipment that is running (step RD3).  Off, a
+# synchronous unit the schedule leaves at 0 MW still gives its full rated
+# reactive power, and every load-shedding unit gives ±(its load) of reactive
+# power while shedding nothing: in December 2024 those two supplied most of the
+# reactive power, so voltage control never made the model start a plant (REE's
+# largest redispatch cause, 45 % of phase I up).
+#   q_requires_online — true: a synchronous unit scheduled below
+#                       q_online_min_frac × installed gives no reactive power;
+#                       load shedding gives |Q| ≤ P·tan(acos(power_factor)).
+#   q_condenser_ok    — "Fuel" or "Fuel:technology" entries that may still give
+#                       reactive power at 0 MW (synchronous-condenser mode).
+q_requires_online = false
+q_online_min_frac = 0.01
+q_condenser_ok    = []
 
 # Run the network load flow (this redispatch stage) on its own, reusing the
 # market schedule from a PREVIOUS run instead of clearing stages 1–5 again.

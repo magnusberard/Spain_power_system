@@ -525,6 +525,12 @@ const RD_LOSS_SHARE = Float64(get(get(cfg, "redispatch", Dict()), "loss_share", 
 0.0 <= RD_LOSS_SHARE < 0.2 ||
     error("config.toml: [redispatch].loss_share must be in [0, 0.2)")
 rd_load_mw(domestic_mw) = domestic_mw * (1.0 - RD_LOSS_SHARE)
+# [redispatch].q_requires_online (step RD3): reactive power only from equipment
+# that is running — synchronous units the anchor schedule leaves off, and load
+# shedding that sheds nothing, give none.  See prepare_network.  false = off.
+const RD_Q_ONLINE      = Bool(get(get(cfg, "redispatch", Dict()), "q_requires_online", false))
+const RD_Q_ONLINE_FRAC = Float64(get(get(cfg, "redispatch", Dict()), "q_online_min_frac", 0.01))
+const RD_Q_CONDENSER   = String.(get(get(cfg, "redispatch", Dict()), "q_condenser_ok", String[]))
 
 # ── Standalone load-flow / single-hour options ───────────────────────────────
 # [redispatch].from_saved: run ONLY the network load flow (redispatch), reading
@@ -599,6 +605,8 @@ RD_FROM_SAVED_ACTIVE &&
     @printf "                 standalone load flow: market stages skipped, anchor read from %s_dispatch.csv in the results folder\n" lowercase(RD_FROM_SAVED)
 RD_ENABLED && RD_LOSS_SHARE > 0 &&
     @printf "                 load scaled by (1 − %.4f): losses already in the OMIE demand\n" RD_LOSS_SHARE
+RD_ENABLED && RD_Q_ONLINE &&
+    @printf "                 reactive power only from running units (online above %.0f %% of installed)\n" 100 * RD_Q_ONLINE_FRAC
 RD_ONLY != "" &&
     @printf "                 restricted to: %s\n" RD_ONLY
 
@@ -2201,6 +2209,9 @@ if RD_WATER_VALUE == "constant"
                               gen_bus_voltage_control = GEN_BUS_VCTRL,
                               gen_bus_vmin = GEN_BUS_VMIN,
                               gen_bus_vmax = GEN_BUS_VMAX,
+                              q_requires_online = RD_Q_ONLINE,
+                              q_online_min_frac = RD_Q_ONLINE_FRAC,
+                              q_condenser_ok = RD_Q_CONDENSER,
                               unit_scale = UNIT_SCALE,
                               cost_override = cost_override_for(date_str),
                               unit_cost_override = unit_cost_override_for(date_str),
@@ -2278,6 +2289,9 @@ elseif RD_WATER_VALUE == "piecewise"
                                 gen_bus_voltage_control = GEN_BUS_VCTRL,
                                 gen_bus_vmin = GEN_BUS_VMIN,
                                 gen_bus_vmax = GEN_BUS_VMAX,
+                                q_requires_online = RD_Q_ONLINE,
+                                q_online_min_frac = RD_Q_ONLINE_FRAC,
+                                q_condenser_ok = RD_Q_CONDENSER,
                                 unit_scale = UNIT_SCALE,
                                 cost_override = cost_override_for(date_str),
                                 unit_cost_override = unit_cost_override_for(date_str),

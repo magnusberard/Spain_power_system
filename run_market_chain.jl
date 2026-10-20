@@ -1233,7 +1233,11 @@ for date_str in TARGET_DAYS
              reservoir_day_budget(TURBINE_FILE, date_str, BELLMAN_BGN_DATE;
                                   basis = HYDRO_BUDGET_BASIS,
                                   ssv_step = BELLMAN_SSV_STEP) : nothing
-    day_bellman[date_str] = (stage=stage, cuts=cuts, v_es=v_es, v_fr=v_fr,
+    # cuts_mkt: the market stages' copy ([costs.markup].hydro_water_value, markup.jl);
+    # the same object as `cuts` when that switch is off.  The redispatch keeps `cuts`.
+    cuts_mkt = (MARKUP !== nothing && !WEEKS_ACTIVE) ?
+               hydro_water_value_cuts(MARKUP, cuts, date_str) : cuts
+    day_bellman[date_str] = (stage=stage, cuts=cuts, cuts_mkt=cuts_mkt, v_es=v_es, v_fr=v_fr,
                              water_value=wv, budget=budget)
     @printf "  %s : stage=%d  V_ES=%.0f MWh  V_FR=%.0f MWh  water_value=%.2f EUR/MWh\n" date_str stage v_es v_fr wv
     @printf "                 reservoir budget: %s\n" (budget === nothing ?
@@ -1616,7 +1620,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
     end
     ucb = (label == "DA" || uc !== nothing) ? nothing : uc_bounds_for(date_str, day_ts)
-    solve_gate(u) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
+    solve_gate(u) = solve_da(nets, reservoir_gen_ids, bv.cuts_mkt, bv.v_es,
                         gurobi_da(log_file = log_file);
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
@@ -1710,7 +1714,7 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
     for hgate in 1:H
         free_set   = Set(hgate:H)
         anchor_map = Dict(h => prev_full[h] for h in hgate:H if haskey(prev_full, h))
-        result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
+        result   = solve_da(nets, reservoir_gen_ids, bv.cuts_mkt, bv.v_es, gurobi_da();
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
                             hydro_budget_mwh = get(bv, :budget, nothing),
                             uc_bounds = uc_bounds_for(date_str, day_ts))

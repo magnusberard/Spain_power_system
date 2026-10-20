@@ -243,6 +243,12 @@ rsi_file    = "Data/markup/rsi_2024.csv"
 table_file  = "Data/markup/markup_table_2024.csv"
 L_coal      = 0.188
 cap         = 0.5
+# hydro_water_value = true puts reservoir hydro's water value in taxed units in
+#   the market stages: the Bellman cuts × 1 / (1 - tax of the day's quarter).  The
+#   mid-term SDDP prices water against untaxed gas and coal; hydro's own tax cancels
+#   out of when it releases water, but the energy it displaces sells taxed
+#   (markup.jl, hydro_water_value_cuts).  No mark-up L.  Not the redispatch.
+hydro_water_value = false
 
 [fleet]
 # ── Plants closed in reality, left out of every stage ────────────────────────

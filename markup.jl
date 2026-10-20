@@ -36,6 +36,7 @@ struct MarkupCfg
     l_gas::Vector{Float64}
     l_coal::Float64                      # constant, all hours
     cap::Float64
+    hydro_water_value::Bool              # water value in taxed units (hydro_water_value_cuts)
 end
 
 const MARKUP_GAS_TECH = Set(["Combined_cycle", "Gas_turbine"])
@@ -51,11 +52,29 @@ function load_markup(cfg; root = @__DIR__)
               Set(String.(get(m, "tax_fuels", ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]))),
               Dict((string(r.date), Int(r.hour)) => Float64(r.rsi) for r in eachrow(rs)),
               Float64.(tb.rsi), Float64.(tb.L_gas), Float64(get(m, "L_coal", 0.0)),
-              Float64(get(m, "cap", 0.5)))
+              Float64(get(m, "cap", 0.5)),
+              Bool(get(m, "hydro_water_value", false)))
 end
 
 markup_tax(mk::MarkupCfg, d::Date) =
     get(mk.tax, "$(year(d))Q$(quarterofyear(d))", mk.tax_default)
+
+# Water value in taxed units ([costs.markup].hydro_water_value, off by default).
+# The mid-term SDDP prices water against untaxed thermal costs, while the market
+# stages bid gas and coal at cost / (1 - tax) / (1 - L).  Reservoir hydro bids its
+# opportunity cost: water used now instead of later earns the same taxed price
+# either way, so its own tax (IVPEE, and the canon hidráulico) cancels out of that
+# choice; what does not cancel is that the energy it displaces later sells at the
+# taxed price.  So the cuts are put in taxed units: every cut (slope and intercept)
+# times 1 / (1 - tax of the day's quarter), which scales the water value by the
+# same factor.  The day's quarter is a simplification (water held in Q1 at 3.5 % is
+# mostly used later at 7 %); an SDDP trained on taxed costs avoids it.  The gas and
+# coal mark-ups L are not carried over.  Market stages only, like the bid factors.
+function hydro_water_value_cuts(mk::MarkupCfg, cuts, date_str)
+    mk.hydro_water_value || return cuts
+    k = 1 / (1 - markup_tax(mk, Date(String(date_str))))
+    return [BellmanCut(c.a0 * k, c.a1 * k, c.b * k) for c in cuts]
+end
 
 "Piecewise-linear interpolation, constant beyond the ends."
 function markup_interp(x, y, r)

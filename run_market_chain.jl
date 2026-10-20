@@ -54,6 +54,7 @@ include("bellman.jl")
 include("fuel_prices.jl")
 include("markup.jl")
 include("unit_commitment.jl")
+include("redispatch_startups.jl")
 include("crossborder.jl")
 include("da.jl")
 include("empire_scenario.jl")
@@ -531,6 +532,9 @@ rd_load_mw(domestic_mw) = domestic_mw * (1.0 - RD_LOSS_SHARE)
 const RD_Q_ONLINE      = Bool(get(get(cfg, "redispatch", Dict()), "q_requires_online", false))
 const RD_Q_ONLINE_FRAC = Float64(get(get(cfg, "redispatch", Dict()), "q_online_min_frac", 0.01))
 const RD_Q_CONDENSER   = String.(get(get(cfg, "redispatch", Dict()), "q_condenser_ok", String[]))
+# [redispatch.startups] (step RD9): start offline units at minimum load where
+# reactive power is missing (redispatch_startups.jl).  nothing = off.
+const RD_STARTUPS = load_rd_startups(cfg)
 
 # ── Standalone load-flow / single-hour options ───────────────────────────────
 # [redispatch].from_saved: run ONLY the network load flow (redispatch), reading
@@ -578,6 +582,8 @@ RD_XB_SPLIT ∈ ("fixed", "country_total") ||
     error("config.toml: [redispatch].crossborder_split must be \"fixed\" or \"country_total\"")
 RD_PF_MODEL ∈ ("AC", "DC") ||
     error("config.toml: [redispatch].power_flow must be \"AC\" or \"DC\"")
+RD_STARTUPS !== nothing && !(RD_Q_ONLINE && RD_PF_MODEL == "AC" && RD_WATER_VALUE == "constant") &&
+    error("config.toml: [redispatch.startups] needs q_requires_online = true, power_flow = \"AC\" and water_value = \"constant\"")
 DIAGNOSTIC_OUTPUT && !RUN_MARKET &&
     error("config.toml: diagnostic_output requires from_saved=\"\" so schedules can be released gate by gate")
 DIAGNOSTIC_OUTPUT && !RD_ENABLED &&
@@ -607,6 +613,8 @@ RD_ENABLED && RD_LOSS_SHARE > 0 &&
     @printf "                 load scaled by (1 − %.4f): losses already in the OMIE demand\n" RD_LOSS_SHARE
 RD_ENABLED && RD_Q_ONLINE &&
     @printf "                 reactive power only from running units (online above %.0f %% of installed)\n" 100 * RD_Q_ONLINE_FRAC
+RD_ENABLED && RD_STARTUPS !== nothing &&
+    @printf "                 voltage start-ups: up to %d per hour, within %d branches of the need\n" RD_STARTUPS.max_rounds RD_STARTUPS.max_hops
 RD_ONLY != "" &&
     @printf "                 restricted to: %s\n" RD_ONLY
 
@@ -2088,7 +2096,8 @@ rd_is_market_unit(name::AbstractString) =
     !startswith(name, "XB_")   && !startswith(name, "BESS_")
 
 function solve_anchored_opf(network, gens, optimizer, sched;
-                            iis_label::Union{Nothing,String} = nothing)
+                            iis_label::Union{Nothing,String} = nothing,
+                            model_hook = nothing)     # f(pm) run just before solving (RD9)
     if sched === nothing || (RD_OBJECTIVE == "quadratic" && ANCHOR_WEIGHT <= 0)
         return rd_solve_ac_opf(network, optimizer)
     end
@@ -2138,6 +2147,7 @@ function solve_anchored_opf(network, gens, optimizer, sched;
         end
         JuMP.@objective(pm.model, Min, dev + xb_ct_cost)
     end
+    model_hook === nothing || model_hook(pm)
     result = PowerModels.optimize_model!(pm; optimizer = optimizer)
     if RD_PF_MODEL == "DC" &&
        result["termination_status"] in (JuMP.MOI.INFEASIBLE, JuMP.MOI.INFEASIBLE_OR_UNBOUNDED)
@@ -2225,8 +2235,11 @@ if RD_WATER_VALUE == "constant"
 
         log_file = DIAGNOSTIC_OUTPUT ? nothing :
                    joinpath(IPOPT_LOG_DIR, "$(date_str)_h$(lpad(hour, 2, '0')).log")
-        result = solve_anchored_opf(network, gens, rd_optimizer_single(log_file = log_file),
-                                    sched_hour; iis_label = label)
+        result = RD_STARTUPS === nothing ?
+            solve_anchored_opf(network, gens, rd_optimizer_single(log_file = log_file),
+                               sched_hour; iis_label = label) :
+            solve_hour_with_startups(network, gens, rd_optimizer_single(log_file = log_file),
+                                     sched_hour, RD_STARTUPS; label = label, date_str = date_str, hour = hour)
         status = string(result["termination_status"])
 
         @printf "[%2d/%d] %s\n" (n_solved + 1) n_total label
@@ -2551,6 +2564,7 @@ if RD_ENABLED
         CSV.write(joinpath(RESULTS, "ac_failures.csv"), DataFrame(ac_failure_rows))
         @printf "  ac_failures.csv  : %d rows (where each failed AC hour breaks limits)\n" length(ac_failure_rows)
     end
+    write_rd_startups(RESULTS)
     if !isempty(xb_redispatch_rows)
         CSV.write(joinpath(RESULTS, "xb_redispatch.csv"), DataFrame(xb_redispatch_rows))
         @printf "  xb_redispatch.csv: %d rows (DA shares versus physical redispatch split)\n" length(xb_redispatch_rows)

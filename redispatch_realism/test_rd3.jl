@@ -54,6 +54,10 @@ k    = tan(acos(0.98))
         res = [n for (n, g) in N if g["fuel"] in ("Wind", "Solar")]
         @test all(N[n]["qmax"] == O[n]["qmax"] && N[n]["qp_ratio"] == O[n]["qp_ratio"] for n in res)
     end
+    @testset "slack: no free reactive power" begin
+        @test O["SLACK"]["qmax"] == 9999.0
+        @test N["SLACK"]["qmax"] == 0.0 && N["SLACK"]["qmin"] == 0.0
+    end
     @testset "load shedding: reactive only in proportion to shed load" begin
         @test all(N[n]["qp_ratio"] ≈ k for n in ls)
         @test all(N[n]["qmax"] ≈ k * N[n]["pmax"] for n in ls)

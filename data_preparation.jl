@@ -826,7 +826,10 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         "technology"   => "Slack",
         "installed_mw" => 9999.0 * BASEMVA,
         "pmax"         =>  9999.0,  "pmin" => 0.0,
-        "qmax"       =>  9999.0,  "qmin" => -9999.0,
+        # RD3: the slack balances energy; it is no free reactive source (it gave
+        # ~1 Gvar once load shedding and idle units stopped giving reactive power).
+        "qmax"       =>  q_requires_online ? 0.0 : 9999.0,
+        "qmin"       =>  q_requires_online ? 0.0 : -9999.0,
         "pg"         => 0.0,      "qg"   => 0.0,
         "vg"         => 1.0,
         "mbase"      => BASEMVA,

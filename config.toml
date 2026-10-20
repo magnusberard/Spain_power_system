@@ -3504,6 +3504,22 @@ from_saved = ""
 # just that hour — copy them off first if you need the full-day results.
 only = ""
 
+[redispatch.startups]
+# Voltage start-ups (step RD9, redispatch_startups.jl).  With q_requires_online
+# the low-load hours cannot hold voltage; REE then starts combined cycles or coal
+# at minimum load (phase I).  When an hour fails, a priced reactive slack shows
+# where reactive power is missing, the cheapest offline candidate closest to it
+# is started at minimum load, and the hour is solved again.  Minimum loads and
+# start-up costs come from [unit_commitment] and [unit_commitment.coal].
+# Started units are written to rd_startups.csv.  Needs q_requires_online = true,
+# power_flow = "AC", water_value = "constant".
+enabled              = false
+candidates           = ["Gas:Combined_cycle", "Coal"]
+max_rounds           = 8         # start-ups per hour at most
+max_hops             = 4         # branches between the need and the unit
+q_slack_eur_per_mvar = 1000.0    # price of the diagnostic reactive slack
+min_slack_mvar       = 5.0       # slack below this counts as no need
+
 [midterm]
 # ── Mid-term hydro scheduling (in-house Bellman cuts via SDDP) ───────────────
 # A 3-zone (FR/ES/PT) weekly hydro-thermal SDDP that computes the Bellman cuts

@@ -109,6 +109,15 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid"):
     hourly = u.groupby(["date", "hour"]).agg(up_mwh=("up", "sum"), down_mwh=("down", "sum"),
                                               extra_cost_eur=("ec", "sum"), marginal_eur=("marginal", "sum"),
                                               p_da=("p_da", "first")).reset_index()
+    # start-ups (step RD9, rd_startups.csv): REE pays a started unit's start-up cost (P.O. 3.2 Annex I)
+    su_file = rdir / "rd_startups.csv"
+    if su_file.exists():
+        su = pd.read_csv(su_file).groupby(["date", "hour"]).agg(starts=("unit", "size"),
+                                                                 startup_eur=("start_cost_eur", "sum")).reset_index()
+        hourly = hourly.merge(su, on=["date", "hour"], how="left").fillna({"starts": 0, "startup_eur": 0.0})
+    else:
+        hourly["starts"], hourly["startup_eur"] = 0, 0.0
+    hourly["extra_cost_eur"] += hourly.startup_eur
     hourly = hourly.merge(summ[["date", "hour", "total_load_mw", "mismatch_mw"]], on=["date", "hour"])
     hourly = hourly.rename(columns={"mismatch_mw": "losses_mw", "total_load_mw": "load_mw"})
     hourly["net_up_mwh"] = hourly.up_mwh - hourly.down_mwh
@@ -117,7 +126,8 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid"):
     hourly["month"] = hourly.date.str[:7]
     monthly = hourly.groupby("month").agg(up_gwh=("up_mwh", "sum"), down_gwh=("down_mwh", "sum"),
                                           losses_gwh=("losses_mw", "sum"), extra_cost_meur=("extra_cost_eur", "sum"),
-                                          marginal_meur=("marginal_eur", "sum"), hours=("hour", "size"))
+                                          marginal_meur=("marginal_eur", "sum"), starts=("starts", "sum"),
+                                          hours=("hour", "size"))
     monthly[["up_gwh", "down_gwh", "losses_gwh"]] /= 1e3
     monthly[["extra_cost_meur", "marginal_meur"]] /= 1e6
     hod = hourly.groupby("hour")[["up_mwh", "down_mwh", "losses_mw"]].mean()
@@ -164,7 +174,8 @@ def main():
     print(f"  turned up        {up:9.1f} GWh")
     print(f"  turned down      {dn:9.1f} GWh")
     print(f"  grid losses      {loss:9.1f} GWh   (up − down = {up - dn:.1f} GWh)")
-    print(f"  extra cost       {ec:9.2f} M€    = {1e3 * ec / up if up else float('nan'):.1f} €/MWh up")
+    print(f"  extra cost       {ec:9.2f} M€    = {1e3 * ec / up if up else float('nan'):.1f} €/MWh up"
+          f"   (of which start-ups {hourly.startup_eur.sum() / 1e6:.2f} M€, {int(hourly.starts.sum())} starts)")
     print(f"  marginal value   {mg:9.2f} M€    (the viewer's figure; the difference is the net energy at the day-ahead price)")
     print(f"  loss share       {hourly.losses_mw.sum() / hourly.load_mw.sum():.4f}   → [redispatch].loss_share for step RD2")
     print("\n  by type (GWh up / down, extra cost M€):")

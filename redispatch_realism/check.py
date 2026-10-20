@@ -109,6 +109,13 @@ def logic():
               f"{hourly_mk.extra_cost_eur.iloc[0]:.0f}")
         check("types grouped like the viewer", set(by_type.index) == {"Gas", "Hydro", "Pumped storage"},
               ", ".join(by_type.index))
+        pd.DataFrame([dict(date="2024-12-02", hour=0, round=1, unit="GAS1", fuel="Gas", technology="Combined_cycle",
+                           bus_i=1, min_load_mw=120.0, start_cost_eur=5000.0, trigger_bus_i=1,
+                           trigger_slack_mvar=-80.0, hops=0)]).to_csv(d / "rd_startups.csv", index=False)
+        hourly_su, *_ = settle.settle(d)
+        check("start-up cost added to its hour only (RD9)",
+              np.allclose(hourly_su.extra_cost_eur, [2600 + 5000, -2500]) and hourly_su.starts.tolist() == [1, 0],
+              f"{list(hourly_su.extra_cost_eur.round())}")
 
 
 # ── same: two runs that must give the same redispatch ────────────────────────
@@ -214,9 +221,37 @@ def rd4(a, b, pf=1.0, tol=1.0):
           f"{ga[ga.kind == 'Wind and solar'].dispatch_mvar.abs().sum() / len(keys):.0f} → {res.dispatch_mvar.abs().sum() / len(keys):.0f}")
 
 
+# ── rd9: voltage start-ups ───────────────────────────────────────────────────
+def rd9(a, b, tol=1.0):
+    print(f"\nRD9 voltage start-ups: A = {a} (RD3 on, no start-ups), B = {b} (start-ups on)")
+    fa = (~pd.read_csv(a / "summary.csv").status.isin(settle.SOLVED)).sum()
+    fb = (~pd.read_csv(b / "summary.csv").status.isin(settle.SOLVED)).sum()
+    check("fewer failed hours than RD3 alone", fb < fa or fa == 0, f"A {fa}, B {fb}")
+    su_file = b / "rd_startups.csv"
+    check("start-ups recorded", su_file.exists())
+    if not su_file.exists():
+        return
+    su = pd.read_csv(su_file)
+    keys = solved(b)[["date", "hour"]]
+    g = pd.read_csv(b / "gen_dispatch.csv", usecols=["date", "hour", "unit_name", "dispatch_mw", "dispatch_mvar"])
+    m = su.merge(keys).merge(g, left_on=["date", "hour", "unit"], right_on=["date", "hour", "unit_name"])
+    short = (m.min_load_mw - m.dispatch_mw - tol).max() if len(m) else 0.0
+    check("started units run at least at minimum load", short <= 0,
+          f"{len(m)} starts in solved hours; worst shortfall {max(short, 0):.1f} MW")
+    check("started units give reactive power", (m.dispatch_mvar.abs() > tol).mean() >= 0.5 if len(m) else True,
+          f"{(m.dispatch_mvar.abs() > tol).mean() * 100 if len(m) else 0:.0f} % of starts with |Q| > {tol} Mvar")
+    print(f"\n  {len(su)} start-ups, {su.start_cost_eur.sum() / 1e3:.0f} k€ of start-up cost, "
+          f"{su.min_load_mw.sum() / 1e3:.2f} GWh at minimum load")
+    print("  by hour of day:", su.groupby("hour").size().to_dict())
+    print("  by fuel:", su.groupby("fuel").size().to_dict(), "· most started units:",
+          su.unit.value_counts().head(5).to_dict())
+    print("  slack that triggered them, Mvar (negative = surplus to absorb):",
+          su.trigger_slack_mvar.describe()[["min", "50%", "max"]].round(0).to_dict())
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("what", choices=["logic", "same", "rd2", "rd3", "rd4"])
+    ap.add_argument("what", choices=["logic", "same", "rd2", "rd3", "rd4", "rd9"])
     ap.add_argument("runs", nargs="*", type=Path)
     ap.add_argument("--pf", type=float, default=1.0, help="rd4: renewable_power_factor of run B")
     a = ap.parse_args()
@@ -228,7 +263,7 @@ def main():
         if a.what == "rd4":
             rd4(*a.runs, pf=a.pf)
         else:
-            {"same": same, "rd2": rd2, "rd3": rd3}[a.what](*a.runs)
+            {"same": same, "rd2": rd2, "rd3": rd3, "rd9": rd9}[a.what](*a.runs)
     n_fail = RESULTS.count(False)
     print(f"\n{len(RESULTS) - n_fail} passed, {n_fail} failed")
     sys.exit(1 if n_fail else 0)

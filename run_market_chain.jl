@@ -591,7 +591,7 @@ RD_XB_SPLIT ∈ ("fixed", "country_total") ||
 RD_PF_MODEL ∈ ("AC", "DC") ||
     error("config.toml: [redispatch].power_flow must be \"AC\" or \"DC\"")
 RD_STARTUPS !== nothing && !(RD_Q_ONLINE && RD_PF_MODEL == "AC" && RD_WATER_VALUE == "constant") &&
-    error("config.toml: [redispatch.startups] needs q_requires_online = true, power_flow = \"AC\" and water_value = \"constant\"")
+    error("config.toml: [redispatch.startups] and [redispatch.mustrun] need q_requires_online = true, power_flow = \"AC\" and water_value = \"constant\"")
 DIAGNOSTIC_OUTPUT && !RUN_MARKET &&
     error("config.toml: diagnostic_output requires from_saved=\"\" so schedules can be released gate by gate")
 DIAGNOSTIC_OUTPUT && !RD_ENABLED &&
@@ -621,8 +621,10 @@ RD_ENABLED && RD_LOSS_SHARE > 0 &&
     @printf "                 load scaled by (1 − %.4f): losses already in the OMIE demand\n" RD_LOSS_SHARE
 RD_ENABLED && RD_Q_ONLINE &&
     @printf "                 reactive power only from running units (online above %.0f %% of installed)\n" 100 * RD_Q_ONLINE_FRAC
-RD_ENABLED && RD_STARTUPS !== nothing &&
+RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.startups &&
     @printf "                 voltage start-ups: up to %d per hour, within %d branches of the need\n" RD_STARTUPS.max_rounds RD_STARTUPS.max_hops
+RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.mustrun !== nothing &&
+    @printf "                 must-run by voltage zone: %d zones (REE 2024, I90)\n" length(RD_STARTUPS.mustrun.members)
 RD_ONLY != "" &&
     @printf "                 restricted to: %s\n" RD_ONLY
 

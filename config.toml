@@ -3520,6 +3520,19 @@ max_hops             = 4         # branches between the need and the unit
 q_slack_eur_per_mvar = 1000.0    # price of the diagnostic reactive slack
 min_slack_mvar       = 5.0       # slack below this counts as no need
 
+[redispatch.mustrun]
+# Must-run by voltage zone (step RD5), from REE's 2024 I90 data
+# (redispatch_realism/build_voltage_zones.py): in every hour where REE raised a
+# unit of a zone for voltage, at least as many of the zone's thermal units must
+# run as REE had online (its viable programme, PDVP).  Offline CCGT/coal members
+# are started at minimum load, cheapest first; nuclear counts but is never
+# started.  Starts go to rd_startups.csv (round = 0).  Needs q_requires_online.
+# 2024 only: the requirement is observed, not derived.
+enabled          = false
+zones_file       = "redispatch_realism/data/voltage_zone_units.csv"
+requirement_file = "redispatch_realism/data/voltage_zone_requirement.csv"
+scale            = 1.0      # sensitivity: multiplies every zone's count
+
 [redispatch.bids]
 # Prices for objective = "ree" (steps RD10/RD11, redispatch_objective.jl): REE's
 # cost rule, min Σ (bid_up − p_DA)·up + Σ (p_DA − refund)·down + tie_break·moved.

@@ -40,11 +40,14 @@ sources the day-ahead unit commitment uses, read even when that is off.
 """
 function load_rd_startups(cfg)
     c = get(get(cfg, "redispatch", Dict()), "startups", Dict())
-    get(c, "enabled", false) || return nothing
+    mr = load_rd_mustrun(cfg)
+    (get(c, "enabled", false) || mr !== nothing) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
     co = get(uc, "coal", Dict())
     usd(x) = Float64(x) * Float64(get(uc, "usd_inflator_to_2024", 1.1953)) / Float64(get(uc, "usd_per_eur", 1.0824))
-    return (q_slack_eur_per_mvar = Float64(get(c, "q_slack_eur_per_mvar", 1000.0)),
+    return (startups             = Bool(get(c, "enabled", false)),   # RD9 loop on failed hours
+            mustrun              = mr,                                # RD5 zones, or nothing
+            q_slack_eur_per_mvar = Float64(get(c, "q_slack_eur_per_mvar", 1000.0)),
             min_slack_mvar       = Float64(get(c, "min_slack_mvar", 5.0)),
             max_rounds           = Int(get(c, "max_rounds", 8)),
             max_hops             = Int(get(c, "max_hops", 4)),
@@ -64,6 +67,63 @@ function load_rd_startups(cfg)
             coal_wear_small      = usd(get(co, "start_wear_usd_per_mw_small", 100.0)),
             coal_start_fuel      = Float64(get(co, "start_fuel_mwh_per_mw", 3.0)),
             coal_eta             = Float64(get(co, "eta", 0.36)))
+end
+
+# ── Step RD5: must-run by voltage zone ([redispatch.mustrun]) ────────────────
+# Built from REE's 2024 I90 data by redispatch_realism/build_voltage_zones.py:
+# in every hour where REE raised a unit of a zone for voltage, the number of the
+# zone's thermal units online in REE's viable programme (PDVP).  Before an hour
+# is solved, offline CCGT/coal members of a zone below its count are started at
+# minimum load, cheapest first (nuclear counts but is never started).
+function load_rd_mustrun(cfg)
+    c = get(get(cfg, "redispatch", Dict()), "mustrun", Dict())
+    get(c, "enabled", false) || return nothing
+    resolve(p) = isabspath(p) ? p : joinpath(@__DIR__, p)
+    zu  = CSV.read(resolve(String(c["zones_file"])), DataFrame)
+    req = CSV.read(resolve(String(c["requirement_file"])), DataFrame)
+    members = Dict{String,Vector{String}}()
+    for r in eachrow(zu)
+        push!(get!(members, String(r.zone), String[]), String(r.unit_id))
+    end
+    need = Dict{Tuple{String,Int},Vector{Tuple{String,Int}}}()
+    scale = Float64(get(c, "scale", 1.0))
+    for r in eachrow(req)
+        n = round(Int, scale * r.n_online)
+        n > 0 && push!(get!(need, (string(r.date), Int(r.hour)), Tuple{String,Int}[]), (String(r.zone), n))
+    end
+    @printf "  [redispatch.mustrun] %d zones, %d member units, requirements in %d hours\n" length(members) nrow(zu) length(need)
+    return (members = members, need = need)
+end
+
+"""
+    apply_zone_mustrun!(network, su, date_str, hour) -> number of units started
+
+RD5: start the cheapest offline candidates of every zone whose online thermal
+units (reactive power not taken away by RD3) are fewer than REE had.
+"""
+function apply_zone_mustrun!(network, su, date_str, hour)
+    mr = su.mustrun
+    mr === nothing && return 0
+    gens = network["gen"]
+    byname = Dict(g["name"] => g for (_, g) in gens)
+    n_started = 0
+    for (zone, n) in get(mr.need, (date_str, hour), Tuple{String,Int}[])
+        units = [byname[u] for u in get(mr.members, zone, String[]) if haskey(byname, u)]
+        online = count(g -> !su_is_off(g), units)
+        online >= n && continue
+        cands = sort([g for g in units if su_is_off(g) && su_is_candidate(su, g)]; by = g -> su_terms(su, g)[3])
+        for g in first(cands, min(n - online, length(cands)))
+            pmin_mw, start = su_commit!(su, g)
+            n_started += 1
+            push!(RD_STARTUP_ROWS, (date = date_str, hour = hour, round = 0, unit = g["name"],
+                                    fuel = g["fuel"], technology = g["technology"], bus_i = g["gen_bus"],
+                                    min_load_mw = round(pmin_mw; digits = 1),
+                                    start_cost_eur = round(start; digits = 0),
+                                    trigger_bus_i = 0, trigger_slack_mvar = NaN, hops = -1,
+                                    zone = zone, zone_need = n, zone_online = online))
+        end
+    end
+    return n_started
 end
 
 const RD_STARTUP_ROWS = NamedTuple[]
@@ -183,8 +243,10 @@ committed in `network`, so the hour's outputs show them.
 """
 function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                   label = nothing, date_str = "", hour = 0)
+    n_zone = apply_zone_mustrun!(network, su, date_str, hour)        # RD5, before any solve
+    n_zone > 0 && @printf "    must-run: %d unit(s) started for voltage zones\n" n_zone
     res = solve_anchored_opf(network, gens, optimizer_for(0), sched; iis_label = label)
-    rd_su_ok(res) && return res
+    (rd_su_ok(res) || !su.startups) && return res
     adj = su_adjacency(network)
     slack_ids = su_add_q_slack!(network)
     slack_bus = Dict(i => network["gen"][string(i)]["gen_bus"] for i in slack_ids)
@@ -217,7 +279,7 @@ function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                 min_load_mw = round(pmin_mw; digits = 1),
                                 start_cost_eur = round(start; digits = 0),
                                 trigger_bus_i = bus, trigger_slack_mvar = round(q; digits = 1),
-                                hops = dist[g["gen_bus"]]))
+                                hops = dist[g["gen_bus"]], zone = "", zone_need = 0, zone_online = 0))
     end
     su_remove_q_slack!(network, slack_ids)
     n_started == 0 && return res

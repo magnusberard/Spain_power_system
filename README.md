@@ -229,6 +229,17 @@ is unused in weeks mode), then `scripts/merge_runs.py`. The chunks are
 independent: scenario runs have no unit commitment. 2024 has 29 February and
 2015 does not, so from March the weather is one day ahead of the date.
 
+**CO₂ cost in the scenarios (branch `2035-improvements`).** The EnVis
+`Generator_CO2Content.tab` in `Data/2035` is tCO₂ per GJ of **fuel** (CCGT and
+OCGT both 0.0558, the IPCC factors), so the CO₂ adder is
+(3.6/η)·content·price, as in EMPIRE itself (OpenEMPIRE user guide §4.3).
+`[scenario].co2_content_basis = "fuel"` does that with the efficiencies in
+`[scenario.efficiency]` (CCGT 0.56, OCGT 0.425, coal 0.435 from EMPIRE; the
+rest from OpenEMPIRE's default table); `"electricity"` is the original
+3.6·content·price. 2035 costs, Trinity / NECPEssentials: CCGT 62.4 / 173.4
+(was 52.5 / 115.3), coal 68.2 / 303.9 (was 40.5 / 142.3) €/MWh, so coal is no
+longer cheaper than gas in Trinity. Retrain the scenario cuts after changing it.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,

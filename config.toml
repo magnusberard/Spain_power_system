@@ -78,6 +78,32 @@ co2_price_region = "ES"
 #           sets a deeply negative price in any hour it is marginal.
 negative_co2_credit = false
 
+# What Generator_CO2Content.tab is per GJ of (empire_scenario.jl):
+#   "fuel"        — CO2 adder = (3.6/η)·content·price, EMPIRE's own formula
+#                   (OpenEMPIRE user guide §4.3, content in tCO2/GJ from IPCC).
+#                   The EnVis v1.3.0 table in Data/2035 is per GJ of fuel: CCGT
+#                   and OCGT both 0.0558, oil 0.0740 = the IPCC fuel factors.
+#                   A CCGT then emits 0.36 tCO2/MWh_el (0.20 with "electricity").
+#   "electricity" — CO2 adder = 3.6·content·price, the original setting; right
+#                   for a per-GJ_el table such as the one [costs.gas_srmc] uses.
+co2_content_basis = "fuel"
+
+# Efficiency η (MWh_el per MWh_fuel) per EMPIRE generator, used with
+# co2_content_basis = "fuel" for every technology with a CO2 content.
+# Our assumption: the 2035 fleet keeps these values (no new gas, coal or oil
+# plants are built by period 2 in either scenario).
+[scenario.efficiency]
+GasCCGT    = 0.56    # EMPIRE input, period 1 (= [costs.gas_srmc].eta.ccgt)
+GasOCGT    = 0.425   # EMPIRE input, period 1 (= [costs.gas_srmc].eta.ocgt)
+Coal       = 0.435   # EMPIRE input (= [costs.coal_srmc].eta)
+Lignite    = 0.37    # OpenEMPIRE.jl data/test/Generator/genEfficiency.csv, period 2
+Oil        = 0.376   # same file, Oilexisting
+Waste      = 0.33    # same file, Waste
+GasCCS     = 0.43    # same file, GasCCS
+CoalCCS    = 0.37    # same file, CoalCCS
+LigniteCCS = 0.373   # same file, LigniteCCSadv
+BioCCS     = 0.385   # same file, Bio10cofiringCCS (no BioCCS row; closest)
+
 [run]
 # ── Study days of the 2024 path ([scenario].label = "2024", [weeks] off) ─────
 # Either a list of days, or a range with `from` / `to` (both inclusive; a

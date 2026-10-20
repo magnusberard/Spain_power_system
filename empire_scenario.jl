@@ -14,8 +14,9 @@
 #   Output/transmissionInstalledCap.tab FromNode × ToNode × Period → MW
 #   Output/stor{PW,EN}InstalledCap.tab  Node × Storage × Period → MW / MWh
 #   Input/Tab/Node_ElectricAnnualDemand.tab   Node × Period → MWh/yr
-#   Input/Tab/Generator_CO2Content.tab        Generator → tCO2/GJ_ELECTRICITY
-#                                       (already the *remaining* content for
+#   Input/Tab/Generator_CO2Content.tab        Generator → tCO2/GJ (of fuel or of
+#                                       electricity: [scenario].co2_content_basis;
+#                                       already the *remaining* content for
 #                                        CCS units; negative for BioCCS)
 # and, from the repo Data/ folder:
 #   EU-EnVis-2060_Annual_Regional_CO2_Prices_v1.2.0.csv   the emission cap's
@@ -23,9 +24,10 @@
 #                                       (General_CO2Price.tab is 0 everywhere).
 #
 # Marginal cost with CO2:
-#   cost(g) = marginal_costs.csv(g, period) + 3.6·content_g·CO2price
-# (the CCS capture/transport cost is already inside marginal_costs.csv; no η
-# appears — see the note above envis_co2_price and in the loader).
+#   cost(g) = marginal_costs.csv(g, period) + 3.6·content_g·CO2price      ("electricity")
+#   cost(g) = marginal_costs.csv(g, period) + (3.6/η_g)·content_g·CO2price ("fuel")
+# (the CCS capture/transport cost is already inside marginal_costs.csv; see
+# the note in the loader for which basis applies).
 #
 # EMPIRE nodes: ES111…ES620 (NUTS3), "France", "Portugal", "EU" — mapped to
 # the 4 model zones ES / FR / PT / EU.  EMPIRE generator names are mapped to
@@ -172,6 +174,8 @@ function load_empire_scenario(cfg; data_dir = joinpath(@__DIR__, "Data"))
     #
     #   adder = 3.6 · content · price          [EUR/MWh_el]
     #
+    # (With [scenario].co2_content_basis = "electricity", the default.  The
+    # EnVis table shipped in Data/2035 is per GJ of fuel — see "fuel" below.)
     # NOT (3.6/η)·content·price.  Generator_CO2Content.tab is tCO2 per GJ of
     # ELECTRICITY — the efficiency is already divided in.  Multiplying the
     # column back by η returns the textbook FUEL emission factor for every row
@@ -217,11 +221,28 @@ function load_empire_scenario(cfg; data_dir = joinpath(@__DIR__, "Data"))
     #                     and all.
     neg_credit = Bool(get(scfg, "negative_co2_credit", false))
     co2 = Dict(empire_tech(String(r[1])) => Float64(r[2]) for r in eachrow(df_cnt))
+    # [scenario].co2_content_basis: what the content column is per GJ of.
+    #   "fuel"        — adder = (3.6/η)·content·price, EMPIRE's own formula
+    #                   (OpenEMPIRE user guide §4.3; content in tCO2/GJ from IPCC).
+    #                   The EnVis v1.3.0 table in Data/2035 is per GJ of FUEL: CCGT
+    #                   and OCGT carry the same 0.0558 and oil 0.0740, the IPCC fuel
+    #                   factors, which per GJ of electricity is impossible.
+    #   "electricity" — adder = 3.6·content·price (the note above; right for the
+    #                   per-GJ_el table [costs.gas_srmc] takes its 2024 values from).
+    # η per EMPIRE generator from [scenario.efficiency]; an emitting technology
+    # without one stops the run.
+    basis = lowercase(String(get(scfg, "co2_content_basis", "electricity")))
+    basis in ("fuel", "electricity") ||
+        error("config.toml: [scenario].co2_content_basis must be \"fuel\" or \"electricity\"")
+    eta = Dict(empire_tech(String(k)) => Float64(v) for (k, v) in get(scfg, "efficiency", Dict()))
+    co2_per_mwh(t) = basis == "electricity" ? 3.6 * co2[t] :
+        haskey(eta, t) ? 3.6 * co2[t] / eta[t] :
+        error("config.toml: [scenario.efficiency] has no efficiency for $t (CO2 content $(co2[t]) tCO2/GJ)")
     costs = Dict{String,Float64}()
     for r in eachrow(df_mc)
         Int(r.Period) == period || continue
         t = empire_tech(String(r.Generator))
-        adder = get(co2, t, 0.0) == 0.0 ? 0.0 : 3.6 * co2[t] * co2_price
+        adder = get(co2, t, 0.0) == 0.0 ? 0.0 : co2_per_mwh(t) * co2_price
         neg_credit || (adder = max(adder, 0.0))
         costs[t] = Float64(r.MarginalCost_EurperMWh) + adder
     end
@@ -295,7 +316,7 @@ function load_empire_scenario(cfg; data_dir = joinpath(@__DIR__, "Data"))
     load_scale_es = demand["ES"] / es24
 
     return (label = label, period = period, co2_price = Float64(co2_price),
-            co2_src = co2_src,
+            co2_src = "$(co2_src); content per GJ of $(basis)",
             caps = caps, caps_nuts = caps_nuts, costs = costs, demand = demand,
             ntc = ntc, storage = storage, growth = growth,
             load_scale_es = load_scale_es)

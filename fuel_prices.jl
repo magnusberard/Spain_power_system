@@ -30,6 +30,9 @@
 # efficiency and inflated coal ~1.3x more than gas; the bug was invisible while
 # EMPIRE's General_CO2Price.tab was all zeros — those runs used an emission cap
 # instead of a price.)
+# This holds for the per-GJ_el table these defaults come from.  The EnVis
+# Generator_CO2Content.tab in Data/2035 is per GJ of FUEL (CCGT and OCGT both
+# 0.0558), so scenario runs divide by eta there: [scenario].co2_content_basis.
 #
 # Delivery-day convention: the MIBGAS product is GDAES_D+1, quoted on trading
 # day D for delivery on D+1.  A generator burning gas on delivery day D bought

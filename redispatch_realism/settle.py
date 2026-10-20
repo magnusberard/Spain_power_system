@@ -75,7 +75,10 @@ def read_anchor(path, keys):
     return pd.concat(parts, ignore_index=True)
 
 
-def settle(rdir, anchor="auto", bids=None, down_refund="bid"):
+STORAGE = {("Hydro", "reservoir"), ("Hydro", "pumped_storage"), ("Battery", "Li-Ion")}
+
+
+def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=False):
     summ = pd.read_csv(rdir / "summary.csv")
     summ = summ[summ.status.isin(SOLVED)]
     keys = summ[["date", "hour"]]
@@ -97,6 +100,8 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid"):
         d = ch.dispatch_mw - ch.anchor_mw
         up, dn = d.clip(lower=0), (-d).clip(lower=0)
         c = ch.cost_eur_per_mwh
+        if storage_at_da:                   # RD11: storage bids its opportunity cost, the day-ahead price
+            c = c.where(~pd.Series([k in STORAGE for k in zip(ch.fuel, ch.technology)], index=ch.index), ch.p_da)
         mk = [markups.get(k, (0.0, 0.0)) for k in zip(ch.fuel, ch.technology)]
         mu = np.array([m[0] for m in mk]); md = np.array([m[1] for m in mk])
         p_up = c * (1 + mu)
@@ -154,11 +159,13 @@ def main():
     ap.add_argument("--bids", type=Path, help="CSV fuel,technology,up_markup,down_markup (default: marginal cost, no mark-up)")
     ap.add_argument("--down-refund", choices=["bid", "da"], default="bid",
                     help="price of downward energy: the unit's down bid (real time, phase II) or the day-ahead price (phase I)")
+    ap.add_argument("--storage-at-da", action="store_true",
+                    help="price reservoir/pumped hydro and batteries at the day-ahead price (RD11, objective = \"ree\")")
     ap.add_argument("--esios", type=Path, help="spain-model-runs/reference/esios_2024.js, to print REE over the same hours")
     ap.add_argument("--out", type=Path, help="output folder (default: <run>/settlement)")
     a = ap.parse_args()
 
-    hourly, monthly, by_type, hod = settle(a.run, a.anchor, a.bids, a.down_refund)
+    hourly, monthly, by_type, hod = settle(a.run, a.anchor, a.bids, a.down_refund, a.storage_at_da)
     out = a.out or a.run / "settlement"
     out.mkdir(parents=True, exist_ok=True)
     hourly.to_csv(out / "hourly.csv", index=False)

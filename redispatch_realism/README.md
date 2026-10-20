@@ -147,6 +147,25 @@ surplus, which in our grid is always there. REE's start-ups look like a requirem
 area, which an AC snapshot of our approximate grid does not reproduce. Next: RD5, a must-run per
 area calibrated on I90, with RD9 kept as the physics fallback.
 
+### RD10/RD11 REE's cost rule, 2 Dec 2024
+
+C10 = B49 (RD3+RD4+RD9) + `objective = "ree"` with fitted mark-ups (CCGT 0.89, coal 0.94);
+CALL = C10 + RD2. Settled with the same rule (`settle.py --bids … --down-refund da --storage-at-da`).
+
+| | B49 | C10 | CALL | REE, same hours |
+|---|---|---|---|---|
+| solved hours | 22/24 | 24/24 | 23/24 | |
+| up, GWh | 119 | 125 | 108 | 39 |
+| extra cost, M€ | | 2.61 | 1.65 | 8.30 |
+| up by type, GWh | gas 52, hydro 33, pumped 32 | gas 11, hydro 61, pumped 52 | gas 5, hydro 58, pumped 45 | almost all CCGT/coal |
+
+The cost rule helps the AC solves (all 24 hours), but hydro, pumped storage and wind priced at
+exactly p_DA up and down can be swapped for free (only the 0.5 €/MWh tie-break), so the model
+holds voltage with large near-free hydro/pumped/wind moves instead of REE's few paid gas starts:
+3× REE's volume at a third of its cost. Next: calibrate `[redispatch.bids]` — REE paid pumped
+storage 1.59 × p_DA in phase I in 2024 (I90), i.e. an up mark-up ≈ 0.6, and test a larger
+tie-break (REE's least-energy rule).
+
 REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
 `tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
 5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,

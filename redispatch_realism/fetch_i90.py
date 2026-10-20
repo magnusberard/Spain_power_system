@@ -13,6 +13,8 @@ I90DIA (e·sios archive 34) is public, needs no token and is published with a 90
   i90_pdvp.csv         I90DIA01: the viable day-ahead programme (PDVP, after phase I and II)
                        per unit and hour, MWh; non-zero rows only, and with --pdvp-units only
                        the units in that CSV's ree_unit column (e.g. ree_unit_crosswalk.csv)
+  i90_afrr_band.csv    I90DIA05: secondary-regulation (aFRR) band REE assigned per unit and hour,
+                       MW, up and down (Sentido); summed over units = REE's reserve requirement
 
 Columns: date, hour (0–23), the sheet's own keys (Redespacho, Sentido, Unidad de Programación,
 Tipo Restricción, …), then mwh / eur_mwh / mw. Every day is first written to <out>/days/ (so an
@@ -53,13 +55,17 @@ def sheet_long(book, name, value_name, how="sum"):
         return pd.DataFrame()
     sh = book.sheet_by_name(name)
     rows = [sh.row_values(i) for i in range(sh.nrows)]
+    # keyed by programming unit; the aFRR band (I90DIA05) is keyed by market participant
+    # from 20 Nov 2024, when Spain's secondary-regulation market changed
+    keys = (UNIT, "Participante del Mercado")
     try:
-        hi = next(i for i, r in enumerate(rows) if any(str(c).strip() == UNIT for c in r))
+        hi = next(i for i, r in enumerate(rows) if any(str(c).strip() in keys for c in r))
     except StopIteration:
         return pd.DataFrame()
     head = [str(c).strip() for c in rows[hi]]
+    key = next(k for k in keys if k in head)
     df = pd.DataFrame(rows[hi + 1:], columns=head)
-    df = df[df[UNIT].astype(str).str.strip() != ""]
+    df = df[df[key].astype(str).str.strip() != ""]
     # time columns: "00-01" … (hourly) or "1.0" … "96.0" (quarter-hours); the rest are keys,
     # except the totals and the empty "Hora" / "Cuarto de Hora del dia" label columns
     is_time = lambda c: bool(re.fullmatch(r"\d\d-\d\d", c) or re.fullmatch(r"\d+(\.0)?", c))
@@ -75,7 +81,7 @@ def sheet_long(book, name, value_name, how="sum"):
     return (agg.sum() if how == "sum" else agg.mean()).reset_index()
 
 
-TABLES = ("tc_phase", "tc_realtime", "limits", "pdvp")
+TABLES = ("tc_phase", "tc_realtime", "limits", "pdvp", "afrr_band")
 
 
 def parse_day(xls_bytes, d, pdvp_units=None):
@@ -87,6 +93,9 @@ def parse_day(xls_bytes, d, pdvp_units=None):
         if pdvp_units is not None:
             pv = pv[pv[UNIT].isin(pdvp_units)]
         out["pdvp"] = pv
+    band = sheet_long(book, "I90DIA05", "mw", "mean")
+    if not band.empty:
+        out["afrr_band"] = band[band.mw != 0]
     for key, (e_sheet, p_sheet) in {"tc_phase": ("I90DIA03", "I90DIA09"),
                                     "tc_realtime": ("I90DIA08", "I90DIA10")}.items():
         e, p = sheet_long(book, e_sheet, "mwh", "sum"), sheet_long(book, p_sheet, "eur_mwh", "mean")
@@ -133,8 +142,8 @@ def main():
     ddir, zdir = a.out / "days", a.out / "zips"
     ddir.mkdir(parents=True, exist_ok=True); zdir.mkdir(parents=True, exist_ok=True)
     for i, d in enumerate(days, 1):
-        if (ddir / f"{d}.done").exists() and (ddir / f"{d}_pdvp.csv").exists():
-            continue                                    # (days fetched before pdvp existed are fetched again)
+        if (ddir / f"{d}.done").exists() and all((ddir / f"{d}_{k}.csv").exists() for k in ("pdvp", "afrr_band")):
+            continue                                    # (days fetched before these tables existed are fetched again)
         t = time.time()
         try:
             z, xls = fetch(d, zdir)

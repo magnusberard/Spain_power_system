@@ -19,6 +19,33 @@ Built in checkpoints, each reviewed before the next:
 | 4 | RD10, RD11 | REE's objective, pay-as-bid mark-ups; storage at opportunity cost | — |
 | 5 | RD6, RD7 | N-1 on critical corridors; upward reserve in real time | — |
 
+## Checks: is each component working?
+
+`check.py` prints PASS/FAIL per test and exits non-zero on a failure. Three kinds:
+
+- **logic**: no model run, synthetic inputs with known answers (seconds).
+  `python redispatch_realism/check.py logic`
+- **same A B**: with every new switch off, the branch gives the same redispatch as `main`
+  (same solved hours, every unit within 0.5 MW). Run once per checkpoint on one week.
+- **rdN A B**: A = switch off, B = switch on, same days; tests what the component must change
+  and that no hour that solved in A fails in B.
+
+How close the result is to REE is reported, not pass/fail: `settle.py --esios`.
+
+| Component | logic (no run) | on = does its job (A off, B on) |
+|---|---|---|
+| RD1 settle | 8 tests: up/down, border and pseudo-units out, both cost formulas, mark-ups, the marginal = EC + p_DA·net identity | — |
+| RD2 loss_share | — | load scaled by one constant; net up (up − down) < 25 % of A's; less up; AC losses about unchanged |
+| RD3 Q only when running | network builder: a unit below Pmin gets qmin = qmax = 0 | no unit below 5 % of capacity has \|Q\| > 1 Mvar; hours that become infeasible are listed with their buses |
+| RD4 RES power factor | — | wind/solar \|Q\| ≤ tan(acos(pf))·P in every hour |
+| RD9 unit commitment | tiny 3-unit case with a known optimum | no unit between 0 and its minimum load; starts respect min up/down times |
+| RD5 must-run by area | — | every area/hour meets its requirement; voltage-cause up appears at the listed nodes |
+| RD8 phase I/II stage | — | phase II takes back phase I's added energy (net ≈ 0 per hour); DA price file byte-identical |
+| RD10 objective, bids | objective value equals settle.py's extra cost on the same schedule | €/MWh up rises toward the fitted mark-up |
+| RD11 storage cost | — | pumped storage within its daily energy band; up from pumped storage falls |
+| RD6 N-1 | 3-bus case: a contingency forces a known redispatch | no listed contingency overloads a line above its rating |
+| RD7 reserve | — | online upward headroom ≥ requirement in every real-time hour |
+
 ## Checkpoint 1
 
 **RD1 — `settle.py`** (new, Python only). Reads a finished run and reports energy up/down per
@@ -58,8 +85,8 @@ cp -r $R/2024_by_month/2024-12 $R/rd2_A; cp -r $R/2024_by_month/2024-12 $R/rd2_B
 # A keeps loss_share = 0.0, B sets loss_share = 0.0101
 SPAIN_DAYS=2024-12-02:2024-12-08 SPAIN_CONFIG=$R/rd2_A/config_A.toml SPAIN_RESULTS=$R/rd2_A julia --project run_market_chain.jl
 SPAIN_DAYS=2024-12-02:2024-12-08 SPAIN_CONFIG=$R/rd2_B/config_B.toml SPAIN_RESULTS=$R/rd2_B julia --project run_market_chain.jl
-python redispatch_realism/settle.py $R/rd2_A
-python redispatch_realism/settle.py $R/rd2_B
+python redispatch_realism/check.py rd2 $R/rd2_A $R/rd2_B     # pass/fail
+python redispatch_realism/settle.py $R/rd2_B --esios ../spain-model-runs/reference/esios_2024.js
 ```
 
 `from_saved = "BAL"` reuses the saved market schedule, so only the AC stage reruns (one week,

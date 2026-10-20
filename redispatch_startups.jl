@@ -41,12 +41,14 @@ sources the day-ahead unit commitment uses, read even when that is off.
 function load_rd_startups(cfg)
     c = get(get(cfg, "redispatch", Dict()), "startups", Dict())
     mr = load_rd_mustrun(cfg)
-    (get(c, "enabled", false) || mr !== nothing) || return nothing
+    rs = load_rd_reserve(cfg)
+    (get(c, "enabled", false) || mr !== nothing || rs !== nothing) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
     co = get(uc, "coal", Dict())
     usd(x) = Float64(x) * Float64(get(uc, "usd_inflator_to_2024", 1.1953)) / Float64(get(uc, "usd_per_eur", 1.0824))
     return (startups             = Bool(get(c, "enabled", false)),   # RD9 loop on failed hours
             mustrun              = mr,                                # RD5 zones, or nothing
+            reserve              = rs,                                # RD7 requirement, or nothing
             q_slack_eur_per_mvar = Float64(get(c, "q_slack_eur_per_mvar", 1000.0)),
             min_slack_mvar       = Float64(get(c, "min_slack_mvar", 5.0)),
             max_rounds           = Int(get(c, "max_rounds", 8)),
@@ -245,6 +247,8 @@ function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                   label = nothing, date_str = "", hour = 0)
     n_zone = apply_zone_mustrun!(network, su, date_str, hour)        # RD5, before any solve
     n_zone > 0 && @printf "    must-run: %d unit(s) started for voltage zones\n" n_zone
+    n_res = commit_for_reserve!(network, su, date_str, hour)         # RD7, after the zones
+    n_res > 0 && @printf "    reserve: %d unit(s) started for upward reserve\n" n_res
     res = solve_anchored_opf(network, gens, optimizer_for(0), sched; iis_label = label)
     (rd_su_ok(res) || !su.startups) && return res
     adj = su_adjacency(network)

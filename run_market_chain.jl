@@ -55,6 +55,7 @@ include("fuel_prices.jl")
 include("markup.jl")
 include("unit_commitment.jl")
 include("redispatch_startups.jl")
+include("redispatch_reserve.jl")
 include("redispatch_objective.jl")
 include("crossborder.jl")
 include("da.jl")
@@ -625,6 +626,8 @@ RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.startups &&
     @printf "                 voltage start-ups: up to %d per hour, within %d branches of the need\n" RD_STARTUPS.max_rounds RD_STARTUPS.max_hops
 RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.mustrun !== nothing &&
     @printf "                 must-run by voltage zone: %d zones (REE 2024, I90)\n" length(RD_STARTUPS.mustrun.members)
+RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.reserve !== nothing &&
+    @printf "                 upward reserve in the redispatch: REE's aFRR band × %.2f + %.0f MW\n" RD_STARTUPS.reserve.scale RD_STARTUPS.reserve.extra_mw
 RD_ONLY != "" &&
     @printf "                 restricted to: %s\n" RD_ONLY
 
@@ -2159,6 +2162,7 @@ function solve_anchored_opf(network, gens, optimizer, sched;
         end
         JuMP.@objective(pm.model, Min, dev + xb_ct_cost)
     end
+    RD_STARTUPS === nothing || rd_add_reserve!(pm, gens, RD_STARTUPS.reserve, RD_CURRENT_RESERVE[])   # RD7
     model_hook === nothing || model_hook(pm)
     result = PowerModels.optimize_model!(pm; optimizer = optimizer)
     if RD_PF_MODEL == "DC" &&

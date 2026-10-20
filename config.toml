@@ -3533,6 +3533,19 @@ zones_file       = "redispatch_realism/data/voltage_zone_units.csv"
 requirement_file = "redispatch_realism/data/voltage_zone_requirement.csv"
 scale            = 1.0      # sensitivity: multiplies every zone's count
 
+[redispatch.reserve]
+# Upward reserve in the real-time redispatch (step RD7, redispatch_reserve.jl).
+# 89 % of REE's 2024 real-time upward redispatch was "too little upward
+# reserve".  Per hour the running gas/coal/hydro must keep headroom (maximum −
+# output) ≥ REE's assigned aFRR upward band × scale + extra_mw; if they cannot,
+# the cheapest offline CCGT/coal units are started (rd_startups.csv, zone =
+# "reserve").  Requirement file from redispatch_realism/build_reserve_requirement.py.
+# Needs q_requires_online.
+enabled          = false
+requirement_file = "redispatch_realism/data/reserve_requirement.csv"
+scale            = 1.0
+extra_mw         = 0.0       # e.g. an mFRR margin on top of the aFRR band
+
 [redispatch.bids]
 # Prices for objective = "ree" (steps RD10/RD11, redispatch_objective.jl): REE's
 # cost rule, min Σ (bid_up − p_DA)·up + Σ (p_DA − refund)·down + tie_break·moved.

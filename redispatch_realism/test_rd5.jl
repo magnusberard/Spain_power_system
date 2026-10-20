@@ -6,6 +6,7 @@
 include(joinpath(@__DIR__, "..", "data_preparation.jl"))
 using Test, Printf, JuMP, PowerModels
 include(joinpath(@__DIR__, "..", "redispatch_startups.jl"))
+include(joinpath(@__DIR__, "..", "redispatch_reserve.jl"))
 
 net0 = prepare_network(30_000.0, 5_000.0, 8_000.0)
 units = [g for (_, g) in net0.gens if startswith(g["name"], "G")]

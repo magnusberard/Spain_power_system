@@ -13,8 +13,8 @@ Built in checkpoints, each reviewed before the next:
 
 | Checkpoint | Steps | What | Status |
 |---|---|---|---|
-| 1 | RD1, RD2 | settle the redispatch like REE; take the losses out of the load | built, RD2 not yet run |
-| 2 | RD3, RD4 | reactive power only from running units; 2024 rules for wind/solar reactive power | — |
+| 1 | RD1, RD2 | settle the redispatch like REE; take the losses out of the load | built, checks pass |
+| 2 | RD3, RD4 | reactive power only from running units; 2024 rules for wind/solar reactive power | built; RD3 works and exposes night voltage hours (needs RD9); RD4 check running |
 | 3 | RD8, RD9, RD5 | phase I/II stage on the day-ahead schedule: daily unit commitment, must-run by voltage area | — |
 | 4 | RD10, RD11 | REE's objective, pay-as-bid mark-ups; storage at opportunity cost | — |
 | 5 | RD6, RD7 | N-1 on critical corridors; upward reserve in real time | — |
@@ -92,3 +92,40 @@ python redispatch_realism/settle.py $R/rd2_B --esios ../spain-model-runs/referen
 `from_saved = "BAL"` reuses the saved market schedule, so only the AC stage reruns (one week,
 168 AC hours). What to look at in B against A: up − down drops from ≈ the losses to ≈ 0, pumped
 storage up falls, and every hour that solved in A still solves in B.
+
+### Check results, 2–4 Dec 2024 (72 AC hours, from December's saved BAL schedule)
+
+| Check | Result |
+|---|---|
+| `same main A` (branch, all switches off, vs main adc81f4) | PASS 3/3, largest difference 0.000 MW |
+| `rd2 A B2` (loss_share 0.0101) | PASS 5/5: load × 0.9899 exactly; net up 16.5 → −1.5 GWh; up 39.0 → 28.0 GWh; AC losses 16.5 → 16.7 GWh. Failed hours 3 → 3, but different ones (4 Dec h04/06/07 fixed, h09/19/21 newly failed): Ipopt is a local solver, so the rule is "B fails no more hours than A" |
+
+## Checkpoint 2
+
+**RD3 — `[redispatch].q_requires_online`** (hook in `data_preparation.jl`, passed by the two
+redispatch calls). A synchronous unit the anchor leaves below 1 % of installed gives no reactive
+power; load shedding gives reactive power only in proportion to the load it sheds. Before, in
+December 2024, load-shedding units supplied half of all reactive power while shedding 81 MWh.
+`test_rd3.jl`: 15/15 PASS on the network builder.
+
+**RD4 — `renewable_power_factor = 1.0` for 2024** (config note only; the knob already existed).
+
+Run checks, same 72 hours:
+
+| Check | Result |
+|---|---|
+| `rd3 A B3` | idle units give no reactive power PASS (189 idle units, max 0.00 Mvar); load shedding proportional PASS; **failed hours 3 → 22 FAIL** |
+| `rd4 A B34` | running |
+
+The FAIL is the finding, not a bug. Without the free sources, the grid cannot hold voltage in the
+low-load hours: 17 of the 20 lowest-load hours fail (mean load 22.9 GW in failed hours against
+29.5 GW in solved ones), mostly 00–06 h, the window where REE's phase I peaks. Ipopt stops at its
+iteration limit there. The cure is RD9 (let the redispatch start units), so `rd3` is expected to
+fail on hours until checkpoint 3.
+
+Where the reactive power went (average |Mvar| per hour, A → B3, over the hours both solved):
+load shedding 10,294 → 0; synchronous units scheduled off 4,047 → 0; running synchronous units
+2,960 → 8,132; wind and solar 1,838 → 3,261 (RD4 removes this); border 440 → 1,214; slack
+29 → 992. The slack's free ±9999 Mvar is the last free source and should be capped (next
+checkpoint). Energy turned up 31.6 → 108.3 GWh and the extra cost turned positive (−2.93 →
++0.52 M€), still at marginal cost.

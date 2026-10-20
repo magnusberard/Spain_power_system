@@ -650,6 +650,19 @@ if WEEKS_ACTIVE
     CROSSBORDER && error("[weeks]: [crossborder] fixed injections exist only for " *
                          "the 2024 study days — the sampled horizon clears its own " *
                          "exchange in the 4-zone DA; disable [crossborder]")
+    # SPAIN_DAYS keeps only some days of the sampled horizon, so a long horizon
+    # (e.g. 52 weeks) can run as independent chunks in parallel
+    # (scripts/run_day_ranges.sh, solstorm_start_weeks.sh) and be joined with
+    # scripts/merge_runs.py.  Scenario runs have no unit commitment (2024 path
+    # only), so no state passes from one day to the next and chunks need no warm-up.
+    if haskey(ENV, "SPAIN_DAYS")
+        wanted  = study_days(cfg)
+        outside = setdiff(wanted, TARGET_DAYS)
+        isempty(outside) || error("SPAIN_DAYS: $(length(outside)) day(s) outside the week sample " *
+                                  "($(first(TARGET_DAYS)) .. $(last(TARGET_DAYS))), e.g. $(first(outside))")
+        TARGET_DAYS = filter(in(Set(wanted)), TARGET_DAYS)
+        @printf "Study days     : %s .. %s (%d of the sampled days, SPAIN_DAYS)\n" first(TARGET_DAYS) last(TARGET_DAYS) length(TARGET_DAYS)
+    end
 end
 # [redispatch].only may pin the whole run to a single day so the market stages,
 # Bellman pre-compute and load flow all skip the other TARGET_DAY.

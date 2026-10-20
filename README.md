@@ -216,6 +216,19 @@ ES/PT/FR/EU day-ahead. Writes `results/<label>/`. Expect 1–3 hours.
 Switch scenario by setting **both** `[scenario].label` and
 `[scenario].empire_dir`.
 
+**Full year (2035 reference run, branch `2035-reference-run`).** The config
+runs Trinity over all 52 weeks from 1 January with weather year 2015
+(`Data/sample_weeks_2015_year.csv`, written by hand: 2015 has average reservoir
+inflow and close to average sun and wind of 2015–2019), and `[crossborder]` off
+(the 4-zone day-ahead sets the exchange). First retrain the Trinity cuts with
+`midterm_sddp4.jl` (the shipped ones assume `bgn_date` 2024-07-02).
+`SPAIN_DAYS` picks days out of the week sample, so the year runs as one-week
+chunks in parallel, e.g. on Solstorm
+`scripts/solstorm_start_weeks.sh accepted <folder> k/N` (the res_input argument
+is unused in weeks mode), then `scripts/merge_runs.py`. The chunks are
+independent: scenario runs have no unit commitment. 2024 has 29 February and
+2015 does not, so from March the weather is one day ahead of the date.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,

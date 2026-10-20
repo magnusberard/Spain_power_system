@@ -25,7 +25,7 @@
 # Every output (Bellman cuts, volume trajectory, cut JSON, diagnostics) gets
 # the suffix "_<label>", and the market chain writes to results/<label>/ and
 # reads its Bellman inputs from the suffixed [midterm4] outputs automatically.
-label      = "2024"   # e.g. "NECP2035"
+label      = "Trinity"   # "2024" for the 2024 path; e.g. "NECPEssentials" (set empire_dir too)
 empire_dir = "Data/2035/Trinity"   # EMPIRE run (Input/Tab + Output) - Ignore if label = "2024"
 period     = 2                            # EMPIRE period index: 2 = 2030-2035
 
@@ -392,8 +392,12 @@ use_availability_factor     = false
 #                study_start, data_start, row_start), shared by all scenarios.
 #   xb_ntc_margin — fallback static symmetric margin, used only when
 #                [weeks.ntc].enabled=false.
-enabled    = false
-n_weeks    = 2
+#   2035 reference run: all 52 weeks from 1 Jan, weather year 2015 (average
+#   reservoir inflow and close to average sun and wind of the five years
+#   2015-2019); the key is written by hand, not drawn.  Run it as one-week
+#   chunks with SPAIN_DAYS (scripts/solstorm_start_weeks.sh).
+enabled    = true
+n_weeks    = 52
 contiguous = true
 resample   = false
 seed       = 0
@@ -402,7 +406,7 @@ seed       = 0
 #                tie (arbitrary gross wheeling otherwise lands on the border
 #                and defeats the AC redispatch).  Keep well below genuine
 #                zonal price spreads.
-key_file   = "Data/sample_weeks.csv"
+key_file   = "Data/sample_weeks_2015_year.csv"
 xb_ntc_margin = 0.65
 xb_hurdle_eur_mwh = 0.5
 
@@ -3310,7 +3314,7 @@ enabled = true
 # proportionally to line thermal ratings).
 # Weeks mode: must be off — crossborder.csv only covers the 2024 study days;
 # sampled-week exchange arrives with the 4-zone DA clearing.
-enabled = true
+enabled = false
 
 # ── Where the EXPORT sits ───────────────────────────────────────────────────
 # THE EXPORT IS ALREADY INSIDE THE ES LOAD SERIES — it must be RELOCATED, never

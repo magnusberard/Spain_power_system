@@ -42,13 +42,15 @@ function load_rd_startups(cfg)
     c = get(get(cfg, "redispatch", Dict()), "startups", Dict())
     mr = load_rd_mustrun(cfg)
     rs = load_rd_reserve(cfg)
-    (get(c, "enabled", false) || mr !== nothing || rs !== nothing) || return nothing
+    p1 = load_rd_phase1(cfg)
+    (get(c, "enabled", false) || mr !== nothing || rs !== nothing || p1 !== nothing) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
     co = get(uc, "coal", Dict())
     usd(x) = Float64(x) * Float64(get(uc, "usd_inflator_to_2024", 1.1953)) / Float64(get(uc, "usd_per_eur", 1.0824))
     return (startups             = Bool(get(c, "enabled", false)),   # RD9 loop on failed hours
             mustrun              = mr,                                # RD5 zones, or nothing
             reserve              = rs,                                # RD7 requirement, or nothing
+            phase1               = p1,                                # RD8 daily stage, or nothing
             q_slack_eur_per_mvar = Float64(get(c, "q_slack_eur_per_mvar", 1000.0)),
             min_slack_mvar       = Float64(get(c, "min_slack_mvar", 5.0)),
             max_rounds           = Int(get(c, "max_rounds", 8)),
@@ -245,6 +247,7 @@ committed in `network`, so the hour's outputs show them.
 """
 function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                   label = nothing, date_str = "", hour = 0)
+    su.phase1 === nothing || apply_phase1_commitments!(network, su, date_str, hour)   # RD8: phase I units stay on
     n_zone = apply_zone_mustrun!(network, su, date_str, hour)        # RD5, before any solve
     n_zone > 0 && @printf "    must-run: %d unit(s) started for voltage zones\n" n_zone
     n_res = commit_for_reserve!(network, su, date_str, hour)         # RD7, after the zones

@@ -57,6 +57,7 @@ include("unit_commitment.jl")
 include("redispatch_startups.jl")
 include("redispatch_reserve.jl")
 include("redispatch_objective.jl")
+include("redispatch_phase1.jl")
 include("crossborder.jl")
 include("da.jl")
 include("empire_scenario.jl")
@@ -626,6 +627,8 @@ RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.startups &&
     @printf "                 voltage start-ups: up to %d per hour, within %d branches of the need\n" RD_STARTUPS.max_rounds RD_STARTUPS.max_hops
 RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.mustrun !== nothing &&
     @printf "                 must-run by voltage zone: %d zones (REE 2024, I90)\n" length(RD_STARTUPS.mustrun.members)
+RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing &&
+    println("                 phase I/II: daily DC unit commitment on the day-ahead schedule, before the real-time AC stage")
 RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.reserve !== nothing &&
     @printf "                 upward reserve in the redispatch: REE's aFRR band × %.2f + %.0f MW\n" RD_STARTUPS.reserve.scale RD_STARTUPS.reserve.extra_mw
 RD_ONLY != "" &&
@@ -2195,6 +2198,12 @@ n_total  = nrow(hourly_rd)
 n_solved = 0
 
 if RD_ENABLED
+if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing      # RD8: phase I/II per day first
+    println("\n── Phase I/II: technical constraints on the day-ahead schedule (DC unit commitment) ──")
+    for d in TARGET_DAYS
+        run_phase1_day!(RD_STARTUPS, d)
+    end
+end
 println("\n── Stage 6: Redispatch ($(RD_PF_MODEL) OPF via $(RD_SOLVER_NAME), anchored to $(rd_anchor_label())) ──")
 
 # ────────────────────────────────────────────────────────────
@@ -2582,6 +2591,7 @@ if RD_ENABLED
         @printf "  ac_failures.csv  : %d rows (where each failed AC hour breaks limits)\n" length(ac_failure_rows)
     end
     write_rd_startups(RESULTS)
+    write_rd_phase1(RESULTS)
     if !isempty(xb_redispatch_rows)
         CSV.write(joinpath(RESULTS, "xb_redispatch.csv"), DataFrame(xb_redispatch_rows))
         @printf "  xb_redispatch.csv: %d rows (DA shares versus physical redispatch split)\n" length(xb_redispatch_rows)

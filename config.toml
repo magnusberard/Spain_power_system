@@ -3533,6 +3533,21 @@ zones_file       = "redispatch_realism/data/voltage_zone_units.csv"
 requirement_file = "redispatch_realism/data/voltage_zone_requirement.csv"
 scale            = 1.0      # sensitivity: multiplies every zone's count
 
+[redispatch.phase1]
+# REE's phase I/II as a daily stage on the day-ahead schedule (step RD8,
+# redispatch_phase1.jl): one 24-hour DC unit commitment per day — offline
+# CCGT/coal get on/off decisions (minimum load, start-up cost, minimum up/down
+# times from [unit_commitment]), REE's cost rule ([redispatch.bids], down
+# refunded at the day-ahead price), the [redispatch.mustrun] zone counts as
+# constraints.  Solved with Gurobi; writes rd_phase1.csv and
+# rd_phase1_summary.csv.  The units it commits stay committed in the real-time
+# AC stage.  Needs q_requires_online; in a standalone run (from_saved) it reads
+# the saved da_dispatch.csv.
+enabled            = false
+mip_gap            = 1e-3
+time_limit_s       = 600.0
+zone_shortfall_eur = 1.0e5     # penalty per missing unit in a voltage zone
+
 [redispatch.reserve]
 # Upward reserve in the real-time redispatch (step RD7, redispatch_reserve.jl).
 # 89 % of REE's 2024 real-time upward redispatch was "too little upward

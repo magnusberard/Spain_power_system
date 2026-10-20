@@ -72,6 +72,9 @@ mcfg = cfg["midterm4"]
 const SCEN_ACTIVE = empire_active(cfg)
 const SCEN_SUFFIX = empire_suffix(cfg)
 const EMP = SCEN_ACTIVE ? load_empire_scenario(cfg) : nothing
+# results/ is git-ignored, so a fresh clone (e.g. on Solstorm) has none; the
+# training log, cuts JSON and diagnostics below are written there.
+mkpath(joinpath(@__DIR__, "results"))
 
 const BGN_DATE    = Date(cfg["bellman"]["bgn_date"])
 const N_STAGES    = Int(mcfg["n_stages"])

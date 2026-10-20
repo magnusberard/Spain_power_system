@@ -1545,12 +1545,19 @@ end
 # Append the cleared marginal prices of one gate.  `es_price` is keyed by net
 # index (solve_da's hour position); only the hours the gate actually traded are
 # present, so frozen hours are simply skipped rather than repeating a stale price.
-function record_prices!(stage, date_str, day_ts, es_price; only_idx = nothing)
+#
+# `setter` (solve_da → price_setters, da.jl): the unit on the margin in each hour,
+# written as price_setter ("<fuel> (<technology>)", or e.g. "Imports (France)"),
+# setter_unit and setter_rule (cost / water_value / storage / cost_at_limit /
+# imports_FR / imports_PT / unclear).
+function record_prices!(stage, date_str, day_ts, es_price; only_idx = nothing, setter = Dict{Int,NamedTuple}())
     for (h_idx, ts) in enumerate(eachrow(day_ts))
         (only_idx === nothing || h_idx == only_idx) || continue
         haskey(es_price, h_idx) || continue
+        s = get(setter, h_idx, (setter = "", unit = "", rule = ""))
         push!(price_rows_all, (date = date_str, hour = ts.hour, stage = stage,
-                               price_eur_mwh = round(es_price[h_idx]; digits = 2)))
+                               price_eur_mwh = round(es_price[h_idx]; digits = 2),
+                               price_setter = s.setter, setter_unit = s.unit, setter_rule = s.rule))
     end
 end
 
@@ -1638,7 +1645,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
         error("$label dispatch failed for $date_str: $(result.status)")
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, result.sched;
                         nuclear_schedule = nuclear_schedule_acc)
-    record_prices!(label, date_str, day_ts, result.es_price)
+    record_prices!(label, date_str, day_ts, result.es_price; setter = result.setter)
     if uc !== nothing && result.uc !== nothing
         n_on = [count(u -> get(result.uc.on, (h, u), false), keys(uc.units)) for h in eachindex(nets)]
         @printf "    unit commitment (%s): %d units (CCGT + coal), on per hour %d–%d, %d starts, start cost %.0f EUR, MIP %s gap %.2g, carry-over %s\n" label length(uc.units) minimum(n_on) maximum(n_on) count(values(result.uc.start)) result.uc.start_cost_eur result.uc.mip_status result.uc.mip_gap (uc.init === nothing ? "no (first day)" : "yes")
@@ -1712,7 +1719,7 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
         committed[hgate] = result.sched[hgate]
         # Each rolling gate re-clears the whole remaining horizon but only
         # commits `hgate`; that hour's balance dual is its CID price.
-        record_prices!("CID", date_str, day_ts, result.es_price; only_idx = hgate)
+        record_prices!("CID", date_str, day_ts, result.es_price; only_idx = hgate, setter = result.setter)
         for h in hgate:H
             prev_full[h] = result.sched[h]
         end

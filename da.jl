@@ -460,6 +460,9 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             es_price[h] = JuMP.dual(c) / BASEMVA
         end
     end
+    # Which unit set each price, read at the same (cost-solve) point as the price.
+    setter = isempty(es_price) ? Dict{Int,NamedTuple}() :
+        price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f_pt)
 
     # Lexicographic pass 2: pin the dispatch cost at its optimum (within a tiny
     # tolerance so the merit order is preserved), then minimise total movement
@@ -503,5 +506,76 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         end
     end
     return (sched = sched, status = status, objective = objval, xb = xb,
-            prices = prices, es_price = es_price, uc = uc_result)
+            prices = prices, es_price = es_price, setter = setter, uc = uc_result)
+end
+
+# ── Price setter: which unit is on the margin in each priced hour ─────────────
+# In the cost LP the ES price is the cost of the next MWh, so the unit that sets
+# it runs part-loaded (strictly inside its limits) and, if it has a linear cost,
+# that cost equals the price.  Checked in this order:
+#   1. a part-loaded unit with a linear cost within 0.5 €/MWh (or 1 %) of the
+#      price, the closest one   → "cost"        (gas, coal, wind at 0, CHP, …)
+#   2. part-loaded reservoir hydro (cost 0 here; its value comes from the
+#      Bellman cuts or the daily budget)                → "water_value"
+#   3. a part-loaded storage unit (pumped hydro, BESS)  → "storage"
+#   4. a running unit AT a limit whose cost equals the price within 0.05 €/MWh
+#      (degenerate LP: the same price either way)       → "cost_at_limit"
+#   5. an interconnector flow inside its NTC limits: the price is set abroad
+#      (4-zone DA)                                      → "imports_FR" / "imports_PT"
+#   otherwise "unclear" (e.g. a ramp or min-up limit binds on every unit).
+# Under unit commitment a committed unit's limits are min load … pmax, an
+# uncommitted one is not a candidate.  Returns net index ⇒ (setter, unit, rule),
+# where `setter` is "<fuel> (<technology>)" of the unit, or the rule's name.
+function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f_pt)
+    tol_mw = 0.5 / BASEMVA                      # 0.5 MW inside a limit counts as part-loaded
+    resv   = Set(string.(reservoir_gen_ids))
+    label(g) = string(get(g, "fuel", "?"), " (", get(g, "technology", "?"), ")")
+    out = Dict{Int,NamedTuple}()
+    for (h, price) in es_price
+        best = nothing; best_gap = Inf
+        hydro = nothing; store = nothing
+        edge = nothing; edge_gap = Inf               # running AT a limit with cost = price
+        for (k, g) in nets[h].gens
+            v  = JuMP.value(pg[(h, k)])
+            lb = Float64(g["pmin"]); ub = Float64(g["pmax"])
+            on = get(uc_on, (h, g["name"]), nothing)
+            if on !== nothing                       # committed CCGT/coal: min load … pmax
+                JuMP.value(on) > 0.5 || continue
+                lb = max(lb, uc.units[g["name"]].min_load * ub)
+            end
+            if !(v > lb + tol_mw && v < ub - tol_mw)
+                # degenerate case: the marginal unit sits exactly at a limit, the
+                # price still equals its cost (e.g. the CHP block at its maximum)
+                if v > tol_mw && !(k in resv) && !haskey(g, "energy_mwh")
+                    gap = abs(g["cost"][1] / BASEMVA - price)
+                    if gap <= max(0.05, 0.001 * abs(price)) && gap < edge_gap
+                        edge = g; edge_gap = gap
+                    end
+                end
+                continue
+            end
+            if k in resv
+                hydro === nothing && (hydro = g)
+            elseif haskey(g, "energy_mwh")
+                store === nothing && (store = g)
+            else
+                gap = abs(g["cost"][1] / BASEMVA - price)
+                if gap <= max(0.5, 0.01 * abs(price)) && gap < best_gap
+                    best = g; best_gap = gap
+                end
+            end
+        end
+        out[h] = best  !== nothing ? (setter = label(best),  unit = string(best["name"]),  rule = "cost") :
+                 hydro !== nothing ? (setter = label(hydro), unit = string(hydro["name"]), rule = "water_value") :
+                 store !== nothing ? (setter = label(store), unit = string(store["name"]), rule = "storage") :
+                 edge  !== nothing ? (setter = label(edge),  unit = string(edge["name"]),  rule = "cost_at_limit") :
+                 begin
+                     inside(f) = f !== nothing && JuMP.value(f[h]) > JuMP.lower_bound(f[h]) + tol_mw &&
+                                 JuMP.value(f[h]) < JuMP.upper_bound(f[h]) - tol_mw
+                     inside(f_fr) ? (setter = "Imports (France)",   unit = "", rule = "imports_FR") :
+                     inside(f_pt) ? (setter = "Imports (Portugal)", unit = "", rule = "imports_PT") :
+                                    (setter = "Unclear", unit = "", rule = "unclear")
+                 end
+    end
+    return out
 end

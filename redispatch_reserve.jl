@@ -33,6 +33,7 @@ function load_rd_reserve(cfg)
     end
     @printf "  [redispatch.reserve] requirement for %d hours\n" length(req)
     return (req = req, scale = Float64(get(c, "scale", 1.0)), extra_mw = Float64(get(c, "extra_mw", 0.0)),
+            offline_hydro = Bool(get(c, "offline_hydro_counts", true)),
             providers = Set(lowercase.(String.(get(c, "providers",
                 ["Gas:Combined_cycle", "Gas:Gas_turbine", "Coal", "Hydro:reservoir", "Hydro:pumped_storage"])))))
 end
@@ -45,9 +46,12 @@ rd_reserve_need(rs, date_str, hour) =
 rd_is_provider(rs, g) = lowercase(g["fuel"]) in rs.providers ||
                         lowercase("$(g["fuel"]):$(g["technology"])") in rs.providers
 
-# Running provider: RD3 left (or a start-up gave) it reactive power, or it is
-# scheduled away from 0 (hydro has no RD3 commitment of its own when RD3 is off).
-rd_provider_on(rs, g) = rd_is_provider(rs, g) && (!su_is_off(g) || abs(get(g, "pg", 0.0)) > 1e-6)
+# Provider that counts: running — RD3 left (or a start-up gave) it reactive power,
+# or it is scheduled away from 0 — or, with offline_hydro_counts, reservoir and
+# pumped hydro even when stopped: they synchronise within minutes and carry much
+# of Spain's aFRR band, which the model's market stages do not schedule.
+rd_provider_on(rs, g) = rd_is_provider(rs, g) &&
+    (!su_is_off(g) || abs(get(g, "pg", 0.0)) > 1e-6 || (rs.offline_hydro && g["fuel"] == "Hydro"))
 
 """
     commit_for_reserve!(network, su, date_str, hour) -> units started

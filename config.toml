@@ -3561,6 +3561,10 @@ enabled          = false
 requirement_file = "redispatch_realism/data/reserve_requirement.csv"
 scale            = 1.0
 extra_mw         = 0.0       # e.g. an mFRR margin on top of the aFRR band
+# Stopped reservoir/pumped hydro count as headroom: they synchronise within
+# minutes and carry much of the aFRR band, which the market stages do not
+# schedule (false: only running units count; more thermal start-ups).
+offline_hydro_counts = true
 
 [redispatch.bids]
 # Prices for objective = "ree" (steps RD10/RD11, redispatch_objective.jl): REE's

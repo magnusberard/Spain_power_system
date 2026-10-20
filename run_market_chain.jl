@@ -106,12 +106,28 @@ MARKUP !== nothing && @printf("Mark-ups       : tax %s (default %.1f %%) on %s; 
     join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),
     length(MARKUP.x), MARKUP.x[1], MARKUP.x[end], MARKUP.cap)
 # [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
-# CCGT is priced from its own gas burn (gas_srmc_eta).  Builds on gas_srmc, so
-# 2024 path only.
-const GAS_UNIT_ETA = GAS_SRMC_ON ? load_gas_unit_eta(cfg) : nothing
-if !GAS_SRMC_ON && get(get(get(cfg, "costs", Dict()), "gas_unit_efficiency", Dict()), "enabled", false)
-    println("WARNING: [costs.gas_unit_efficiency] ignored — needs [costs.gas_srmc] on and the 2024 path")
+# CCGT is priced from its own gas burn.  2024 path: gas_srmc_eta from the daily
+# MIBGAS + EUA, so it needs [costs.gas_srmc].  Scenario runs: EMPIRE's CCGT
+# cost rescaled per unit (GAS_UNIT_COST_SCEN below).
+const GAS_UNIT_EFF_ON = get(get(get(cfg, "costs", Dict()), "gas_unit_efficiency", Dict()), "enabled", false)
+const GAS_UNIT_ETA = (GAS_SRMC_ON || SCEN_ACTIVE) ? load_gas_unit_eta(cfg) : nothing
+if !GAS_SRMC_ON && !SCEN_ACTIVE && GAS_UNIT_EFF_ON
+    println("WARNING: [costs.gas_unit_efficiency] ignored — the 2024 path needs [costs.gas_srmc] on")
 end
+# Scenario runs: EMPIRE prices every CCGT at one efficiency, eta_ref =
+# [scenario.efficiency].GasCCGT.  Fuel and CO2 scale with 1/eta, the variable
+# O&M ([costs.gas_srmc].vom.ccgt, EMPIRE's) does not — the same split as
+# gas_srmc_eta on the 2024 path:
+#   cost_u = vom + (cost_EMPIRE - vom) * eta_ref / eta_u
+# Fixed for the whole run (EMPIRE has one cost per period).
+const GAS_UNIT_COST_SCEN = (SCEN_ACTIVE && GAS_UNIT_ETA !== nothing) ? let
+        haskey(get(cfg["scenario"], "efficiency", Dict()), "GasCCGT") ||
+            error("config.toml: [costs.gas_unit_efficiency] in a scenario run needs [scenario.efficiency].GasCCGT")
+        c   = EMP.costs["Gas CCGT"]
+        ref = Float64(cfg["scenario"]["efficiency"]["GasCCGT"])
+        vom = Float64(get(get(get(cfg["costs"], "gas_srmc", Dict()), "vom", Dict()), "ccgt", 0.0))
+        Dict(u => vom + (c - vom) * ref / eta for (u, eta) in GAS_UNIT_ETA)
+    end : nothing
 const COST_OVERRIDE = let
     ov = SCEN_ACTIVE ? empire_cost_override(EMP) : Dict{Tuple{String,String},Float64}()
     # [costs].gas_from_midterm: take the ES gas marginal cost from
@@ -369,11 +385,14 @@ end
 # unit_id ⇒ EUR/MWh for every unit in the efficiency file.  prepare_network uses
 # them ahead of the shared (Gas, Combined_cycle) cost from cost_override_for.
 function unit_cost_override_for(date_str)
+    GAS_UNIT_COST_SCEN === nothing || return GAS_UNIT_COST_SCEN
     GAS_UNIT_ETA === nothing && return nothing
     d = Date(String(date_str))
     return Dict(u => gas_srmc_eta(FUEL_PRICES, eta, d) for (u, eta) in GAS_UNIT_ETA)
 end
-if GAS_UNIT_ETA !== nothing
+if GAS_UNIT_COST_SCEN !== nothing
+    @printf "Gas per unit   : %d CCGT units priced from their own efficiency ([costs.gas_unit_efficiency]), %.1f–%.1f EUR/MWh (EMPIRE CCGT %.1f)\n" length(GAS_UNIT_COST_SCEN) minimum(values(GAS_UNIT_COST_SCEN)) maximum(values(GAS_UNIT_COST_SCEN)) EMP.costs["Gas CCGT"]
+elseif GAS_UNIT_ETA !== nothing
     @printf "Gas per unit   : %d CCGT units priced from their own efficiency ([costs.gas_unit_efficiency])\n" length(GAS_UNIT_ETA)
 end
 # [unit_commitment]: CCGTs of at least min_mw are committed in the DA (on/off,

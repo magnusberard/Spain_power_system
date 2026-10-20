@@ -252,6 +252,15 @@ The list is written to `results/<run>/ccgt_fleet.csv`; `"even"` is the
 original scaling. Our 2024 list has 26.9 GW of CCGT against EMPIRE's 23.9 GW
 start (EMPIRE's regions are our units × 0.888), so 6.9 GW are removed in all.
 
+**Gas efficiency per plant in the scenarios (branch `2035-improvements`).**
+`[costs.gas_unit_efficiency]` now also works in scenario runs: EMPIRE's single
+CCGT cost is taken to be at η = 0.56 (`[scenario.efficiency].GasCCGT`) and
+rescaled per unit with the same efficiency file as 2024, fuel and CO₂ with
+0.56/η, the variable O&M (4.68 €/MWh) unchanged. 2035 costs at η 0.56 / 0.58 /
+0.60: Trinity 62.4 / 60.4 / 58.6, NECP 173.4 / 167.5 / 162.1 €/MWh; after the
+oldest-first closures 6.5 / 12.2 / 1.2 GW remain in each class. OCGTs, the CHP
+block and the mid-term SDDP keep the single CCGT cost.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,

@@ -217,9 +217,17 @@ vom         = { ccgt = 4.68, ocgt = 5.76 }
 # ENTSO-E category (ERAA 2025/TYNDP 2026 Data Collection Guidelines, p. 6):
 #   built 2001-05 -> 0.56   2006-10 -> 0.58   2011+ -> 0.60   (our year proxy)
 #   units under 100 MW and units without a build year -> 0.56
-# Needs [costs.gas_srmc] on; 2024 path only. OCGTs, the [chp] gas block and the
-# mid-term SDDP (water values) keep the single CCGT cost.
-enabled = false
+# 2024 path: needs [costs.gas_srmc] on.  Scenario runs (e.g. 2035): EMPIRE's
+# single CCGT cost is taken to be at [scenario.efficiency].GasCCGT (0.56) and
+# rescaled per unit, fuel and CO2 with 1/eta, the vom.ccgt above unchanged:
+#   cost_u = vom + (cost_EMPIRE - vom) * 0.56 / eta_u
+#   2035 (CO2 per GJ of fuel): Trinity 62.4 / 60.4 / 58.6, NECP 173.4 / 167.5 /
+#   162.1 EUR/MWh at eta 0.56 / 0.58 / 0.60; with [scenario.retirement]
+#   "oldest_first" 6.5 / 12.2 / 1.2 GW remain in each class.
+# OCGTs, the [chp] gas block and the mid-term SDDP (water values) keep the
+# single CCGT cost.  On in this branch (2035-improvements) for the 2035 runs;
+# it also turns the per-unit cost on for 2024 runs made from this branch.
+enabled = true
 file    = "Data/gas_unit_efficiency.csv"
 
 [costs.coal_srmc]

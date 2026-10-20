@@ -254,3 +254,20 @@ As Pontes and La Pereda (closed in the chain with `GAS=on`), ~1 % of supply.
 
     HYDRO_STATE_CONFIG=hydro_state/hydro_state_ree_rc_observed.toml julia --project=. hydro_state/midterm_observed.jl reuse
     GAS=on MARKUP=on HYDRO=ree_rc_observed RES=offered scripts/solstorm_start_markets.sh <out>
+
+## Water value in taxed units: `[costs.markup].hydro_water_value` (Step A, 2026-10-20)
+
+`ree_rc_observed` with the switch on (cuts × 1/(1 − tax of the quarter) in the market stages),
+DA only, run-4 settings, one part over the year, against the same run with the switch off:
+
+| MAE vs OMIE (€/MWh) | run 4 | ree_rc_observed | + hydro_water_value |
+|---|---|---|---|
+| Jan–Jun | 28.8 | 20.6 | 20.8 |
+| Jul–Dec (held out) | 24.8 | 23.6 | 23.6 |
+| Year | 26.8 | 22.1 | 22.2 |
+
+Prices rise 1–3 €/MWh in every month. Nov–Dec improve (MAE 23.6 / 24.5 → 22.0 / 23.6; price
+97.5 / 103.2 vs OMIE 104.4 / 109.4), October and July get worse (October already too high:
+94.0 vs 68.5). Net effect on the error ≈ 0. Hydro sets the DA price in 54 % of hours (storage
+32 %, thermal cost 14 %; `price_setter` columns). Consistent in principle, neutral in fit: the
+remaining error is the timing of the release (autumn/winter), not the tax.

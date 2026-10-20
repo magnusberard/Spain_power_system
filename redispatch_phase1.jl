@@ -113,7 +113,7 @@ function run_phase1_day!(su, date_str)
     nets = phase1_nets(date_str, day_ts)
     mn = Dict{String,Any}("multinetwork" => true, "baseMVA" => BASEMVA, "per_unit" => true, "name" => "phase1",
                           "nw" => Dict{String,Any}(string(h - 1) => nets[h].network for h in 1:H))
-    pm = PowerModels.instantiate_model(mn, PowerModels.DCPPowerModel, build_phase1_dc; multinetwork = true)
+    pm = PowerModels.instantiate_model(mn, PowerModels.DCPPowerModel, build_phase1_dc)   # mn["multinetwork"] = true
     m  = pm.model
     obj = zero(JuMP.AffExpr)
     hours = [Int(ts.hour) for ts in eachrow(day_ts)]

@@ -10,6 +10,9 @@ I90DIA (e·sios archive 34) is public, needs no token and is published with a 90
                        summed (energy) or averaged (price) to the hour
   i90_limits.csv       I90DIA34 (day-ahead) and I90DIA35 (real-time) security limits REE set
                        per unit, hourly mean
+  i90_pdvp.csv         I90DIA01: the viable day-ahead programme (PDVP, after phase I and II)
+                       per unit and hour, MWh; non-zero rows only, and with --pdvp-units only
+                       the units in that CSV's ree_unit column (e.g. ree_unit_crosswalk.csv)
 
 Columns: date, hour (0–23), the sheet's own keys (Redespacho, Sentido, Unidad de Programación,
 Tipo Restricción, …), then mwh / eur_mwh / mw. Every day is first written to <out>/days/ (so an
@@ -72,9 +75,18 @@ def sheet_long(book, name, value_name, how="sum"):
     return (agg.sum() if how == "sum" else agg.mean()).reset_index()
 
 
-def parse_day(xls_bytes, d):
+TABLES = ("tc_phase", "tc_realtime", "limits", "pdvp")
+
+
+def parse_day(xls_bytes, d, pdvp_units=None):
     book = xlrd.open_workbook(file_contents=xls_bytes, on_demand=True)
     out = {}
+    pv = sheet_long(book, "I90DIA01", "mwh", "sum")
+    if not pv.empty:
+        pv = pv[pv.mwh != 0]
+        if pdvp_units is not None:
+            pv = pv[pv[UNIT].isin(pdvp_units)]
+        out["pdvp"] = pv
     for key, (e_sheet, p_sheet) in {"tc_phase": ("I90DIA03", "I90DIA09"),
                                     "tc_realtime": ("I90DIA08", "I90DIA10")}.items():
         e, p = sheet_long(book, e_sheet, "mwh", "sum"), sheet_long(book, p_sheet, "eur_mwh", "mean")
@@ -114,17 +126,19 @@ def main():
     ap.add_argument("--out", type=Path,
                     default=Path(os.environ.get("ESIOS_DIR") or REPO.parent / "esios_download") / "i90")
     ap.add_argument("--keep-zips", action="store_true")
+    ap.add_argument("--pdvp-units", type=Path, help="CSV with a ree_unit column: keep only these units in i90_pdvp")
     a = ap.parse_args()
+    pdvp_units = set(pd.read_csv(a.pdvp_units).ree_unit) if a.pdvp_units else None
     days = pd.date_range(a.first, a.last).strftime("%Y-%m-%d")
     ddir, zdir = a.out / "days", a.out / "zips"
     ddir.mkdir(parents=True, exist_ok=True); zdir.mkdir(parents=True, exist_ok=True)
     for i, d in enumerate(days, 1):
-        if (ddir / f"{d}.done").exists():
-            continue
+        if (ddir / f"{d}.done").exists() and (ddir / f"{d}_pdvp.csv").exists():
+            continue                                    # (days fetched before pdvp existed are fetched again)
         t = time.time()
         try:
             z, xls = fetch(d, zdir)
-            parts = parse_day(xls, d)
+            parts = parse_day(xls, d, pdvp_units)
         except Exception as e:
             print(f"[{i}/{len(days)}] {d}: FAILED ({e})", flush=True)
             continue
@@ -135,7 +149,7 @@ def main():
             z.unlink()
         print(f"[{i}/{len(days)}] {d}: " + ", ".join(f"{k} {len(v)}" for k, v in parts.items())
               + f"  ({time.time() - t:.0f} s)", flush=True)
-    for k in ("tc_phase", "tc_realtime", "limits"):
+    for k in TABLES:
         files = sorted(ddir.glob(f"*_{k}.csv"))
         if files:
             pd.concat((pd.read_csv(f) for f in files), ignore_index=True).to_csv(a.out / f"i90_{k}.csv.gz", index=False)

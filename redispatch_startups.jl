@@ -169,23 +169,28 @@ function su_commit!(su, g)
     return ml * inst * BASEMVA, start
 end
 
+# One Ipopt log per solve: on Windows a finished solve can still hold its log file
+# open, and the next solve writing the same file then fails with INVALID_OPTION.
+su_log(log_file, k) = log_file === nothing ? nothing : replace(log_file, r"\.log$" => "_su$(k).log")
+
 """
-    solve_hour_with_startups(network, gens, optimizer, sched, su; label, date_str, hour)
+    solve_hour_with_startups(network, gens, optimizer_for, sched, su; label, date_str, hour)
 
 The redispatch solve of one hour with voltage start-ups (see the file header).
-Returns the final solve's result; the started units stay committed in
-`network`, so the hour's outputs show them.
+`optimizer_for(k)` gives the optimizer for solve k of the hour (0 = the plain
+first solve).  Returns the final solve's result; the started units stay
+committed in `network`, so the hour's outputs show them.
 """
-function solve_hour_with_startups(network, gens, optimizer, sched, su;
+function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                   label = nothing, date_str = "", hour = 0)
-    res = solve_anchored_opf(network, gens, optimizer, sched; iis_label = label)
+    res = solve_anchored_opf(network, gens, optimizer_for(0), sched; iis_label = label)
     rd_su_ok(res) && return res
     adj = su_adjacency(network)
     slack_ids = su_add_q_slack!(network)
     slack_bus = Dict(i => network["gen"][string(i)]["gen_bus"] for i in slack_ids)
     n_started = 0
     for rnd in 1:su.max_rounds
-        r = solve_anchored_opf(network, gens, optimizer, sched;
+        r = solve_anchored_opf(network, gens, optimizer_for(rnd), sched;
                                model_hook = pm -> su_q_slack_penalty!(pm, slack_ids, su.q_slack_eur_per_mvar))
         rd_su_ok(r) || (@printf "    start-ups: slack solve %s in round %d\n" string(r["termination_status"]) rnd; break)
         sol = r["solution"]["gen"]
@@ -193,10 +198,14 @@ function solve_hour_with_startups(network, gens, optimizer, sched, su;
                 if haskey(sol, string(i)) && abs(sol[string(i)]["qg"]) * BASEMVA > su.min_slack_mvar]
         isempty(need) && break
         bus, q = need[argmax([abs(x[2]) for x in need])]
-        dist = su_hops(adj, bus, su.max_hops)
-        cands = [g for (_, g) in gens if haskey(dist, g["gen_bus"]) && su_is_candidate(su, g) && su_is_off(g)]
+        local dist, cands
+        for hops in (su.max_hops, 2 * su.max_hops)        # widen once before giving up
+            dist = su_hops(adj, bus, hops)
+            cands = [g for (_, g) in gens if haskey(dist, g["gen_bus"]) && su_is_candidate(su, g) && su_is_off(g)]
+            isempty(cands) || break
+        end
         if isempty(cands)
-            @printf "    start-ups: no offline candidate within %d hops of bus %d (%.0f Mvar)\n" su.max_hops bus q
+            @printf "    start-ups: no offline candidate within %d hops of bus %d (%.0f Mvar)\n" 2 * su.max_hops bus q
             break
         end
         sort!(cands; by = g -> (dist[g["gen_bus"]], su_terms(su, g)[3]))
@@ -213,7 +222,7 @@ function solve_hour_with_startups(network, gens, optimizer, sched, su;
     su_remove_q_slack!(network, slack_ids)
     n_started == 0 && return res
     @printf "    start-ups: %d unit(s) started at minimum load\n" n_started
-    return solve_anchored_opf(network, gens, optimizer, sched; iis_label = label)
+    return solve_anchored_opf(network, gens, optimizer_for(su.max_rounds + 1), sched; iis_label = label)
 end
 
 function write_rd_startups(dir)

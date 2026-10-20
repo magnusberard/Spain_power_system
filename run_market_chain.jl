@@ -2249,7 +2249,7 @@ if RD_WATER_VALUE == "constant"
         result = RD_STARTUPS === nothing ?
             solve_anchored_opf(network, gens, rd_optimizer_single(log_file = log_file),
                                sched_hour; iis_label = label) :
-            solve_hour_with_startups(network, gens, rd_optimizer_single(log_file = log_file),
+            solve_hour_with_startups(network, gens, k -> rd_optimizer_single(log_file = su_log(log_file, k)),
                                      sched_hour, RD_STARTUPS; label = label, date_str = date_str, hour = hour)
         status = string(result["termination_status"])
 

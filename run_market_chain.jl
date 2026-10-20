@@ -55,6 +55,7 @@ include("fuel_prices.jl")
 include("markup.jl")
 include("unit_commitment.jl")
 include("redispatch_startups.jl")
+include("redispatch_objective.jl")
 include("crossborder.jl")
 include("da.jl")
 include("empire_scenario.jl")
@@ -535,6 +536,9 @@ const RD_Q_CONDENSER   = String.(get(get(cfg, "redispatch", Dict()), "q_condense
 # [redispatch.startups] (step RD9): start offline units at minimum load where
 # reactive power is missing (redispatch_startups.jl).  nothing = off.
 const RD_STARTUPS = load_rd_startups(cfg)
+# objective = "ree" (steps RD10/RD11): REE's cost rule with pay-as-bid prices and
+# storage at its opportunity cost (redispatch_objective.jl, [redispatch.bids]).
+const RD_BIDS = RD_OBJECTIVE == "ree" ? load_rd_bids(cfg) : nothing
 
 # ── Standalone load-flow / single-hour options ───────────────────────────────
 # [redispatch].from_saved: run ONLY the network load flow (redispatch), reading
@@ -576,8 +580,12 @@ RD_ONLY_HOUR !== nothing && RD_WATER_VALUE == "piecewise" &&
     error("config.toml: [redispatch].only with a single hour needs water_value=\"constant\" (piecewise couples all 24 h)")
 RD_WATER_VALUE ∈ ("constant", "piecewise") ||
     error("config.toml: [redispatch].water_value must be \"constant\" or \"piecewise\"")
-RD_OBJECTIVE ∈ ("quadratic", "cost_weighted") ||
-    error("config.toml: [redispatch].objective must be \"quadratic\" or \"cost_weighted\"")
+RD_OBJECTIVE ∈ ("quadratic", "cost_weighted", "ree") ||
+    error("config.toml: [redispatch].objective must be \"quadratic\", \"cost_weighted\" or \"ree\"")
+RD_OBJECTIVE == "ree" && RD_WATER_VALUE != "constant" &&
+    error("config.toml: [redispatch].objective = \"ree\" needs water_value = \"constant\"")
+RD_BIDS !== nothing && RD_BIDS.down_refund ∉ ("da", "bid") &&
+    error("config.toml: [redispatch.bids].down_refund must be \"da\" or \"bid\"")
 RD_XB_SPLIT ∈ ("fixed", "country_total") ||
     error("config.toml: [redispatch].crossborder_split must be \"fixed\" or \"country_total\"")
 RD_PF_MODEL ∈ ("AC", "DC") ||
@@ -2130,6 +2138,8 @@ function solve_anchored_opf(network, gens, optimizer, sched;
         base_obj = JuMP.objective_function(pm.model)
         JuMP.@objective(pm.model, Min,
             base_obj + ANCHOR_WEIGHT * pen + XB_SPLIT_WEIGHT * xb_pen + xb_ct_cost)
+    elseif RD_OBJECTIVE == "ree"   # REE's cost rule, pay-as-bid (redispatch_objective.jl)
+        rd_ree_objective!(pm, gens, sched, RD_BIDS, RD_CURRENT_PDA[], xb_ct_cost)
     else   # cost_weighted
         dev = zero(JuMP.AffExpr)
         for (_, g) in gens
@@ -2235,6 +2245,7 @@ if RD_WATER_VALUE == "constant"
 
         log_file = DIAGNOSTIC_OUTPUT ? nothing :
                    joinpath(IPOPT_LOG_DIR, "$(date_str)_h$(lpad(hour, 2, '0')).log")
+        RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, hour))
         result = RD_STARTUPS === nothing ?
             solve_anchored_opf(network, gens, rd_optimizer_single(log_file = log_file),
                                sched_hour; iis_label = label) :

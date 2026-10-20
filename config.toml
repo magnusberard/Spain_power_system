@@ -3520,6 +3520,20 @@ max_hops             = 4         # branches between the need and the unit
 q_slack_eur_per_mvar = 1000.0    # price of the diagnostic reactive slack
 min_slack_mvar       = 5.0       # slack below this counts as no need
 
+[redispatch.bids]
+# Prices for objective = "ree" (steps RD10/RD11, redispatch_objective.jl): REE's
+# cost rule, min Σ (bid_up − p_DA)·up + Σ (p_DA − refund)·down + tie_break·moved.
+# bid_up = max(cost, p_DA) × (1 + up_markup); reservoir/pumped hydro and
+# batteries use p_DA as their cost (opportunity cost).  refund = p_DA
+# (down_refund = "da", the phase I rule) or cost × (1 − down_markup) ("bid").
+# Mark-ups: to be fitted to REE's 2024 prices per unit (I90, fetch_i90.py);
+# add per-type rows as  [[redispatch.bids.by_type]]  type = "Gas:Combined_cycle"
+# up_markup = …  down_markup = … .  0.0 = cost-based.
+up_markup         = 0.0
+down_markup       = 0.0
+down_refund       = "da"
+tie_break_eur_mwh = 0.5
+
 [midterm]
 # ── Mid-term hydro scheduling (in-house Bellman cuts via SDDP) ───────────────
 # A 3-zone (FR/ES/PT) weekly hydro-thermal SDDP that computes the Bellman cuts

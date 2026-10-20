@@ -104,6 +104,23 @@ CoalCCS    = 0.37    # same file, CoalCCS
 LigniteCCS = 0.373   # same file, LigniteCCSadv
 BioCCS     = 0.385   # same file, Bio10cofiringCCS (no BioCCS row; closest)
 
+# Which CCGT units EMPIRE's lower capacity takes out (empire_nodal.jl, nodal only).
+# EMPIRE gives capacity per region; its existing fleet shrinks by one factor
+# everywhere (2035: ×0.838, no new CCGT in either scenario).
+#   "even"         — every unit of a region scaled by the same factor (original).
+#   "oldest_first" — whole units close, oldest first by build year (GEM, via
+#                    build_year_file), until EMPIRE's national CCGT total is met;
+#                    the unit crossing the total is shrunk to the remainder.
+#                    2035: 15 units built 2002–2004 close, Arcos de la Frontera
+#                    G0004 389 → 335 MW, total 20,021 MW.  Our assumption.
+# keep_below_mw / keep_regions: units outside the rule, at their 2024 size — the
+# small industrial units and the Balearic Islands (ES53, island supply).
+[scenario.retirement]
+ccgt            = "oldest_first"
+keep_below_mw   = 100.0
+keep_regions    = ["ES53"]
+build_year_file = "Data/gas_unit_efficiency.csv"
+
 [run]
 # ── Study days of the 2024 path ([scenario].label = "2024", [weeks] off) ─────
 # Either a list of days, or a range with `from` / `to` (both inclusive; a

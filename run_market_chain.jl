@@ -143,6 +143,9 @@ end
 const NODAL_ACTIVE  = SCEN_ACTIVE &&
     lowercase(String(get(cfg["scenario"], "disaggregation", "nodal"))) == "nodal"
 const NODAL         = NODAL_ACTIVE ? build_nodal_disaggregation(cfg, EMP) : nothing
+SCEN_ACTIVE && !NODAL_ACTIVE &&
+    lowercase(String(get(get(cfg["scenario"], "retirement", Dict()), "ccgt", "even"))) != "even" &&
+    error("config.toml: [scenario.retirement].ccgt = \"oldest_first\" needs [scenario].disaggregation = \"nodal\"")
 const UNIT_SCALE_ID = NODAL_ACTIVE ? NODAL.unit_scale : nothing
 const EXTRA_UNITS   = NODAL_ACTIVE ? NODAL.new_units  : nothing
 const EXTRA_LINES   = NODAL_ACTIVE ? NODAL.new_lines  : nothing
@@ -276,6 +279,10 @@ if SCEN_ACTIVE
     @printf "                 load ×%.3f | solar ×%.3f | wind ×%.3f | BESS %.0f MW / %.0f MWh\n" ES_LOAD_SCALE ES_SOLAR_SCALE ES_WIND_SCALE EMP.storage["ES"].bess_mw EMP.storage["ES"].bess_mwh
     if NODAL_ACTIVE
         @printf "                 NUTS3 nodal disaggregation: %d unit factors | %d new units (%.0f MW) | %d reinforced lines | %d new corridors | %d BESS sites\n" length(NODAL.unit_scale) nrow(NODAL.new_units) sum(NODAL.new_units.capacity_mw; init = 0.0) length(NODAL.line_scale) nrow(NODAL.new_lines) length(NODAL.bess)
+        if NODAL.ccgt_fleet !== nothing
+            cf = NODAL.ccgt_fleet
+            @printf "                 CCGT oldest first: %.0f → %.0f MW | %d closed (%.0f MW), %d shrunk, %d kept, %d outside the rule\n" sum(cf.mw_2024) sum(cf.mw_scen) count(==("closed"), cf.status) sum(cf.mw_2024[cf.status .== "closed"]; init = 0.0) count(==("shrunk"), cf.status) count(==("kept"), cf.status) count(==("outside rule"), cf.status)
+        end
     else
         println("                 zonal disaggregation (national per-tech scaling)")
     end
@@ -814,6 +821,9 @@ RESULTS = get(ENV, "SPAIN_RESULTS",
               SCEN_ACTIVE ? joinpath(@__DIR__, "results", SCEN_LABEL) :
                             joinpath(@__DIR__, "results"))
 mkpath(RESULTS)
+# [scenario.retirement] ccgt = "oldest_first": which CCGT units close or shrink.
+NODAL !== nothing && NODAL.ccgt_fleet !== nothing &&
+    CSV.write(joinpath(RESULTS, "ccgt_fleet.csv"), NODAL.ccgt_fleet)
 
 # Per-solve Ipopt logs, written here so infeasible hours can be diagnosed.
 # Each file records the full iteration history and Ipopt's final verdict
@@ -841,7 +851,9 @@ const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path =
                              "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER,
                              "crossborder_split" => RD_XB_SPLIT, "res_input" => RES_INPUT,
                              "gas_unit_efficiency" => GAS_UNIT_ETA !== nothing,
-                             "unit_commitment" => UC_CFG !== nothing))
+                             "unit_commitment" => UC_CFG !== nothing,
+                             "ccgt_retirement" => NODAL !== nothing && NODAL.ccgt_fleet !== nothing ?
+                                                  "oldest_first" : "even"))
 
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours

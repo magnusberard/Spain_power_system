@@ -734,6 +734,74 @@ end
 # ── 5. Bundle for run_market_chain.jl ────────────────────────────────
 
 """
+    ccgt_oldest_first!(scale, cfg, emp; data_dir) -> DataFrame
+
+[scenario.retirement] ccgt = "oldest_first": EMPIRE gives CCGT capacity per
+region only, and nodal_unit_scale meets it by shrinking every unit of a region
+by the same factor.  This replaces those factors so that whole plants close
+instead, oldest first, while the national total stays EMPIRE's exactly:
+units are sorted by build year (newest first; ties by unit_id) and kept until
+the target is filled; the unit that crosses the target is shrunk to the
+remainder; all older units get factor 0.  Units smaller than keep_below_mw and
+units in keep_regions (NUTS3 prefixes, e.g. the Balearic Islands ES53) stay
+at their 2024 size outside the rule.  Build years: build_year_file (GEM, the
+same file as [costs.gas_unit_efficiency]).  Regional totals then differ from
+EMPIRE's, whose regional split of the existing fleet is a uniform scaling.
+Returns one row per CCGT unit (2024 MW, factor, scenario MW, status).
+"""
+function ccgt_oldest_first!(scale::Dict{String,Float64}, cfg, emp;
+                            data_dir = joinpath(@__DIR__, "Data"))
+    rcfg   = get(cfg["scenario"], "retirement", Dict())
+    keep_mw  = Float64(get(rcfg, "keep_below_mw", 100.0))
+    keep_reg = String.(get(rcfg, "keep_regions", ["ES53"]))
+    yr_file  = joinpath(@__DIR__, String(get(rcfg, "build_year_file", "Data/gas_unit_efficiency.csv")))
+    target   = get(emp.caps["ES"], "Gas CCGT", 0.0)
+
+    b2r    = bus_nuts3(data_dir = data_dir)
+    gen_df = CSV.read(joinpath(data_dir, "generations.csv"), DataFrame)
+    yr_df  = CSV.read(yr_file, DataFrame; types = Dict(:unit_id => String))
+    year   = Dict(String(r.unit_id) => r.build_year for r in eachrow(yr_df) if !ismissing(r.build_year))
+
+    rows = NamedTuple[]
+    for r in eachrow(gen_df)
+        (String(r.primary_fuel), String(r.technology)) == ("Gas", "Combined_cycle") || continue
+        reg = get(b2r, String(r.bus_id), "")
+        startswith(reg, "ES") || continue
+        id, mw = String(r.unit_id), Float64(r.capacity_mw)
+        outside = mw < keep_mw || any(p -> startswith(reg, p), keep_reg)
+        y = get(year, id, missing)
+        outside || !ismissing(y) ||
+            error("[scenario.retirement]: no build year for CCGT $id in $(basename(yr_file))")
+        push!(rows, (unit_id = id, name = String(r.name), build_year = y, region = reg,
+                     mw_2024 = mw, outside = outside))
+    end
+    fleet = DataFrame(rows)
+
+    left = target - sum(fleet.mw_2024[fleet.outside]; init = 0.0)
+    left >= 0 || error("[scenario.retirement]: units outside the rule ($(round(target - left)) MW) " *
+                       "exceed EMPIRE's CCGT total $(round(target)) MW")
+    factor = ones(nrow(fleet))
+    status = fill("outside rule", nrow(fleet))
+    for i in sortperm(collect(zip(coalesce.(fleet.build_year, 0), fleet.unit_id)); rev = true)
+        fleet.outside[i] && continue
+        mw = fleet.mw_2024[i]
+        if left >= mw
+            left -= mw;  status[i] = "kept"
+        elseif left > 1e-6
+            factor[i] = left / mw;  left = 0.0;  status[i] = "shrunk"
+        else
+            factor[i] = 0.0;  status[i] = "closed"
+        end
+    end
+    left > 1e-3 && @warn "[scenario.retirement]: EMPIRE's CCGT total exceeds today's fleet by $(round(left)) MW; kept all units"
+    fleet.factor = factor
+    fleet.mw_scen = fleet.mw_2024 .* factor
+    fleet.status = status
+    for r in eachrow(fleet); scale[r.unit_id] = r.factor; end
+    return select(fleet, Not(:outside))
+end
+
+"""
     build_nodal_disaggregation(cfg, emp; data_dir) -> NamedTuple
 
 Everything the market chain needs, in one call:
@@ -744,15 +812,22 @@ Everything the market chain needs, in one call:
   new_lines  : DataFrame appended to lines.csv (brand-new corridors)
   bess       : nodal Li-Ion BESS fleet (replaces empire_bess_units)
   gen_diag / corr_diag : per-(region, tech) and per-corridor diagnostics
+  ccgt_fleet : CCGT units under [scenario.retirement] ccgt = "oldest_first"
+               (nothing with "even")
 """
 function build_nodal_disaggregation(cfg, emp; data_dir = joinpath(@__DIR__, "Data"))
     g = nodal_unit_scale(emp; data_dir)
+    rule = lowercase(String(get(get(cfg["scenario"], "retirement", Dict()), "ccgt", "even")))
+    rule in ("even", "oldest_first") ||
+        error("config.toml: [scenario.retirement].ccgt must be \"even\" or \"oldest_first\"")
+    ccgt_fleet = rule == "oldest_first" ? ccgt_oldest_first!(g.scale, cfg, emp; data_dir) : nothing
     l = nodal_line_scale(cfg; data_dir)
     b = nodal_bess_units(cfg; data_dir, line_scale = l.line_scale, new_lines = l.new_lines)
     return (unit_scale = g.scale, new_units = g.new_units,
             line_scale = l.line_scale, new_lines = l.new_lines,
             xb_short = l.xb_short,
-            bess = b, gen_diag = g.gen_diag, corr_diag = l.corr_diag)
+            bess = b, gen_diag = g.gen_diag, corr_diag = l.corr_diag,
+            ccgt_fleet = ccgt_fleet)
 end
 
 # ── 6. Standalone diagnostics ───────────────────────────────
@@ -789,6 +864,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     CSV.write(joinpath(outdir, "new_lines.csv"),   nd.new_lines)
     CSV.write(joinpath(outdir, "corridors.csv"),   nd.corr_diag)
     CSV.write(joinpath(outdir, "bess_units.csv"),  DataFrame(nd.bess))
+    nd.ccgt_fleet === nothing || CSV.write(joinpath(outdir, "ccgt_fleet.csv"), nd.ccgt_fleet)
 
     # consistency: scaled fleet + new units vs EMPIRE national totals
     println("\n=== Nodal disaggregation — $label (period $(emp.period)) ===")

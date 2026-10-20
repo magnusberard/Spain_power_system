@@ -240,6 +240,18 @@ rest from OpenEMPIRE's default table); `"electricity"` is the original
 (was 52.5 / 115.3), coal 68.2 / 303.9 (was 40.5 / 142.3) €/MWh, so coal is no
 longer cheaper than gas in Trinity. Retrain the scenario cuts after changing it.
 
+**Which CCGTs close (branch `2035-improvements`).** EMPIRE gives CCGT capacity
+per region and builds no new CCGT by 2035 in either scenario; its existing
+fleet shrinks by one factor everywhere (×0.838 to 20,021 MW). With
+`[scenario.retirement] ccgt = "oldest_first"` (nodal only) whole units close
+instead, oldest first by build year (GEM, `Data/gas_unit_efficiency.csv`),
+until EMPIRE's national total is met; the unit crossing it is shrunk. Units
+under 100 MW and the Balearic plants stay at their 2024 size. 2035: 15 units
+built 2002–2004 close (6,844 MW), Arcos de la Frontera G0004 389 → 335 MW.
+The list is written to `results/<run>/ccgt_fleet.csv`; `"even"` is the
+original scaling. Our 2024 list has 26.9 GW of CCGT against EMPIRE's 23.9 GW
+start (EMPIRE's regions are our units × 0.888), so 6.9 GW are removed in all.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,

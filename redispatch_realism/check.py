@@ -224,9 +224,11 @@ def rd4(a, b, pf=1.0, tol=1.0):
 # ── rd9: voltage start-ups ───────────────────────────────────────────────────
 def rd9(a, b, tol=1.0):
     print(f"\nRD9 voltage start-ups: A = {a} (RD3 on, no start-ups), B = {b} (start-ups on)")
-    fa = (~pd.read_csv(a / "summary.csv").status.isin(settle.SOLVED)).sum()
-    fb = (~pd.read_csv(b / "summary.csv").status.isin(settle.SOLVED)).sum()
-    check("fewer failed hours than RD3 alone", fb < fa or fa == 0, f"A {fa}, B {fb}")
+    sa, sb = pd.read_csv(a / "summary.csv"), pd.read_csv(b / "summary.csv")
+    sa = sa[sa.date.isin(sb.date.unique())]                      # compare the same days only
+    fa, fb = (~sa.status.isin(settle.SOLVED)).sum(), (~sb.status.isin(settle.SOLVED)).sum()
+    check("fewer failed hours than RD3 alone", fb < fa or fa == 0,
+          f"A {fa}, B {fb} of {len(sb)} hours on {', '.join(sorted(sb.date.unique()))}")
     su_file = b / "rd_startups.csv"
     check("start-ups recorded", su_file.exists())
     if not su_file.exists():

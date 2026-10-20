@@ -129,6 +129,24 @@ With RD3+RD4 the model's redispatch takes REE's shape — gas up, renewables dow
 REE's volume: with no free reactive power and no start-ups, it holds voltage by shifting energy
 among the running units. RD9 (start-ups at minimum load) is meant to replace part of that.
 
+### RD9 voltage start-ups, 2 Dec 2024 (24 AC hours)
+
+| Check | B9 (RD3 + RD9) vs B3 | B49 (RD3 + RD4 + RD9) vs B34 |
+|---|---|---|
+| fewer failed hours | PASS 7 → 4 | PASS 7 → 2 |
+| started units at ≥ minimum load | PASS (24 starts in solved hours) | PASS (40) |
+| started units give reactive power | PASS (100 %) | PASS (100 %) |
+
+All start-ups are 00–06 h, all to absorb a reactive surplus (−128 to −302 Mvar), all CCGTs —
+REE's night pattern. But **none is a unit REE started**: on 2 Dec 00–06 h REE ran 13 CCGTs in
+phase I (12.3 per hour, all coded SOT) spread over Spain — Port of Barcelona, Cartagena 1 and 3,
+Málaga, Besòs 3 and 5, Sagunto, As Pontes, Sabón, Aceca 4, Castellón, San Roque 2 and Soto de
+Ribera 5 — while the model started 8 per hour (the max_rounds cap) all in south-west Andalucía
+(Palos ×3, La Rábida ×2, Arcos ×2, Villarrubia): each round starts a unit next to the largest
+surplus, which in our grid is always there. REE's start-ups look like a requirement per voltage
+area, which an AC snapshot of our approximate grid does not reproduce. Next: RD5, a must-run per
+area calibrated on I90, with RD9 kept as the physics fallback.
+
 REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
 `tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
 5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,

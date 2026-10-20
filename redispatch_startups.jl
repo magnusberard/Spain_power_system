@@ -56,6 +56,10 @@ function load_rd_startups(cfg)
             max_rounds           = Int(get(c, "max_rounds", 8)),
             max_hops             = Int(get(c, "max_hops", 4)),
             candidates           = Set(lowercase.(String.(get(c, "candidates", ["Gas:Combined_cycle", "Coal"])))),
+            # smallest unit that may be started: below it are the industrial plants
+            # generations.csv lists as combined cycles (refineries, factories), which
+            # REE does not start for voltage; 100 MW = [unit_commitment].min_mw
+            candidate_min_mw     = Float64(get(c, "candidate_min_mw", get(uc, "min_mw", 100.0))),
             # gas (CCGT): Intertek-based terms of [unit_commitment]
             gas_min_load_1x1     = Float64(get(uc, "min_load_1x1", 0.48)),
             gas_min_load_2x1     = Float64(get(uc, "min_load_2x1", 0.25)),
@@ -135,7 +139,8 @@ const RD_SU_OK = ("LOCALLY_SOLVED", "ALMOST_LOCALLY_SOLVED", "OPTIMAL")
 rd_su_ok(res) = string(res["termination_status"]) in RD_SU_OK
 
 su_is_candidate(su, g) = (lowercase(g["fuel"]) in su.candidates ||
-                          lowercase("$(g["fuel"]):$(g["technology"])") in su.candidates)
+                          lowercase("$(g["fuel"]):$(g["technology"])") in su.candidates) &&
+                         Float64(get(g, "installed_mw", g["pmax"] * BASEMVA)) >= su.candidate_min_mw
 
 # A candidate is off when RD3 has taken its reactive power away (qmin = qmax = 0).
 su_is_off(g) = g["qmax"] == 0.0 && g["qmin"] == 0.0 && get(g, "pmax", 0.0) >= 0.0

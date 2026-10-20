@@ -3515,6 +3515,7 @@ only = ""
 # power_flow = "AC", water_value = "constant".
 enabled              = false
 candidates           = ["Gas:Combined_cycle", "Coal"]
+candidate_min_mw     = 100.0     # industrial "combined cycles" below this are never started
 max_rounds           = 8         # start-ups per hour at most
 max_hops             = 4         # branches between the need and the unit
 q_slack_eur_per_mvar = 1000.0    # price of the diagnostic reactive slack

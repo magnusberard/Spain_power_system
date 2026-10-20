@@ -166,6 +166,20 @@ holds voltage with large near-free hydro/pumped/wind moves instead of REE's few 
 storage 1.59 × p_DA in phase I in 2024 (I90), i.e. an up mark-up ≈ 0.6, and test a larger
 tie-break (REE's least-energy rule).
 
+### RD5 must-run by voltage zone, 2 Dec 2024 (Z5 = CALL + RD5)
+
+2024 zones from I90 (`build_voltage_zones.py`): 17 zones, 85 member units; a zone needed voltage
+action in 8,463 of 8,784 hours (Cartagena 82 %, Bahía de Bizkaia 75 %, Soto de Ribera 23 %).
+
+Z5 solved 23/24 hours; 61 zone start-ups plus 36 from the RD9 loop. The start-ups are now in
+REE's zones (Cartagena, Barcelona, Málaga, Sabón, Sagunto, San Roque, Aceca) instead of only
+south-west Andalucía, and 3 units match REE's (Málaga, Sabón 3, Sagunto). Extra cost 4.20 M€
+(REE 8.16, same hours), up 114 GWh (REE 37.5). Within a zone the model started the cheapest
+members, mostly small industrial plants `generations.csv` lists as combined cycles (Martorell
+Seat, Barcelona Cartonboard, Cartagena and Castellón refineries); REE starts the large CCGTs.
+Fixed afterwards: `[redispatch.startups].candidate_min_mw = 100` (the day-ahead unit commitment's
+threshold) removes 19 such units from the 70 zone CCGT/coal members.
+
 REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
 `tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
 5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,

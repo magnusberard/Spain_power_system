@@ -201,6 +201,25 @@ storage and wind moves in the AC stage (next: storage mark-up ≈ 0.6 and a larg
 To check: RD7 started 2 units in most hours although the running providers' headroom in the
 solution (3.5–13 GW) far exceeds the requirement (1.0–1.6 GW) — the pre-solve count is stricter.
 
+### Calibration run CAL, 2 Dec 2024
+
+CAL = FULL + storage up mark-up 0.59 (REE paid pumped storage 1.59 × p_DA in phase I, 2024),
+tie-break 5 €/MWh (was 0.5), `candidate_min_mw = 100`, RD7 `offline_hydro_counts = true`.
+
+| | FULL | CAL | REE, same 21 hours |
+|---|---|---|---|
+| solved hours | 23/24 | 21/24 (h01, h02, h04 fail) | |
+| up: real time + phase I, GWh | 90 + 6.7 | 85.5 + 11.5 | 33.7 |
+| extra cost, M€ | 5.2 + 1.05 | 8.5 + 1.8 = 10.3 | 7.85 |
+| real-time starts zone / RD9 / reserve | 8 / 33 / 21 | 8 / 35 / 0 | |
+| phase I units (REE's) | 9 (3), incl. industrial plants | 9 large CCGTs (5: Sagunto, El Fangal, Sabón 3, Málaga, Besòs 3) | 16 |
+
+Phase I now picks REE's plants, RD7 no longer forces thermal starts, and the cost is REE's size
+(30 % above, but through hydro/pumped storage at 1.59 × p_DA rather than gas). The volume did not
+fall: mark-ups and the tie-break change what the moves cost, not how many the AC model needs —
+they are voltage-driven. Suspect: `[network].gen_bus_vmin/vmax = 0.98/1.03` pu, much tighter than
+REE's operating range (~0.95–1.05 pu at 400 kV); next test is a single config change.
+
 REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
 `tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
 5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,

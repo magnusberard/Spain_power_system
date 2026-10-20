@@ -180,6 +180,27 @@ Seat, Barcelona Cartonboard, Cartagena and Castellón refineries); REE starts th
 Fixed afterwards: `[redispatch.startups].candidate_min_mw = 100` (the day-ahead unit commitment's
 threshold) removes 19 such units from the 70 zone CCGT/coal members.
 
+### RD8, RD7 and everything on, 2 Dec 2024
+
+All exit 0. Settled like the model (`--bids`, `--down-refund da`, `--storage-at-da`).
+
+| | P8 (CALL + RD8) | R7 (CALL + RD7) | FULL (CALL + RD8 + RD5 + RD7) | REE |
+|---|---|---|---|---|
+| phase I (DC, day-ahead) | optimal, **nothing to do** | — | optimal: 9 units committed (one start each), 6.7 GWh up, 1.05 M€ | 20.1 GWh, 5.8 units/h, 224 €/MWh |
+| real-time AC: solved hours | — | 24/24 | 23/24 | |
+| real-time AC: up, GWh | — | 90.3 | 90.0 | |
+| extra cost, M€ | — | 6.11 | 5.16 + 1.05 (phase I) = 6.2 | 8.15–8.30 |
+| reserve met every solved hour | — | yes | yes | |
+
+P8: on the DC model of the day-ahead schedule there is nothing to fix — no overloads, and DC has
+no voltage — consistent with REE's base-case overloads being 0.25 % of phase I. With the zones
+(FULL), phase I commits units once for the day, 3 of them REE's (Sagunto, Sabón 3, Málaga); the
+other committed units include the small industrial plants excluded since by `candidate_min_mw`.
+FULL reaches about three quarters of REE's cost, but still 2.5× its volume, mostly hydro, pumped
+storage and wind moves in the AC stage (next: storage mark-up ≈ 0.6 and a larger tie-break).
+To check: RD7 started 2 units in most hours although the running providers' headroom in the
+solution (3.5–13 GW) far exceeds the requirement (1.0–1.6 GW) — the pre-solve count is stricter.
+
 REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
 `tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
 5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,

@@ -3453,6 +3453,18 @@ anchor_weight = 0.8
 #                     a small penalty for moving away from the rating split.
 crossborder_split = "country_total"
 
+# Transmission losses already in the demand (step RD1/RD2 of redispatch_realism/).
+# OMIE demand is bought at power-plant busbars with loss coefficients (Orden
+# ITC/3353/2010), so it contains the losses; the AC load flow adds them again and
+# the redispatch then reports them as energy turned up (2.8 TWh in 2024).  The
+# redispatch load is scaled by (1 − loss_share).  Only the redispatch: the market
+# stages keep the full demand.
+#   0.0     — off (the previous behaviour).
+#   ~0.010  — the model's own AC loss share in December 2024
+#             (python redispatch_realism/settle.py results/<run> prints it).
+# Leave at 0.0 for 2035 weeks runs: EMPIRE demand is not an OMIE busbar figure.
+loss_share = 0.0
+
 # Run the network load flow (this redispatch stage) on its own, reusing the
 # market schedule from a PREVIOUS run instead of clearing stages 1–5 again.
 #   ""    — run the full chain (day-ahead → … → balancing → redispatch).

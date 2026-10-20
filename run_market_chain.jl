@@ -515,6 +515,16 @@ const RD_PM_TYPE   = RD_PF_MODEL == "DC" ? PowerModels.DCPPowerModel : PowerMode
 # prepare_network's frozen_fuels keyword / is_fuel_frozen for the matching rule.
 const RD_FROZEN_FUELS = String.(get(get(cfg, "redispatch", Dict()), "frozen_fuels",
                                      ["Nuclear", "Biomass", "Coal"]))
+# [redispatch].loss_share: the share of the domestic load that is transmission
+# losses.  OMIE demand is bought at power-plant busbars, losses included (loss
+# coefficients, Orden ITC/3353/2010), and the AC load flow adds the grid losses
+# again — so the redispatch counted them twice and reported them as energy turned
+# up.  The redispatch load is scaled by (1 − loss_share); 0.0 = off (as before).
+# redispatch_realism/settle.py prints a run's own share (Σ losses / Σ load).
+const RD_LOSS_SHARE = Float64(get(get(cfg, "redispatch", Dict()), "loss_share", 0.0))
+0.0 <= RD_LOSS_SHARE < 0.2 ||
+    error("config.toml: [redispatch].loss_share must be in [0, 0.2)")
+rd_load_mw(domestic_mw) = domestic_mw * (1.0 - RD_LOSS_SHARE)
 
 # ── Standalone load-flow / single-hour options ───────────────────────────────
 # [redispatch].from_saved: run ONLY the network load flow (redispatch), reading
@@ -587,6 +597,8 @@ DIAGNOSTIC_OUTPUT &&
     println("                 diagnostic output: hourly summary + one peak row per branch (bulk dispatch/bus CSVs disabled)")
 RD_FROM_SAVED_ACTIVE &&
     @printf "                 standalone load flow: market stages skipped, anchor read from %s_dispatch.csv in the results folder\n" lowercase(RD_FROM_SAVED)
+RD_ENABLED && RD_LOSS_SHARE > 0 &&
+    @printf "                 load scaled by (1 − %.4f): losses already in the OMIE demand\n" RD_LOSS_SHARE
 RD_ONLY != "" &&
     @printf "                 restricted to: %s\n" RD_ONLY
 
@@ -2163,7 +2175,7 @@ if RD_WATER_VALUE == "constant"
         label    = "$date_str h$(lpad(hour, 2, '0'))"
         sched_hour = rd_sched_for(date_str, hour)
 
-        net = prepare_network(ts.load_mw - xb_export_offset(date_str, hour),
+        net = prepare_network(rd_load_mw(ts.load_mw - xb_export_offset(date_str, hour)),
                               ts.solar_mw, ts.wind_mw;
                               hydro_reservoir_cost = bv.water_value,
                               crossborder_inj = crossborder_inj_for(date_str, hour),
@@ -2240,7 +2252,7 @@ elseif RD_WATER_VALUE == "piecewise"
         # are frozen at their CID set-point, every other unit is free.
         # Reservoir hydro carries no separate linear adder here because the
         # Bellman cost-to-go term below supplies its opportunity cost.
-        nets = [prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour),
+        nets = [prepare_network(rd_load_mw(ts.load_mw - xb_export_offset(date_str, ts.hour)),
                                 ts.solar_mw, ts.wind_mw;
                                 hydro_reservoir_cost = 0.0,
                                 crossborder_inj = crossborder_inj_for(date_str, ts.hour),

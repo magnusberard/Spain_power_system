@@ -115,7 +115,25 @@ Run checks, same 72 hours:
 | Check | Result |
 |---|---|
 | `rd3 A B3` | idle units give no reactive power PASS (189 idle units, max 0.00 Mvar); load shedding proportional PASS; **failed hours 3 → 22 FAIL** |
-| `rd4 A B34` | running |
+| `rd4 A B34` | wind/solar \|Q\| ≤ 0 · P PASS (1,761 → 0 Mvar); with RD3 too, failed hours 3 → 24 |
+
+Against REE over the same solved hours (`settle.py --esios`):
+
+| | A (today) | B3 (RD3) | B34 (RD3+RD4) | REE, same hours (B34's 48) |
+|---|---|---|---|---|
+| Up, GWh | 40.3 (69 h) | 108.3 (50 h) | 237.4 (48 h) | 91.0 |
+| Extra cost, M€ | −3.67 | +0.52 | +10.33 | 20.53 |
+| Gas up / wind+solar down, GWh | 1.8 / 0.2 | | 101.2 / 143.2 | phase I mostly gas and coal up; phase II renewables down |
+
+With RD3+RD4 the model's redispatch takes REE's shape — gas up, renewables down — but 2.6×
+REE's volume: with no free reactive power and no start-ups, it holds voltage by shifting energy
+among the running units. RD9 (start-ups at minimum load) is meant to replace part of that.
+
+REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
+`tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
+5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,
+ABO2 (Aboño, Asturias), CTGN1, BES3, BES5, PBCN2, ESCCC2, CTN3, MALA1, BAHIAB, PGR5, SAGU3,
+SROQ2, ACE3 — the structural nodes of Dorado Galatoire et al. (2024).
 
 The FAIL is the finding, not a bug. Without the free sources, the grid cannot hold voltage in the
 low-load hours: 17 of the 20 lowest-load hours fail (mean load 22.9 GW in failed hours against

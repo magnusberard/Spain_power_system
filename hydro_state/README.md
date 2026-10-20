@@ -223,3 +223,34 @@ puts the previous content back afterwards, so cuts from one system never reach a
   60 iterations), the gas price path in the SDDP, the end penalty. No markup.
 - The vault notes: `wiki/code/midterm-sddp-hydro.md`, `wiki/syntheses/model-vs-real-2024.md`,
   `wiki/syntheses/offered-vs-accepted-2024.md`.
+
+## ES inflow with REE's monthly shape: `ree_rc` / `ree_rc_observed` (branch `hydro-inflow`, 2026-10-20)
+
+The SDDP trained on EMPIRE's ES inflow seasonality (Jun–Sep 25 % of the year; REE 2014–2023:
+12 %), so it got 20–25 % too little water in winter/spring and 2–3× too much in summer, valued
+spring water at ~60 €/MWh (its own spring price 55–63 vs OMIE 14–30) and held hydro back.
+`[midterm4].es_inflow_source = "edf_ree"` (off by default) uses EDF's climate years with each
+calendar month rescaled to REE's 2014–2023 producible shape (factors 0.90/1.13/1.24/0.78/1.04/
+1.13/0.81/1.07/1.00/0.75/1.30/0.96, annual total unchanged, no 2024 data). Everything else as
+`aligned_rc` / `aligned_rc_observed` (run 4). Policies in `Data/hydro_state/policies/`.
+
+Reservoir vs REE (`compare_reservoir.py`), fill error Jan–Jun / Jul–Dec: 10.0 / 5.1 → **2.6 / 4.9 pp**;
+monthly release vs OMIE hydro, correlation 0.54 → **0.72**.
+
+Day-ahead price vs OMIE, full year, DA only, run-4 settings (gas/coal costs, UC, tax + mark-ups,
+offered solar/wind; `run_da_parallel.sh`, 4 parts). The same setup with `aligned_rc_observed`
+reproduces the published `2024-r4-hydro-offered` to < 0.1 €/MWh per month.
+
+| MAE vs OMIE (€/MWh) | run 4 | ree_rc_observed |
+|---|---|---|
+| Jan–Jun | 28.8 | 20.6 |
+| Jul–Dec (held out) | 24.8 | 23.6 |
+| Year | 26.8 | 22.1 |
+| Correlation, year | 0.68 | 0.79 |
+
+Still open: Nov–Dec release too high (3.7 / 4.5 TWh vs OMIE 2.6 / 2.5; December fill 32 % vs
+REE 52 %), so Nov–Dec prices fall (94 / 100 vs 104 / 109). The SDDP's ES coal still includes
+As Pontes and La Pereda (closed in the chain with `GAS=on`), ~1 % of supply.
+
+    HYDRO_STATE_CONFIG=hydro_state/hydro_state_ree_rc_observed.toml julia --project=. hydro_state/midterm_observed.jl reuse
+    GAS=on MARKUP=on HYDRO=ree_rc_observed RES=offered scripts/solstorm_start_markets.sh <out>

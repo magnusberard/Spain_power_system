@@ -1,0 +1,86 @@
+zone,unit_id,name,fuel,technology,lat,lon,voltage_unit
+Aceca 4,G0385,Aceca 3 power station,Gas,Combined_cycle,39.9442,-3.8558,True
+Aceca 4,G0386,Aceca 4 power station,Gas,Combined_cycle,39.9427,-3.8548,True
+Aceca 4,G0686,Álabe Villarrubia power station,Gas,Combined_cycle,39.98555,-3.36898,False
+Aceca 4,G0910,Peninsular de Cogeneracion Mill power station,Gas,Combined_cycle,40.270909,-3.768106,False
+Aceca 4,G0911,Fuenlabrada Mill power station,Gas,Combined_cycle,40.26902,-3.77064,False
+Almaraz nuclear power plant,G0092,Almaraz nuclear power plant,Nuclear,Nuclear,39.807,-5.6986,True
+Almaraz nuclear power plant,G0093,Almaraz nuclear power plant,Nuclear,Nuclear,39.807,-5.6986,True
+Arcos de la Frontera,G0004,Arcos de la Frontera power station,Gas,Combined_cycle,36.6721,-5.8164,True
+Arcos de la Frontera,G0005,Arcos de la Frontera power station,Gas,Combined_cycle,36.6721,-5.8164,True
+Arcos de la Frontera,G0006,Arcos de la Frontera power station,Gas,Combined_cycle,36.6721,-5.8164,True
+As Pontes,G0039,As Pontes power station,Coal,Coal,43.441395,-7.862578,False
+As Pontes,G0040,As Pontes power station,Coal,Coal,43.441395,-7.862578,False
+As Pontes,G0041,As Pontes power station,Gas,Combined_cycle,43.441395,-7.862578,True
+As Pontes,G0456,Bioetanol Galicia power station,Gas,Combined_cycle,43.156217,-8.023319,False
+Ascó nuclear power plant,G0138,Ascó nuclear power plant,Nuclear,Nuclear,41.1993,0.5694,True
+Ascó nuclear power plant,G0139,Ascó nuclear power plant,Nuclear,Nuclear,41.1993,0.5694,True
+Ascó nuclear power plant,G0284,Plana del Vent power station,Gas,Combined_cycle,40.9596,0.8692,True
+Ascó nuclear power plant,G0285,Vandellos nuclear power plant,Nuclear,Nuclear,40.9511,0.8662,True
+Ascó nuclear power plant,G0286,Plana del Vent power station,Gas,Combined_cycle,40.9596,0.8692,False
+Ascó nuclear power plant,G0346,Tarragona power station,Gas,Combined_cycle,41.11024,1.18055,False
+Ascó nuclear power plant,G0503,El Morell power station,Gas,Gas_turbine,41.1936,1.2253,False
+Ascó nuclear power plant,G0504,El Morell power station,Gas,Gas_turbine,41.1936,1.2253,False
+Ascó nuclear power plant,G0627,Tortosa Energia power station,Gas,Combined_cycle,40.77019,0.53888,False
+Ascó nuclear power plant,G0649,Tarragona Refinery power station,Gas,Gas_turbine,41.1765,1.224,False
+Bahía de Bizkaia,G0145,Neumaticos Michelin Vitoria power station,Gas,Combined_cycle,42.86668,-2.67174,False
+Bahía de Bizkaia,G0461,Santurce power station,Gas,Combined_cycle,43.34,-3.0539,True
+Bahía de Bizkaia,G0462,Bahía de Bizkaia power station,Gas,Combined_cycle,43.35904,-3.09211,True
+Bahía de Bizkaia,G0745,Amorebieta power station,Gas,Combined_cycle,43.2347,-2.7497,True
+Besós 5,G0140,Martorell Seat power station,Gas,Combined_cycle,41.49612,1.90134,False
+Besós 5,G0329,Barcelona Cartonboard power station,Gas,Combined_cycle,41.46418,1.9557,False
+Besós 5,G0412,Puerto De Barcelona power station,Gas,Combined_cycle,41.3366,2.1594,True
+Besós 5,G0413,Puerto De Barcelona power station,Gas,Combined_cycle,41.3366,2.1594,True
+Besós 5,G0736,Pobla De Claramunt power station,Gas,Combined_cycle,41.55193,1.68554,False
+Besós 5,G0788,Besós 3 power station,Gas,Combined_cycle,41.41847,2.22859,True
+Besós 5,G0789,Besós 4 power station,Gas,Combined_cycle,41.41847,2.22859,True
+Besós 5,G0790,Besós 5 power station,Gas,Combined_cycle,41.41847,2.22859,True
+Cartagena,G0255,Cartagena (Escombreras) power station,Gas,Combined_cycle,37.57274,-0.93841,True
+Cartagena,G0256,El Fangal power station,Gas,Combined_cycle,37.5709,-0.9458,True
+Cartagena,G0257,El Fangal power station,Gas,Combined_cycle,37.5709,-0.9458,True
+Cartagena,G0258,Escombreras Iberdrola power station,Gas,Combined_cycle,37.5647,-0.95132,True
+Cartagena,G0259,Cartagena (Escombreras) power station,Gas,Combined_cycle,37.57274,-0.93841,True
+Cartagena,G0260,Ecocarburantes Españoles power station,Gas,Combined_cycle,37.580497,-0.923301,False
+Cartagena,G0261,El Fangal power station,Gas,Combined_cycle,37.5709,-0.9458,True
+Cartagena,G0262,Cartagena (Escombreras) power station,Gas,Combined_cycle,37.57274,-0.93841,True
+Cartagena,G0263,Repsol Cartagena Refinery power station,Gas,Combined_cycle,37.57512,-0.92928,False
+Cartagena,G0264,Repsol Cartagena Refinery power station,Gas,Combined_cycle,37.57512,-0.92928,False
+Cartagena,G0818,Cartagena Refinery power station,Gas,Combined_cycle,37.70435,-1.09995,False
+Castejón,G0085,Castejón power station,Gas,Combined_cycle,42.1718,-1.6773,True
+Castejón,G0086,Castejón power station,Gas,Combined_cycle,42.1718,-1.6773,True
+Castejón,G0088,Castejón power station,Gas,Combined_cycle,42.1718,-1.6773,True
+Castejón,G0569,Pamplona power station,Gas,Gas_turbine,42.54557,-1.35485,False
+Cofrentes nuclear power plant,G0160,Cofrentes nuclear power plant,Nuclear,Nuclear,39.2134,-1.0509,True
+Málaga,G0780,Málaga power station,Gas,Combined_cycle,36.7495,-4.5631,True
+Palos,G0373,Cristobal Colón power station,Gas,Combined_cycle,37.2156,-6.943,False
+Palos,G0375,Refineria La Rabida power station,Gas,Combined_cycle,37.18568,-6.90083,False
+Palos,G0376,Refineria La Rabida power station,Gas,Combined_cycle,37.18568,-6.90083,False
+Palos,G0377,Palos power station,Gas,Combined_cycle,37.18448,-6.89279,True
+Palos,G0378,Palos power station,Gas,Combined_cycle,37.18448,-6.89279,True
+Palos,G0379,Palos power station,Gas,Combined_cycle,37.18448,-6.89279,True
+Palos,G0380,GEMASA power station,Gas,Combined_cycle,37.18408,-6.90394,False
+Sabón 3,G0334,Sabón 3 power station,Gas,Combined_cycle,43.329,-8.503,True
+Sagunto,G0065,Sagunto power station,Gas,Combined_cycle,39.64248,-0.23321,True
+Sagunto,G0066,Sagunto power station,Gas,Combined_cycle,39.64248,-0.23321,True
+Sagunto,G0067,Sagunto power station,Gas,Combined_cycle,39.64248,-0.23321,True
+Sagunto,G0168,Castellón power station,Gas,Combined_cycle,39.9592,-0.001,True
+Sagunto,G0169,Castellón power station,Gas,Combined_cycle,39.9592,-0.001,True
+Sagunto,G0170,Castellon Refinery power station,Gas,Combined_cycle,39.959128,-0.001605,False
+San Roque 2,G0107,San Roque 1 power station,Gas,Combined_cycle,36.19564,-5.41363,True
+San Roque 2,G0108,San Roque 2 power station,Gas,Combined_cycle,36.19564,-5.41363,True
+San Roque 2,G0109,Los Barrios power station,Coal,Coal,36.1828,-5.42,False
+San Roque 2,G0110,San Roque Refinery power station,Gas,Gas_turbine,36.188789,-5.388149,False
+San Roque 2,G0111,San Roque Refinery power station,Gas,Combined_cycle,36.188789,-5.388149,False
+San Roque 2,G0112,San Roque Refinery power station,Gas,Gas_turbine,36.188789,-5.388149,False
+San Roque 2,G0113,Bahia de Algeciras power station,Gas,Combined_cycle,36.184,-5.388,True
+San Roque 2,G0114,Campo de Gibraltar power station,Gas,Combined_cycle,36.1834,-5.3933,True
+San Roque 2,G0115,Campo de Gibraltar power station,Gas,Combined_cycle,36.1834,-5.3933,True
+San Roque 2,G0116,Ceuta power station,Gas,Gas_turbine,35.9026,-5.28949,False
+San Roque 2,G0117,San Roque Refinery power station,Gas,Gas_turbine,36.188789,-5.388149,False
+Soto de Ribera,G0058,Aboño power station,Coal,Coal,43.553557,-5.721851,False
+Soto de Ribera,G0059,Aboño power station,Coal,Coal,43.553557,-5.721851,False
+Soto de Ribera,G0446,Soto de Ribera power station,Coal,Coal,43.311717,-5.874,True
+Soto de Ribera,G0447,Soto de Ribera power station,Gas,Combined_cycle,43.311717,-5.874,True
+Soto de Ribera,G0448,Soto de Ribera power station,Gas,Combined_cycle,43.311717,-5.874,True
+Soto de Ribera,G0742,La Pereda Hunosa power station,Coal,Coal,43.247303,-5.754558,False
+Trillo nuclear power plant,G0307,Trillo nuclear power plant,Nuclear,Nuclear,40.7016,-2.6227,True

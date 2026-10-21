@@ -1,0 +1,6 @@
+fuel,technology,up_markup,down_markup
+Gas,Combined_cycle,0.89,0
+Gas,Gas_turbine,0.89,0
+Coal,Coal,0.94,0
+Hydro,pumped_storage,0.59,0
+Hydro,reservoir,0.59,0

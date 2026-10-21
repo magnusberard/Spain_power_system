@@ -7,6 +7,7 @@ ree_unit_crosswalk.csv).
 
     python redispatch_realism/compare_ree.py results/W1 results/W2 --bids bids.csv
     python redispatch_realism/compare_ree.py results/run --bids bids.csv --storage-at-da --out report.csv
+    python redispatch_realism/compare_ree.py <solstorm out folder> ...   # its day subfolders
 
 Prints one row per day and a total; --out writes the table.
 """
@@ -60,8 +61,15 @@ def main():
     ap.add_argument("--out", type=Path)
     a = ap.parse_args()
 
+    # a parent folder (a Solstorm day-by-day run) stands for its finished day folders
+    runs = []
+    for r in a.runs:
+        if (r / "summary.csv").exists():
+            runs.append(r)
+        else:
+            runs += sorted(p for p in r.iterdir() if (p / "summary.csv").exists())
     days_rows = []
-    for run in a.runs:
+    for run in runs:
         hourly, *_ = settle.settle(run, bids=a.bids, down_refund="da", storage_at_da=a.storage_at_da)
         rt = hourly.groupby("date").agg(rt_up_gwh=("up_mwh", lambda v: v.sum() / 1e3),
                                         rt_down_gwh=("down_mwh", lambda v: v.sum() / 1e3),

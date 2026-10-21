@@ -19,6 +19,70 @@ Built in checkpoints, each reviewed before the next:
 | 4 | RD10, RD11 | REE's objective, pay-as-bid mark-ups; storage at opportunity cost | — |
 | 5 | RD6, RD7 | N-1 on critical corridors; upward reserve in real time | — |
 
+## Running a month or the year on Solstorm
+
+The realism redispatch costs 20–30 min per day per process (locally, MUMPS). Days are independent
+(standalone redispatch, `from_saved = "BAL"`), so on Solstorm they run in parallel lanes and reuse
+the market results of an existing run — no market stage is re-run. Node rules for master
+students (vault `solstorm-cluster`): `compute-5-*` only (20 cores, 96 GB), at most 5 nodes, never
+a busy node. Estimates with MA57: one month ≈ 30 min on one node (12 lanes); the year ≈ 2 h on 5 nodes.
+
+1. **Log in** (off campus: NTNU VPN first), then go to a free compute node:
+   ```
+   ssh <user>@solstorm-login.iot.ntnu.no
+   ssh compute-5-<n>          # check it is free first: uptime   (load well below 20)
+   ```
+2. **Code** (once; later only the `git pull`):
+   ```
+   cd /storage/users/$USER
+   git clone https://github.com/magnusberard/Spain_power_system.git   # skip if you have it
+   cd Spain_power_system && git fetch && git checkout redispatch-realism && git pull
+   source scripts/solstorm_env.sh ma57
+   julia --project=. -e 'import Pkg; Pkg.instantiate(); Pkg.precompile()'
+   ```
+3. **HSL for MA57** (once): copy your licensed HSL_jll folder to the cluster (from the PC,
+   PowerShell: `scp -r C:\Users\magnu\HSL_jll.jl.v2026.8.4 <user>@solstorm-login.iot.ntnu.no:/storage/users/<user>/`),
+   then on the node:
+   ```
+   julia --project=. -e 'import Pkg; Pkg.develop(path="/storage/users/'$USER'/HSL_jll.jl.v2026.8.4/HSL_jll.jl.v2026.8.4")'
+   ```
+   (Do not commit the changed Manifest.toml. Without HSL, use `IPOPT=mumps`, ~1.5× slower.)
+4. **Source run**: a split-run folder of Lars Erik's full-year run (it has `chunks.txt` and
+   `FROM_TO/` chunk folders with `bal_dispatch.csv`, `da_dispatch.csv`, `market_prices.csv`):
+   ```
+   SRC=/storage/users/<lars-erik>/results/<run>      # ask him which; check: head $SRC/chunks.txt
+   ```
+5. **One month first** (December, one node):
+   ```
+   FROM=2024-12-01 TO=2024-12-29 IPOPT=ma57 \
+     redispatch_realism/solstorm_start_realism.sh $SRC /storage/users/$USER/results/realism_dec 1/1
+   tail -n 3 /storage/users/$USER/results/realism_dec/lane-*.log          # progress
+   ls /storage/users/$USER/results/realism_dec/*/summary.csv | wc -l     # finished days
+   ```
+6. **The year** (only after the month checks out): on up to 5 free nodes, one command each,
+   `1/5` … `5/5` (FROM/TO default to 2024-01-01 … 2024-12-29):
+   ```
+   IPOPT=ma57 redispatch_realism/solstorm_start_realism.sh $SRC /storage/users/$USER/results/realism_2024 1/5
+   ```
+7. **Check against REE on the cluster** (the raw results stay there). Copy the reference data
+   once from the PC (PowerShell):
+   ```
+   scp C:\Users\magnu\dev\spain-model-runs\reference\esios_2024.js <user>@solstorm-login.iot.ntnu.no:/storage/users/<user>/ref/
+   scp -r C:\Users\magnu\dev\esios_download\i90 <user>@solstorm-login.iot.ntnu.no:/storage/users/<user>/ref/
+   ```
+   then on a node:
+   ```
+   module load Python/3.11.5-GCCcore-13.2.0
+   python3 redispatch_realism/compare_ree.py /storage/users/$USER/results/realism_dec \
+     --bids redispatch_realism/bids_fitted.csv --storage-at-da \
+     --esios /storage/users/$USER/ref/esios_2024.js --i90 /storage/users/$USER/ref/i90 \
+     --out /storage/users/$USER/results/realism_dec/vs_ree.csv
+   ```
+   and copy `vs_ree.csv` back (`scp <user>@solstorm-login.iot.ntnu.no:/storage/users/<user>/results/realism_dec/vs_ree.csv .`).
+   `python3 scripts/merge_runs.py <merged> <out>` joins the days into one folder if needed.
+
+Locally the same lanes run with `LANES=2` (memory: ~3 GB per lane on 16 GB).
+
 ## Checks: is each component working?
 
 `check.py` prints PASS/FAIL per test and exits non-zero on a failure. Three kinds:

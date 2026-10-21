@@ -220,6 +220,15 @@ fall: mark-ups and the tie-break change what the moves cost, not how many the AC
 they are voltage-driven. Suspect: `[network].gen_bus_vmin/vmax = 0.98/1.03` pu, much tighter than
 REE's operating range (~0.95–1.05 pu at 400 kV); next test is a single config change.
 
+### RD6 N-1 test N6b, 2 Dec 2024 (V1 settings + soft N-1)
+
+Hard post-outage limits made phase I infeasible (238 overloads, worst 1,388 MW); with soft limits
+(3,000 €/MWh) the lazy loop converges in three rounds (238 → 116 → 0 new overloads). Phase I then
+moves **37.5 GWh** (11.5 without N-1; REE 20.1 GWh, of which N-1/SCA is roughly a quarter) with the
+same 9 started units, and 1,250–1,560 MW of post-outage overload remains in every hour that no
+redispatch can remove. N-1 with one fixed rating × nominal is too strict for this grid data; RDL
+17/2022 sets seasonal (winter-higher) ratings. RD6 stays off by default; revisit with seasonal ratings.
+
 ### Voltage rule (changes a main default)
 
 `[network].gen_bus_vmin/vmax` is now **0.975/1.05 pu** on this branch (main: 0.98/1.03): REE's

@@ -3558,6 +3558,10 @@ n1_emergency_factor = 1.0
 n1_min_kv           = 220.0
 n1_max_rounds       = 4
 n1_max_cuts         = 500
+# Post-outage overloads are soft: each MW over costs this (above any bid), so
+# redispatch removes every overload it can and the rest is reported
+# (rd_phase1_summary.csv n1_overload_left_mw) instead of making the day infeasible.
+n1_overload_eur_mwh = 3000.0
 
 [redispatch.reserve]
 # Upward reserve in the real-time redispatch (step RD7, redispatch_reserve.jl).

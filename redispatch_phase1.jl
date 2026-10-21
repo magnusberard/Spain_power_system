@@ -39,6 +39,7 @@ function load_rd_phase1(cfg)
             n1_min_kv    = Float64(get(c, "n1_min_kv", 220.0)),
             n1_rounds    = Int(get(c, "n1_max_rounds", 4)),
             n1_max_cuts  = Int(get(c, "n1_max_cuts", 500)),
+            n1_overload_eur = Float64(get(c, "n1_overload_eur_mwh", 3000.0)),  # soft limit: price of a post-outage overload
             mip_gap      = Float64(get(c, "mip_gap", 1e-3)),
             time_limit_s = Float64(get(c, "time_limit_s", 600.0)),
             min_up       = Int(get(uc, "min_up_h", 2)),
@@ -48,6 +49,8 @@ function load_rd_phase1(cfg)
 end
 
 const RD_PHASE1_ON   = Dict{Tuple{String,Int},Set{String}}()   # units phase I committed, per hour
+const RD_N1_SLACK    = Tuple{Int,JuMP.VariableRef}[]          # (hour position, overload slack) of the day being solved
+const RD_N1_DONE     = Set{Tuple{Int,Int,Int}}()              # (hour position, monitored, outage) already constrained
 const RD_PHASE1_ROWS = NamedTuple[]
 const RD_PHASE1_SUM  = NamedTuple[]
 const RD_SAVED_DA    = Ref{Any}(nothing)
@@ -174,7 +177,7 @@ function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens)
             abs(den) < 1e-4 && continue                      # would island part of the grid
             post = f .+ (phi[:, j] ./ den) .* f[c]
             for l in eachindex(ids)
-                l == c && continue
+                (l == c || (k, l, c) in RD_N1_DONE) && continue
                 ex = abs(post[l]) - lim[l]
                 ex > 1e-4 && push!(cand, (ex, k, l, c, phi[l, j] / den))
             end
@@ -187,8 +190,15 @@ function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens)
         bl, bc = byid[ids[l]], byid[ids[c]]
         pl = PowerModels.var(pm, n, :p, (ids[l], bl["f_bus"], bl["t_bus"]))
         pc = PowerModels.var(pm, n, :p, (ids[c], bc["f_bus"], bc["t_bus"]))
-        JuMP.@constraint(m, pl + lodf * pc <=  lim[l])
-        JuMP.@constraint(m, pl + lodf * pc >= -lim[l])
+        # soft: an overload no redispatch can remove (fixed injections, grid data)
+        # is priced, not infeasible — 3,000 EUR/MWh is above any bid, so every
+        # overload redispatch can fix is fixed; the rest is reported
+        s = JuMP.@variable(m, lower_bound = 0.0)
+        JuMP.@constraint(m, pl + lodf * pc <=  lim[l] + s)
+        JuMP.@constraint(m, pl + lodf * pc >= -lim[l] - s)
+        JuMP.set_objective_coefficient(m, s, p1.n1_overload_eur * BASEMVA)
+        push!(RD_N1_SLACK, (k, s))
+        push!(RD_N1_DONE, (k, l, c))
         added += 1
     end
     @printf "    N-1: %d post-outage overloads found, %d constraints added (worst %.0f MW over)\n" length(cand) added (isempty(cand) ? 0.0 : cand[1][1] * BASEMVA)
@@ -295,6 +305,7 @@ function run_phase1_day!(su, date_str)
     JuMP.set_optimizer_attribute(m, "TimeLimit", p1.time_limit_s)
     t0 = time()
     JuMP.optimize!(m)
+    empty!(RD_N1_SLACK); empty!(RD_N1_DONE)
     if p1.n1 && JuMP.has_values(m)                                   # RD6: lazy preventive N-1
         sens = rd_ptdf(nets[1].network)
         for r in 1:p1.n1_rounds
@@ -330,9 +341,11 @@ function run_phase1_day!(su, date_str)
             end
         end
         RD_PHASE1_ON[(date_str, h)] = on
+        n1_left = sum((JuMP.value(s) * BASEMVA for (kk, s) in RD_N1_SLACK if kk == k); init = 0.0)
         push!(RD_PHASE1_SUM, (date = date_str, hour = h, status = status, up_mwh = round(up_mwh; digits = 1),
                               down_mwh = round(dn_mwh; digits = 1), starts = nst, units_committed = length(on),
-                              extra_cost_eur = round(cost; digits = 0), p_da = p_da[k]))
+                              extra_cost_eur = round(cost; digits = 0), p_da = p_da[k],
+                              n1_overload_left_mw = round(n1_left; digits = 1)))
     end
 end
 

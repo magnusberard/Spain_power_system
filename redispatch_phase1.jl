@@ -28,11 +28,18 @@
 # cost.  The day starts with every candidate off (no carry-over between days).
 # ============================================================
 
+import LinearAlgebra
+
 function load_rd_phase1(cfg)
     c = get(get(cfg, "redispatch", Dict()), "phase1", Dict())
     get(c, "enabled", false) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
-    return (mip_gap      = Float64(get(c, "mip_gap", 1e-3)),
+    return (n1           = Bool(get(c, "n1", false)),                     # RD6
+            n1_emergency = Float64(get(c, "n1_emergency_factor", 1.0)),   # × nominal rating after an outage
+            n1_min_kv    = Float64(get(c, "n1_min_kv", 220.0)),
+            n1_rounds    = Int(get(c, "n1_max_rounds", 4)),
+            n1_max_cuts  = Int(get(c, "n1_max_cuts", 500)),
+            mip_gap      = Float64(get(c, "mip_gap", 1e-3)),
             time_limit_s = Float64(get(c, "time_limit_s", 600.0)),
             min_up       = Int(get(uc, "min_up_h", 2)),
             min_down     = Int(get(uc, "min_down_h", 6)),
@@ -98,6 +105,94 @@ function build_phase1_dc(pm::PowerModels.AbstractPowerModel)
             PowerModels.constraint_dcline_power_losses(pm, i; nw = n)
         end
     end
+end
+
+# ── Step RD6: preventive N-1 in phase I (n1 = true) ──────────────────────────
+# REE's security analysis checks every single outage (P.O. 3.2); N-1 was 28 % of
+# its phase I upward redispatch in 2024 (e·sios cause SCA).  Iterative and lazy:
+# solve, compute every monitored branch's flow after each single outage of a
+# ≥ n1_min_kv line or transformer with line outage distribution factors (DC),
+# add constraints only for the (branch, outage, hour) combinations above
+# n1_emergency_factor × the branch's nominal rating, solve again; at most
+# n1_max_rounds rounds and n1_max_cuts new constraints per round, worst first.
+# The base case keeps line_rating_factor (its N-1 proxy); outages are skipped
+# where they would island part of the grid.  Van den Bergh et al. (2015): the
+# preventive N-1 criterion costs several times the curative one, so the result
+# is an upper bound on N-1 redispatch.
+
+"""
+    rd_ptdf(network) -> (ptdf, branch_ids, bus_col)
+
+DC power transfer distribution factors (branch flow per MW injected at a bus,
+withdrawn at the slack), from the branches' reactances.
+"""
+function rd_ptdf(network)
+    br = sort([b for (_, b) in network["branch"] if get(b, "br_status", 1) == 1]; by = b -> b["index"])
+    buses = sort(collect(keys(network["bus"])); by = k -> network["bus"][k]["index"])
+    bus_col = Dict(network["bus"][k]["index"] => i for (i, k) in enumerate(buses))
+    slack = first(network["bus"][k]["index"] for k in buses if network["bus"][k]["bus_type"] == 3)
+    nl, nb = length(br), length(buses)
+    A = zeros(nl, nb)
+    bvec = zeros(nl)
+    for (l, b) in enumerate(br)
+        A[l, bus_col[b["f_bus"]]] = 1.0
+        A[l, bus_col[b["t_bus"]]] = -1.0
+        bvec[l] = 1.0 / max(abs(b["br_x"]), 1e-6)
+    end
+    keep = [i for i in 1:nb if i != bus_col[slack]]
+    Bred = A[:, keep]' * (bvec .* A[:, keep])
+    ptdf = zeros(nl, nb)
+    ptdf[:, keep] = (bvec .* A[:, keep]) / Bred
+    return ptdf, [b["index"] for b in br], bus_col
+end
+
+"""
+    add_n1_cuts!(pm, m, nets, nwk, H, p1, sens) -> number of constraints added
+
+Check the current solution against every single outage and add the worst
+violated (branch, outage, hour) limits as constraints.
+"""
+function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens)
+    ptdf, ids, bus_col = sens
+    net = nets[1].network
+    byid = Dict(b["index"] => b for (_, b) in net["branch"])
+    kv(b) = max(get(net["bus"][string(b["f_bus"])], "base_kv", 0.0), get(net["bus"][string(b["t_bus"])], "base_kv", 0.0))
+    outages = [c for (c, id) in enumerate(ids) if kv(byid[id]) >= p1.n1_min_kv]
+    # φ[:, c]: change on every branch per MW lost on branch c; LODF = φ / (1 − φ_cc)
+    phi = zeros(length(ids), length(outages))
+    for (j, c) in enumerate(outages)
+        b = byid[ids[c]]
+        phi[:, j] = ptdf[:, bus_col[b["f_bus"]]] - ptdf[:, bus_col[b["t_bus"]]]
+    end
+    lim = [byid[id]["rate_a"] / LINE_RATING_FACTOR * p1.n1_emergency for id in ids]     # pu, nominal × factor
+    cand = Tuple{Float64,Int,Int,Int,Float64}[]          # (excess, hour k, monitored l, outage c, lodf)
+    for k in 1:H
+        n = nwk[k]
+        f = [JuMP.value(PowerModels.var(pm, n, :p, (id, byid[id]["f_bus"], byid[id]["t_bus"]))) for id in ids]
+        for (j, c) in enumerate(outages)
+            den = 1.0 - phi[c, j]
+            abs(den) < 1e-4 && continue                      # would island part of the grid
+            post = f .+ (phi[:, j] ./ den) .* f[c]
+            for l in eachindex(ids)
+                l == c && continue
+                ex = abs(post[l]) - lim[l]
+                ex > 1e-4 && push!(cand, (ex, k, l, c, phi[l, j] / den))
+            end
+        end
+    end
+    sort!(cand; by = x -> -x[1])
+    added = 0
+    for (ex, k, l, c, lodf) in first(cand, min(p1.n1_max_cuts, length(cand)))
+        n = nwk[k]
+        bl, bc = byid[ids[l]], byid[ids[c]]
+        pl = PowerModels.var(pm, n, :p, (ids[l], bl["f_bus"], bl["t_bus"]))
+        pc = PowerModels.var(pm, n, :p, (ids[c], bc["f_bus"], bc["t_bus"]))
+        JuMP.@constraint(m, pl + lodf * pc <=  lim[l])
+        JuMP.@constraint(m, pl + lodf * pc >= -lim[l])
+        added += 1
+    end
+    @printf "    N-1: %d post-outage overloads found, %d constraints added (worst %.0f MW over)\n" length(cand) added (isempty(cand) ? 0.0 : cand[1][1] * BASEMVA)
+    return added
 end
 
 """
@@ -200,6 +295,14 @@ function run_phase1_day!(su, date_str)
     JuMP.set_optimizer_attribute(m, "TimeLimit", p1.time_limit_s)
     t0 = time()
     JuMP.optimize!(m)
+    if p1.n1 && JuMP.has_values(m)                                   # RD6: lazy preventive N-1
+        sens = rd_ptdf(nets[1].network)
+        for r in 1:p1.n1_rounds
+            add_n1_cuts!(pm, m, nets, nwk, H, p1, sens) == 0 && break
+            JuMP.optimize!(m)
+            JuMP.has_values(m) || break
+        end
+    end
     status = string(JuMP.termination_status(m))
     @printf "  phase I/II %s: %s in %.0f s, %d candidates, objective %.0f EUR\n" date_str status (time() - t0) length(unique(first.(collect(keys(u))))) (JuMP.has_values(m) ? JuMP.objective_value(m) : NaN)
     JuMP.has_values(m) || return

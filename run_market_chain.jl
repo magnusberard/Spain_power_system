@@ -2217,6 +2217,9 @@ if RD_WATER_VALUE == "constant"
         bv       = day_bellman[date_str]
         label    = "$date_str h$(lpad(hour, 2, '0'))"
         sched_hour = rd_sched_for(date_str, hour)
+        # RD8: real time starts from the balancing schedule plus phase I/II's changes
+        RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing &&
+            (sched_hour = phase1_anchor(sched_hour, date_str, hour))
 
         net = prepare_network(rd_load_mw(ts.load_mw - xb_export_offset(date_str, hour)),
                               ts.solar_mw, ts.wind_mw;

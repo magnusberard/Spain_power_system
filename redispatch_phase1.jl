@@ -49,6 +49,11 @@ function load_rd_phase1(cfg)
 end
 
 const RD_PHASE1_ON   = Dict{Tuple{String,Int},Set{String}}()   # units phase I committed, per hour
+# Phase I/II changes per hour (MW, unit ⇒ phase I − day-ahead).  In Spain they
+# become part of the schedule the later stages start from, so the real-time
+# stage is anchored to the balancing schedule plus these changes; otherwise
+# every phase I start-up is counted and charged a second time in real time.
+const RD_PHASE1_DELTA = Dict{Tuple{String,Int},Dict{String,Float64}}()
 const RD_N1_SLACK    = Tuple{Int,JuMP.VariableRef}[]          # (hour position, overload slack) of the day being solved
 const RD_N1_DONE     = Set{Tuple{Int,Int,Int}}()              # (hour position, monitored, outage) already constrained
 const RD_PHASE1_ROWS = NamedTuple[]
@@ -319,6 +324,7 @@ function run_phase1_day!(su, date_str)
     JuMP.has_values(m) || return
     for (k, h) in enumerate(hours)
         on = Set{String}()
+        delta = Dict{String,Float64}()
         up_mwh = dn_mwh = cost = 0.0
         nst = 0
         for ((name, kk), pg) in pg_of
@@ -329,6 +335,7 @@ function run_phase1_day!(su, date_str)
             com = haskey(u, (name, k)) && JuMP.value(u[(name, k)]) > 0.5
             com && push!(on, name)
             d = mw - da
+            abs(d) > 1e-3 && (delta[name] = d)
             p_up, p_dn = rd_bid_prices(p1.bids, g, p_da[k])
             d > 0 ? (up_mwh += d; cost += d * (p_up - p_da[k])) : (dn_mwh -= d; cost += -d * (p_da[k] - p_dn))
             if abs(d) > 0.5 || com
@@ -341,12 +348,29 @@ function run_phase1_day!(su, date_str)
             end
         end
         RD_PHASE1_ON[(date_str, h)] = on
-        n1_left = sum((JuMP.value(s) * BASEMVA for (kk, s) in RD_N1_SLACK if kk == k); init = 0.0)
+        RD_PHASE1_DELTA[(date_str, h)] = delta
+        n1_left =sum((JuMP.value(s) * BASEMVA for (kk, s) in RD_N1_SLACK if kk == k); init = 0.0)
         push!(RD_PHASE1_SUM, (date = date_str, hour = h, status = status, up_mwh = round(up_mwh; digits = 1),
                               down_mwh = round(dn_mwh; digits = 1), starts = nst, units_committed = length(on),
                               extra_cost_eur = round(cost; digits = 0), p_da = p_da[k],
                               n1_overload_left_mw = round(n1_left; digits = 1)))
     end
+end
+
+"""
+    phase1_anchor(sched, date_str, hour) -> schedule
+
+The real-time stage's starting schedule: `sched` (balancing) plus phase I/II's
+changes for the hour (a new dict; `sched` itself is left untouched).
+"""
+function phase1_anchor(sched, date_str, hour)
+    delta = get(RD_PHASE1_DELTA, (date_str, hour), nothing)
+    (delta === nothing || sched === nothing) && return sched
+    out = copy(sched)
+    for (name, d) in delta
+        out[name] = get(out, name, 0.0) + d
+    end
+    return out
 end
 
 """
@@ -369,7 +393,7 @@ end
 
 function write_rd_phase1(dir)
     isempty(RD_PHASE1_SUM) && return
-    CSV.write(joinpath(dir, "rd_phase1.csv"), DataFrame(RD_PHASE1_ROWS))
+    CSV.write(joinpath(dir, "rd_phase1.csv"), DataFrame(RD_PHASE1_ROWS))   # settle.py reads the changes from here too
     CSV.write(joinpath(dir, "rd_phase1_summary.csv"), DataFrame(RD_PHASE1_SUM))
     @printf "  rd_phase1*.csv   : %d unit-hours changed, %d hours ([redispatch.phase1])\n" length(RD_PHASE1_ROWS) length(RD_PHASE1_SUM)
 end

@@ -230,6 +230,13 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          gen_bus_voltage_control::Bool   = false,
                          gen_bus_vmin::Float64           = 0.98,
                          gen_bus_vmax::Float64           = 1.03,
+                         # [network].voltage_limits_by_kv (off by default): REE's band per
+                         # voltage level (P.O. 1.4 §3.2: 400 kV 390–420 kV, 220 kV 205–245 kV),
+                         # nominal kV ⇒ (vmin, vmax) pu, for the generator (AVR) buses (scope
+                         # "generator") or every bus ("all") whose level is within 15 % of a
+                         # listed one; other buses keep the bands above.
+                         voltage_limits_by_kv = nothing,
+                         voltage_limits_scope::String = "generator",
                          # [redispatch].q_requires_online (step RD3, off by default):
                          # reactive power has to come from equipment that is running.
                          #   • a synchronous unit whose anchored schedule is below
@@ -413,6 +420,10 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                   (bus_type == 3 || row.bus_id in synchronous_gen_buses)
         vmax_b  = avr_bus ? gen_bus_vmax : 1.0 + voltage_band
         vmin_b  = avr_bus ? gen_bus_vmin : 1.0 - voltage_band
+        if voltage_limits_by_kv !== nothing && (avr_bus || voltage_limits_scope == "all")
+            lv = argmin(k -> abs(k - vn), collect(keys(voltage_limits_by_kv)))
+            abs(lv - vn) <= 0.15 * lv && ((vmin_b, vmax_b) = voltage_limits_by_kv[lv])
+        end
         buses[string(i)] = Dict{String,Any}(
             "index"    => i,  "bus_i"    => i,
             "bus_type" => bus_type,

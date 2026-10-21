@@ -266,6 +266,13 @@ const VOLTAGE_BAND       = Float64(get(get(cfg, "network", Dict()), "voltage_ban
 const GEN_BUS_VCTRL = get(get(cfg, "network", Dict()), "gen_bus_voltage_control", false)
 const GEN_BUS_VMIN  = Float64(get(get(cfg, "network", Dict()), "gen_bus_vmin", 0.98))
 const GEN_BUS_VMAX  = Float64(get(get(cfg, "network", Dict()), "gen_bus_vmax", 1.03))
+# [network].voltage_limits_by_kv: REE's band per voltage level (empty = off)
+const VOLT_LIMITS_KV = let t = get(get(cfg, "network", Dict()), "voltage_limits_by_kv", Dict())
+    isempty(t) ? nothing : Dict(parse(Float64, String(k)) => (Float64(v[1]), Float64(v[2])) for (k, v) in t)
+end
+const VOLT_LIMITS_SCOPE = String(get(get(cfg, "network", Dict()), "voltage_limits_scope", "generator"))
+VOLT_LIMITS_SCOPE ∈ ("generator", "all") ||
+    error("config.toml: [network].voltage_limits_scope must be \"generator\" or \"all\"")
 
 const REACTORS_ENABLED   = get(get(cfg, "reactors", Dict()), "enabled", true)
 const REACTOR_PCT        = Float64(get(get(cfg, "reactors", Dict()), "in_service_pct", 100.0))
@@ -1541,7 +1548,7 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      renewable_power_factor = RENEWABLE_PF,
                      gen_bus_voltage_control = GEN_BUS_VCTRL,
                      gen_bus_vmin = GEN_BUS_VMIN,
-                     gen_bus_vmax = GEN_BUS_VMAX,
+                     gen_bus_vmax = GEN_BUS_VMAX, voltage_limits_by_kv = VOLT_LIMITS_KV, voltage_limits_scope = VOLT_LIMITS_SCOPE,
                      unit_scale = UNIT_SCALE,
                      cost_override = cost_override_for(date_str),
                      unit_cost_override = unit_cost_override_for(date_str),
@@ -2261,7 +2268,7 @@ if RD_WATER_VALUE == "constant"
                               renewable_power_factor = RENEWABLE_PF,
                               gen_bus_voltage_control = GEN_BUS_VCTRL,
                               gen_bus_vmin = GEN_BUS_VMIN,
-                              gen_bus_vmax = GEN_BUS_VMAX,
+                              gen_bus_vmax = GEN_BUS_VMAX, voltage_limits_by_kv = VOLT_LIMITS_KV, voltage_limits_scope = VOLT_LIMITS_SCOPE,
                               q_requires_online = RD_Q_ONLINE,
                               q_online_min_frac = RD_Q_ONLINE_FRAC,
                               q_condenser_ok = RD_Q_CONDENSER,
@@ -2345,7 +2352,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 renewable_power_factor = RENEWABLE_PF,
                                 gen_bus_voltage_control = GEN_BUS_VCTRL,
                                 gen_bus_vmin = GEN_BUS_VMIN,
-                                gen_bus_vmax = GEN_BUS_VMAX,
+                                gen_bus_vmax = GEN_BUS_VMAX, voltage_limits_by_kv = VOLT_LIMITS_KV, voltage_limits_scope = VOLT_LIMITS_SCOPE,
                                 q_requires_online = RD_Q_ONLINE,
                                 q_online_min_frac = RD_Q_ONLINE_FRAC,
                                 q_condenser_ok = RD_Q_CONDENSER,

@@ -225,8 +225,10 @@ REE's operating range (~0.95–1.05 pu at 400 kV); next test is a single config 
 `[network].gen_bus_vmin/vmax` is now **0.975/1.05 pu** on this branch (main: 0.98/1.03): REE's
 normal-operation range for the 400 kV grid, 390–420 kV (P.O. 1.4 §3.2, BOE-A-1998-20053), which
 REE's 2024 voltage-control report confirms was still the admissible band in 2024 (P.O. 1.1, 1.3,
-1.4). Copies of the texts: `litterature review/BOE1998_REE_PO1.1_1.4_Security_Criteria_Voltage_Limits.pdf`
-and `REE2024_New_Voltage_Control_Service_PO3.1_14.4_Report.pdf`. This is the one change on the
+1.4). The N-1 voltage limits of the current P.O. 1.1 (2016, BOE-A-2016-3275) are the same as in
+1998 (400 kV 380–435 kV after a single outage). Line/transformer loading limits now come from RDL
+17/2022 Annex I (seasonal ratings). Copies of the texts in `litterature review/` (BOE1998_…,
+BOE2016_…, BOE2022_…, REE2024_…), described in its INDEX.md. This is the one change on the
 branch that alters runs with every redispatch-realism switch off (AC voltages and flows), so the
 group should agree before merging.
 

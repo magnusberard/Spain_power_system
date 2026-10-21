@@ -220,6 +220,25 @@ fall: mark-ups and the tie-break change what the moves cost, not how many the AC
 they are voltage-driven. Suspect: `[network].gen_bus_vmin/vmax = 0.98/1.03` pu, much tighter than
 REE's operating range (~0.95–1.05 pu at 400 kV); next test is a single config change.
 
+### Voltage-band test V1, 2 Dec 2024 — the volume gap was the generator voltage band
+
+V1 = CAL with `[network].gen_bus_vmin/vmax = 0.95/1.05` pu (main's default 0.98/1.03, much
+tighter than REE's operating range at 400 kV).
+
+| | CAL (0.98–1.03) | V1 (0.95–1.05) | REE |
+|---|---|---|---|
+| solved hours | 21/24 | **24/24** | |
+| up: real time + phase I, GWh | 85.5 + 11.5 | **19.8 + 11.5** | 39.3 |
+| real-time up by type, GWh | hydro 37, pumped 33, gas 13 | **gas 13.0, hydro 4.4, pumped 1.5** | gas/coal |
+| real-time starts: zone / RD9 loop | 8 / 35 | 8 / **0** | |
+| extra cost, M€ | 8.5 + 1.8 | **2.35 + 1.78 = 4.1** | 8.30 |
+
+With the tight band and no free reactive power, the AC model needed ~3× REE's energy moves to hold
+voltages; with REE-like limits the volume is 80 % of REE's, gas-led, every hour solves and RD9's
+fallback start-ups are not needed. The cost is now half of REE's; the gap is mainly REE's
+real-time constraints (6.6 M€ at 238 €/MWh). The band is a main default used by the group's other
+runs: changing it there is a group decision; the redispatch-realism runs set it in their config.
+
 REE's own units for 2–4 Dec (I90DIA03/09, public e·sios archive 34, see
 `tmp/scripts/i90_phase1.py`; to become a repo script at checkpoint 3): phase I up 67.2 GWh,
 5.8 units per hour on average, weighted 212 €/MWh, peak 01–05 h (≈1.65 GW). Largest: CTGN3,

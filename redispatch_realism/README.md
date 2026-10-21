@@ -14,10 +14,13 @@ Built in checkpoints, each reviewed before the next:
 | Checkpoint | Steps | What | Status |
 |---|---|---|---|
 | 1 | RD1, RD2 | settle the redispatch like REE; take the losses out of the load | built, checks pass |
-| 2 | RD3, RD4 | reactive power only from running units; 2024 rules for wind/solar reactive power | built; RD3 works and exposes night voltage hours (needs RD9); RD4 check running |
-| 3 | RD8, RD9, RD5 | phase I/II stage on the day-ahead schedule: daily unit commitment, must-run by voltage area | — |
-| 4 | RD10, RD11 | REE's objective, pay-as-bid mark-ups; storage at opportunity cost | — |
-| 5 | RD6, RD7 | N-1 on critical corridors; upward reserve in real time | — |
+| 2 | RD3, RD4 | reactive power only from running units; 2024 rules for wind/solar reactive power | built, checks pass |
+| 3 | RD8, RD9, RD5 | phase I/II stage on the day-ahead schedule: daily unit commitment, must-run by voltage area | built; RD8 also inside the market chain (`[redispatch.phase1].in_chain`, 21 Oct, being tested) |
+| 4 | RD10, RD11 | REE's objective, pay-as-bid mark-ups; storage at opportunity cost | built |
+| 5 | RD6, RD7 | N-1 on critical corridors; upward reserve in real time | built; RD6 off (too strict with one rating), RD6b seasonal post-outage limits added 21 Oct (being tested) |
+
+Measured against REE with `compare_ree.py` (volume, cost, phase I/II apart, price per MWh, REE's phase I
+by cause, hour-of-day shape with `--profile-out`, voltage zones with `--zones`).
 
 ## Running a month or the year on Solstorm
 
@@ -295,6 +298,87 @@ re-traded — they do not fit unit by unit and the real-time stage undoes the mi
 phase I precedes the intraday markets, so their schedules include it. Clean fix: phase I inside the
 market chain between DA and ID2 (needs the market stages to run; may move intraday prices — the
 open design decision). Until then, phase I results are valid; real time is valid on low-phase-I days.
+
+### Phase I inside the market chain, 2–8 Dec 2024 (21 Oct)
+
+`[redispatch.phase1].in_chain = true` (off by default; `make_config.jl --in-chain`): phase I runs after
+each day's DA; ID2–BAL start from DA + phase I's changes (PDVP) and keep its started units on at
+minimum load (UC_COMMIT; also without gas unit commitment); the real-time stage then starts from BAL
+unchanged. Hooks in `run_market_chain.jl`: the switch, one call after the DA, `uc_bounds_for` also with
+UC off, and `add_xb_group_constraints!` / `rd_is_market_unit` moved unchanged above the market loop.
+
+Full chain, both runs with the December run's market settings and every realism switch (CH0: phase I
+after the markets, CH1: inside the chain; band 0.975–1.05). CH0 reproduces the saved December run
+exactly (DA, ID2, BAL schedules 0.00 MW, every price).
+
+| 2–8 Dec 2024 | W1c/W2c (after, band 0.95–1.05) | CH0 (after, 0.975–1.05) | CH1 (in chain, 0.975–1.05) | REE |
+|---|---|---|---|---|
+| extra cost | 46.6 M€ | 55.3 M€ | 62.9 M€ | 54.0 M€ |
+| phase I up / cost | 183.3 GWh / 37.3 M€ | 183.3 / 37.3 | 183.3 / 37.3 | 214.4 GWh / 38.2 M€ (+ phase II −12.3) |
+| real-time up / cost | 292 GWh / 9.2 M€ | 577 / 18.0 | **716 / 25.6** | 87 GWh / 28.1 M€ |
+| € per MWh up | 98 | 73 | 70 | 179 |
+| real-time hour-of-day correlation with REE | −0.01 | −0.06 | −0.55 | |
+
+- DA unchanged in CH1 (0.00 MW). Intraday prices fall: ID2 −5.4 €/MWh on average (max −25), ID3 −3.4,
+  CID −2.1, BAL −1.7 (phase I's started units bring must-run energy into those gates).
+- **Real time did not fall; it rose.** The phase I/BAL mismatch is not the main driver of the real-time
+  overshoot. Real time swaps wind and solar down (~330 GWh) for pumped storage and hydro up (500–600 GWh)
+  at midday, in every variant; REE's real time is mostly upward reserve at the evening ramp.
+- **The generator-bus lower voltage limit is the largest driver:** W1c/W2c and CH0 differ only in
+  `gen_bus_vmin` (0.95 vs 0.975), and real time doubles. In CH0, 24 % of generator bus-hours sit at the
+  0.975 limit, mostly at 220 kV buses, where REE's own lower limit is 205 kV = 0.93 pu (P.O. 1.4).
+  Next: a band per voltage level (vault issue `generator-voltage-band`, option C), and CH3 = CH1 with
+  0.95 to see the in-chain step on its own.
+
+### RD6b N-1 by P.O. 1.1's rules, 2 Dec 2024 (21 Oct)
+
+P.O. 1.1 (2016) §4.3.2: after a single outage a line must stay within its **seasonal** thermal limit
+(+15 % for under 20 min, kept as `n1_emergency_factor`), a transformer within its rating (+10 % in
+winter). RDL 17/2022 Annex I sets the seasons (winter Nov–Mar, spring Apr–May, summer Jun–Aug, autumn
+Sep–Oct) but leaves the values to the owners. Two changes, both in `redispatch_phase1.jl`:
+
+- `n1_seasonal_ratings` (off by default): post-outage line limits × `n1_line_season_factor`
+  (winter 1.18, spring/autumn 1.09, summer 1.0: the model's generic conductor ratings taken as summer
+  values, scaled by √(Tc − Ta) with Tc 85 °C and design ambients 15/25/35 °C — an assumption);
+  transformers × 1.10 in winter.
+- `n1_outage = "element"` (default): an outage trips **one** circuit of a line or one transformer of a
+  bank. The network merges parallel elements into one branch, so before, "losing" a 3 × 1,000 MVA
+  220/400 kV bank dropped all three at once (an N-3). The elements left in the tripped branch are
+  checked against (n − 1)/n of its limit. `test_rd6.jl` checks the formula against an exact
+  recomputation of the grid without the tripped circuit (13/13 pass).
+- `rd_n1_left.csv` lists the post-outage overloads phase I cannot remove (monitored branch, outage,
+  hours, MW over).
+
+| 2 Dec 2024, phase I | N6b: whole branch, one rating | N6s: whole branch, seasonal | N6e: one element, seasonal | no N-1 (V1) | REE |
+|---|---|---|---|---|---|
+| phase I up | 37.5 GWh | 30.8 GWh | **11.5 GWh** | 11.5 GWh | 20.1 GWh |
+| phase I cost | 3.60 M€ | 3.13 M€ | **1.78 M€** | 1.78 M€ | |
+| overloads found, first round | 238 | 160 | 63 | | |
+| overload left, mean / max | 1,438 / 1,560 MW | 1,180 / 1,300 MW | **188 / 310 MW** | | |
+
+Before the fix, 1.0 of the 1.2 GW left came from two 3 × 1,000 MVA transformer banks tripped whole
+(LTGES0441 841 MW over after TR_87714406; LTGES0460 150 MW after TR_4422f4c8). What is left is one
+pair: transformer TR_30aa9055 (2 × 100 MVA, 220/400 kV, ES00173–ES00174) after losing 400 kV line
+LTGES0920 — 100 MVA units are unusually small for 220/400 kV, so this looks like a data error
+(`Data/transformers_reactance.csv`), not a redispatch need. With the fix N-1 is no longer too strict,
+but on 2 Dec it adds no phase I volume (11.5 GWh with and without), while REE's N-1 share that day
+was about a quarter of 20.1 GWh. Not modelled: REE's finer grid and real line ratings, generator and
+busbar outages, double-circuit losses (criterion b). To judge on more days.
+`make_config.jl --n1 on` now sets `n1_outage = "element"` and `n1_seasonal_ratings = true`.
+
+### Gap 3: why phase I starts fewer units than REE (2–8 Dec 2024)
+
+Not because the model's day-ahead runs too many gas/coal units in the voltage zones: it runs far fewer
+(zone gas/coal units: 814 vs REE's 2,348 unit-hours in the day-ahead, 68.5 vs 501.6 GWh; REE's day-ahead
+= I90DIA01 PDVP − I90DIA03 phase I/II). The RD5 zone requirement was met almost fully (1,099
+unit-hours needed, 4 short), but it only covers hours in which REE raised a zone unit **for voltage**;
+REE's phase I also starts units for N-1 (26 % of its phase I up that week), distribution (10 %) and
+other causes (12 %), which the model does not have. One exception: in the Soto de Ribera zone the
+December source run spreads the observed coal output pro rata over every coal unit (each ~32 % on 2–3 Dec),
+so Soto de Ribera 3, Aboño 1 and La Pereda run in the model's day-ahead while REE ran Soto de Ribera 3
+for 1 hour; the zone count is met by the wrong units and phase I starts 20 unit-hours there against
+REE's 114. `main`'s coal unit commitment (§16, day-by-day chain) replaces that method: the full-year
+realism runs should use a source run made with it.
 
 ### RD6 N-1 test N6b, 2 Dec 2024 (V1 settings + soft N-1)
 

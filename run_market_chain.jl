@@ -409,7 +409,7 @@ function uc_prev_on_for(date_str, day_ts)
     return on
 end
 function uc_bounds_for(date_str, day_ts)
-    UC_CFG === nothing && return nothing
+    UC_CFG === nothing && !RD_PHASE1_IN_CHAIN && return nothing    # in_chain: phase I's units stay on
     b = Dict{Tuple{Int,String},Tuple{Bool,Float64}}()
     for (h_idx, ts) in enumerate(eachrow(day_ts))
         for (name, v) in get(UC_COMMIT, (String(date_str), ts.hour), Dict{String,Tuple{Bool,Float64}}())
@@ -554,6 +554,12 @@ const RD_FROM_SAVED_ACTIVE = RD_FROM_SAVED != ""
 const RUN_MARKET           = !RD_FROM_SAVED_ACTIVE
 RD_FROM_SAVED ∈ ("", "DA", "ID2", "ID3", "CID", "BAL") ||
     error("config.toml: [redispatch].from_saved must be \"\" or one of DA/ID2/ID3/CID/BAL")
+# [redispatch.phase1].in_chain (RD8): phase I/II between each day's DA and ID2
+# (redispatch_phase1.jl, phase1_in_chain!).  Needs the market stages to run.
+const RD_PHASE1_IN_CHAIN = RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing &&
+                           RD_STARTUPS.phase1.in_chain
+RD_PHASE1_IN_CHAIN && !RUN_MARKET &&
+    error("config.toml: [redispatch.phase1].in_chain = true needs the market stages (from_saved = \"\")")
 
 # [redispatch].only: restrict the load flow to a single delivery hour (or day).
 # "" = every hour of every TARGET_DAY.  "2024-07-08 14" = that date+hour only.
@@ -1815,6 +1821,43 @@ function clear_stage_day!(date_str, schedules...)
     GC.gc(false)
 end
 
+# A bounded border-share adjustment must retain an exact country total. In
+# `fixed` mode every boundary injection is already pinned and this is a no-op;
+# in `country_total` mode it fixes the FR and PT sums while the individual bus
+# shares move within sign-consistent limits. There is no exchange-volume slack.
+# (Used by the redispatch and by phase I; defined here, before the market stages,
+# because phase I can run between the DA and ID2 — [redispatch.phase1].in_chain.)
+const XB_SPLIT_WEIGHT = 1e-3
+function add_xb_group_constraints!(pm, gen_dict; nw = PowerModels.nw_id_default)
+    by_c  = Dict{String,Vector{Int}}()
+    tgt_c = Dict{String,Float64}()
+    for (_, g) in gen_dict
+        (startswith(g["name"], "XB_") && abs(g["pmax"] - g["pmin"]) > 1e-9) || continue
+        push!(get!(by_c, g["country"], Int[]), g["index"])
+        tgt_c[g["country"]] = get(tgt_c, g["country"], 0.0) + g["pg"]
+    end
+    for (c, gids) in by_c
+        tot = sum(PowerModels.var(pm, nw, :pg, i) for i in gids)
+        JuMP.@constraint(pm.model, tot == tgt_c[c])
+    end
+    return JuMP.AffExpr(0.0), Dict{String,Tuple{JuMP.VariableRef,JuMP.VariableRef}}()
+end
+
+# Every generator that cleared in the market has to be anchored to its cleared
+# set-point.  The test is by exclusion, not by name prefix: the bus-level fleet
+# carries legacy "G…"/"GAS_ES…" names but the EMPIRE nodal disaggregation also
+# mints "NEW_GasOCGT_ES…", "NEW_Waste_ES…", "WASTE_ES…", "MINIHYDRO_ES…" units
+# (empire_nodal.jl).  Matching on "G" left ~5 GW of those free to float away
+# from the market schedule — the redispatch then started unanchored 80 EUR/MWh
+# OCGT in preference to moving anchored 61 EUR/MWh CCGT, because only the
+# latter pays the anchor penalty.  Excluded here are the modelling pseudo-units
+# that have no market schedule to be held to: load shedding, the slack machine
+# and cross-border injections (XB_ is fixed directly or pinned by its country
+# group constraint). Batteries are handled separately by the callers.
+rd_is_market_unit(name::AbstractString) =
+    !startswith(name, "LS_")   && !startswith(name, "SLACK") &&
+    !startswith(name, "XB_")   && !startswith(name, "BESS_")
+
 # ── Market stages 1–5, DAY BY DAY ─────────────────────────────────────────────
 # Each study day runs its whole chain — DA → ID2 → ID3 → CID → BAL — before the
 # next day starts, as the real calendar does: the DA for day D+1 clears at 12:00
@@ -1875,6 +1918,10 @@ if RUN_MARKET && DA_ENABLED
             fr = extrema(x.FR for x in result.xb); pt = extrema(x.PT for x in result.xb)
             @printf "       net FR %.0f…%.0f MW | net PT %.0f…%.0f MW  (+ = import to ES; FR wv %.2f EUR/MWh)\n" fr[1] fr[2] pt[1] pt[2] foreign.fr_wv
         end
+
+        # RD8 in the chain: REE's phase I/II on this day's DA schedule; the intraday
+        # markets start from DA + its changes (PDVP), its started units stay on
+        RD_PHASE1_IN_CHAIN && phase1_in_chain!(RD_STARTUPS, date_str, da_schedule)
 
         # Stage 2 — Intraday auction ID2: all 24 hours tradable, anchored to the
         # DA schedule (minimum-movement adjustment for the ID2 forecast update).
@@ -2076,40 +2123,8 @@ function rd_dump_iis(pm, network; label::Union{Nothing,String} = nothing)
     println("  IIS: $n_conflict conflicting constraints written to $out")
 end
 
-# A bounded border-share adjustment must retain an exact country total. In
-# `fixed` mode every boundary injection is already pinned and this is a no-op;
-# in `country_total` mode it fixes the FR and PT sums while the individual bus
-# shares move within sign-consistent limits. There is no exchange-volume slack.
-const XB_SPLIT_WEIGHT = 1e-3
-function add_xb_group_constraints!(pm, gen_dict; nw = PowerModels.nw_id_default)
-    by_c  = Dict{String,Vector{Int}}()
-    tgt_c = Dict{String,Float64}()
-    for (_, g) in gen_dict
-        (startswith(g["name"], "XB_") && abs(g["pmax"] - g["pmin"]) > 1e-9) || continue
-        push!(get!(by_c, g["country"], Int[]), g["index"])
-        tgt_c[g["country"]] = get(tgt_c, g["country"], 0.0) + g["pg"]
-    end
-    for (c, gids) in by_c
-        tot = sum(PowerModels.var(pm, nw, :pg, i) for i in gids)
-        JuMP.@constraint(pm.model, tot == tgt_c[c])
-    end
-    return JuMP.AffExpr(0.0), Dict{String,Tuple{JuMP.VariableRef,JuMP.VariableRef}}()
-end
-
-# Every generator that cleared in the market has to be anchored to its cleared
-# set-point.  The test is by exclusion, not by name prefix: the bus-level fleet
-# carries legacy "G…"/"GAS_ES…" names but the EMPIRE nodal disaggregation also
-# mints "NEW_GasOCGT_ES…", "NEW_Waste_ES…", "WASTE_ES…", "MINIHYDRO_ES…" units
-# (empire_nodal.jl).  Matching on "G" left ~5 GW of those free to float away
-# from the market schedule — the redispatch then started unanchored 80 EUR/MWh
-# OCGT in preference to moving anchored 61 EUR/MWh CCGT, because only the
-# latter pays the anchor penalty.  Excluded here are the modelling pseudo-units
-# that have no market schedule to be held to: load shedding, the slack machine
-# and cross-border injections (XB_ is fixed directly or pinned by its country
-# group constraint). Batteries are handled separately by the callers.
-rd_is_market_unit(name::AbstractString) =
-    !startswith(name, "LS_")   && !startswith(name, "SLACK") &&
-    !startswith(name, "XB_")   && !startswith(name, "BESS_")
+# add_xb_group_constraints! and rd_is_market_unit: defined above the market stages
+# (phase I inside the chain uses them between the DA and ID2).
 
 function solve_anchored_opf(network, gens, optimizer, sched;
                             iis_label::Union{Nothing,String} = nothing,
@@ -2198,7 +2213,7 @@ n_total  = nrow(hourly_rd)
 n_solved = 0
 
 if RD_ENABLED
-if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing      # RD8: phase I/II per day first
+if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && !RD_PHASE1_IN_CHAIN   # RD8: phase I/II per day first
     println("\n── Phase I/II: technical constraints on the day-ahead schedule (DC unit commitment) ──")
     for d in TARGET_DAYS
         run_phase1_day!(RD_STARTUPS, d)

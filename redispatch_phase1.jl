@@ -26,6 +26,23 @@
 # extra cost, starts).  Units it commits stay committed in the real-time AC
 # stage (phase I limits hold in the later markets), without a second start-up
 # cost.  The day starts with every candidate off (no carry-over between days).
+#
+# Where it runs ([redispatch.phase1].in_chain):
+#   false (default) — after all market stages, on the (saved) day-ahead
+#     schedule; the real-time stage starts from the balancing schedule plus
+#     phase I's changes.  Those changes were made against the day-ahead and do
+#     not fit a balancing schedule the intraday markets have re-traded, so on
+#     days with much phase I the real-time stage undoes the mismatch (2–8 Dec
+#     2024: real-time up 3.4× REE's).
+#   true — inside the market chain, as in Spain (P.O. 3.2): right after each
+#     day's DA, before ID2.  The DA schedule plus phase I/II's changes (REE's
+#     PDVP) is what the intraday markets start from, and the units phase I
+#     started stay on at least at minimum load in ID2, ID3, CID and BAL (REE's
+#     security limits; through UC_COMMIT, the same path the DA commitment
+#     takes).  The balancing schedule then already holds phase I, so the
+#     real-time stage starts from it unchanged.  Needs the market stages to run
+#     (not from_saved).  The DA price and da_dispatch.csv stay the DA's own;
+#     intraday prices may move, because the started units' energy is in them.
 # ============================================================
 
 import LinearAlgebra
@@ -34,12 +51,19 @@ function load_rd_phase1(cfg)
     c = get(get(cfg, "redispatch", Dict()), "phase1", Dict())
     get(c, "enabled", false) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
-    return (n1           = Bool(get(c, "n1", false)),                     # RD6
+    return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
+            n1           = Bool(get(c, "n1", false)),                     # RD6
             n1_emergency = Float64(get(c, "n1_emergency_factor", 1.0)),   # × nominal rating after an outage
             n1_min_kv    = Float64(get(c, "n1_min_kv", 220.0)),
             n1_rounds    = Int(get(c, "n1_max_rounds", 4)),
             n1_max_cuts  = Int(get(c, "n1_max_cuts", 500)),
             n1_overload_eur = Float64(get(c, "n1_overload_eur_mwh", 3000.0)),  # soft limit: price of a post-outage overload
+            n1_outage    = lowercase(String(get(c, "n1_outage", "element"))), # "element" (one circuit/transformer) or "branch"
+            n1_seasonal  = Bool(get(c, "n1_seasonal_ratings", false)),        # RD6b: P.O. 1.1 seasonal limits after an outage
+            n1_line_season = Dict(String(k) => Float64(v) for (k, v) in
+                                  get(c, "n1_line_season_factor", Dict("winter" => 1.18, "spring" => 1.09,
+                                                                       "summer" => 1.0, "autumn" => 1.09))),
+            n1_trafo_winter = Float64(get(c, "n1_trafo_winter_factor", 1.10)),
             mip_gap      = Float64(get(c, "mip_gap", 1e-3)),
             time_limit_s = Float64(get(c, "time_limit_s", 600.0)),
             min_up       = Int(get(uc, "min_up_h", 2)),
@@ -54,8 +78,11 @@ const RD_PHASE1_ON   = Dict{Tuple{String,Int},Set{String}}()   # units phase I c
 # stage is anchored to the balancing schedule plus these changes; otherwise
 # every phase I start-up is counted and charged a second time in real time.
 const RD_PHASE1_DELTA = Dict{Tuple{String,Int},Dict{String,Float64}}()
+const RD_PHASE1_MINLOAD = Dict{String,Float64}()              # candidate ⇒ minimum load (fraction of installed)
 const RD_N1_SLACK    = Tuple{Int,JuMP.VariableRef}[]          # (hour position, overload slack) of the day being solved
 const RD_N1_DONE     = Set{Tuple{Int,Int,Int}}()              # (hour position, monitored, outage) already constrained
+const RD_N1_PAIR     = Tuple{String,String,Float64}[]          # per RD_N1_SLACK entry: (monitored, outage, limit MW)
+const RD_N1_LEFT_ROWS = NamedTuple[]                          # overloads left after phase I → rd_n1_left.csv
 const RD_PHASE1_ROWS = NamedTuple[]
 const RD_PHASE1_SUM  = NamedTuple[]
 const RD_SAVED_DA    = Ref{Any}(nothing)
@@ -127,6 +154,36 @@ end
 # where they would island part of the grid.  Van den Bergh et al. (2015): the
 # preventive N-1 criterion costs several times the curative one, so the result
 # is an upper bound on N-1 redispatch.
+#
+# RD6b, n1_seasonal_ratings: P.O. 1.1 (2016) §4.3.2 judges a line after a single
+# outage against its SEASONAL thermal limit (transient +15 % for under 20 min,
+# kept as n1_emergency_factor), and a transformer against its rating, +10 % in
+# winter.  RDL 17/2022 Annex I sets the seasons (winter Nov–Mar, spring Apr–May,
+# summer Jun–Aug, autumn Sep–Oct) but leaves the values to each line's owner
+# (thermal model, CIGRE 601 / IEEE 738, wind 0.6 m/s).  The model's line ratings
+# are generic conductor ratings (Data/lines.csv Imax: 1.29 kA at 220 kV, 2.58 kA
+# at 400 kV per circuit), taken here as the summer value; n1_line_season_factor
+# scales them per season.  Default factors: a conductor's ampacity at a given
+# maximum temperature grows about as √(Tc − Ta) when convection dominates; with
+# Tc = 85 °C and design ambients 35 °C (summer), 25 °C (spring/autumn) and 15 °C
+# (winter): 1.0, 1.09 and 1.18.  An assumption to vary, not REE's per-line data.
+rd_season(month::Int) = month in (11, 12, 1, 2, 3) ? "winter" : month in (4, 5) ? "spring" :
+                        month in (6, 7, 8) ? "summer" : "autumn"
+
+# Parallel elements per branch (n1_outage = "element"): a line's circuits
+# (Data/lines.csv) and a transformer bank's units (transformers_reactance.csv
+# n_recommended), which prepare_network merges into one branch each.
+const RD_N1_ELEMENTS = Dict{String,Int}()
+function rd_n1_elements()
+    isempty(RD_N1_ELEMENTS) || return RD_N1_ELEMENTS
+    for r in eachrow(CSV.read(joinpath(DATA, "lines.csv"), DataFrame))
+        RD_N1_ELEMENTS[String(r.line_id)] = max(Int(round(r.circuits)), 1)
+    end
+    for r in eachrow(CSV.read(joinpath(DATA, "transformers_reactance.csv"), DataFrame))
+        RD_N1_ELEMENTS[String(r.transformer_id)] = max(Int(round(r.n_recommended)), 1)
+    end
+    return RD_N1_ELEMENTS
+end
 
 """
     rd_ptdf(network) -> (ptdf, branch_ids, bus_col)
@@ -160,7 +217,7 @@ end
 Check the current solution against every single outage and add the worst
 violated (branch, outage, hour) limits as constraints.
 """
-function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens)
+function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens; month::Int = 6)
     ptdf, ids, bus_col = sens
     net = nets[1].network
     byid = Dict(b["index"] => b for (_, b) in net["branch"])
@@ -172,25 +229,49 @@ function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens)
         b = byid[ids[c]]
         phi[:, j] = ptdf[:, bus_col[b["f_bus"]]] - ptdf[:, bus_col[b["t_bus"]]]
     end
-    lim = [byid[id]["rate_a"] / LINE_RATING_FACTOR * p1.n1_emergency for id in ids]     # pu, nominal × factor
-    cand = Tuple{Float64,Int,Int,Int,Float64}[]          # (excess, hour k, monitored l, outage c, lodf)
+    season = rd_season(month)
+    f_line = p1.n1_seasonal ? get(p1.n1_line_season, season, 1.0) : 1.0
+    f_tr   = p1.n1_seasonal && season == "winter" ? p1.n1_trafo_winter : 1.0
+    # off: every branch at nominal × n1_emergency_factor, as before RD6b
+    f_of(b) = !p1.n1_seasonal ? p1.n1_emergency :
+              startswith(String(get(b, "name", "")), "TR_") ? f_tr : f_line * p1.n1_emergency
+    lim = [byid[id]["rate_a"] / LINE_RATING_FACTOR * f_of(byid[id]) for id in ids]       # pu, nominal × factor
+    # n1_outage = "element": an outage trips ONE of the n parallel elements a branch
+    # stands for (circuits of a line, transformers of a bank), as P.O. 1.1's N-1;
+    # "branch" trips the whole branch (losing a double-circuit line is P.O. 1.1's
+    # separate, milder criterion b).  Tripping one of n elements of branch c: the
+    # element carries f_c/n and its self-sensitivity is φ_cc/n, so the injection that
+    # removes it is ΔP = (f_c/n) / (1 − φ_cc/n); the other branches change by φ_l·ΔP,
+    # and the n − 1 elements left in c carry f_c + (φ_cc − 1)·ΔP within (n − 1)/n of
+    # c's limit.
+    nel(c) = p1.n1_outage == "element" ? get(rd_n1_elements(), String(get(byid[ids[c]], "name", "")), 1) : 1
+    cand = Tuple{Float64,Int,Int,Int,Float64,Float64}[]  # (excess, hour k, monitored l, outage c, lodf, limit)
     for k in 1:H
         n = nwk[k]
         f = [JuMP.value(PowerModels.var(pm, n, :p, (id, byid[id]["f_bus"], byid[id]["t_bus"]))) for id in ids]
         for (j, c) in enumerate(outages)
-            den = 1.0 - phi[c, j]
+            ne  = nel(c)
+            den = 1.0 - phi[c, j] / ne
             abs(den) < 1e-4 && continue                      # would island part of the grid
-            post = f .+ (phi[:, j] ./ den) .* f[c]
+            post = f .+ (phi[:, j] ./ (den * ne)) .* f[c]
             for l in eachindex(ids)
-                (l == c || (k, l, c) in RD_N1_DONE) && continue
-                ex = abs(post[l]) - lim[l]
-                ex > 1e-4 && push!(cand, (ex, k, l, c, phi[l, j] / den))
+                (k, l, c) in RD_N1_DONE && continue
+                if l == c
+                    ne > 1 || continue                       # the remaining elements of the tripped branch
+                    coef = 1.0 + (phi[c, j] - 1.0) / (den * ne)
+                    lim_rest = lim[c] * (ne - 1) / ne
+                    ex = abs(coef * f[c]) - lim_rest
+                    ex > 1e-4 && push!(cand, (ex, k, l, c, coef - 1.0, lim_rest))
+                else
+                    ex = abs(post[l]) - lim[l]
+                    ex > 1e-4 && push!(cand, (ex, k, l, c, phi[l, j] / (den * ne), lim[l]))
+                end
             end
         end
     end
     sort!(cand; by = x -> -x[1])
     added = 0
-    for (ex, k, l, c, lodf) in first(cand, min(p1.n1_max_cuts, length(cand)))
+    for (ex, k, l, c, lodf, lim_lc) in first(cand, min(p1.n1_max_cuts, length(cand)))
         n = nwk[k]
         bl, bc = byid[ids[l]], byid[ids[c]]
         pl = PowerModels.var(pm, n, :p, (ids[l], bl["f_bus"], bl["t_bus"]))
@@ -198,11 +279,13 @@ function add_n1_cuts!(pm, m, nets, nwk, H, p1, sens)
         # soft: an overload no redispatch can remove (fixed injections, grid data)
         # is priced, not infeasible — 3,000 EUR/MWh is above any bid, so every
         # overload redispatch can fix is fixed; the rest is reported
+        # (l == c: the elements left in the tripped branch, pl + lodf·pc = coef·pc)
         s = JuMP.@variable(m, lower_bound = 0.0)
-        JuMP.@constraint(m, pl + lodf * pc <=  lim[l] + s)
-        JuMP.@constraint(m, pl + lodf * pc >= -lim[l] - s)
+        JuMP.@constraint(m, pl + lodf * pc <=  lim_lc + s)
+        JuMP.@constraint(m, pl + lodf * pc >= -lim_lc - s)
         JuMP.set_objective_coefficient(m, s, p1.n1_overload_eur * BASEMVA)
         push!(RD_N1_SLACK, (k, s))
+        push!(RD_N1_PAIR, (String(get(bl, "name", string(ids[l]))), String(get(bc, "name", string(ids[c]))), lim_lc * BASEMVA))
         push!(RD_N1_DONE, (k, l, c))
         added += 1
     end
@@ -256,6 +339,7 @@ function run_phase1_day!(su, date_str)
             p_up, p_dn = rd_bid_prices(p1.bids, g, p_da[k])
             if cand
                 ml = su_terms(su, g)[1]
+                RD_PHASE1_MINLOAD[name] = ml
                 JuMP.set_lower_bound(pg, 0.0)                     # a frozen unit (coal at 0 MW) is unfrozen
                 JuMP.set_upper_bound(pg, max(g["pmax"], inst))
                 v = JuMP.@variable(m, binary = true)
@@ -310,13 +394,34 @@ function run_phase1_day!(su, date_str)
     JuMP.set_optimizer_attribute(m, "TimeLimit", p1.time_limit_s)
     t0 = time()
     JuMP.optimize!(m)
-    empty!(RD_N1_SLACK); empty!(RD_N1_DONE)
+    empty!(RD_N1_SLACK); empty!(RD_N1_DONE); empty!(RD_N1_PAIR)
     if p1.n1 && JuMP.has_values(m)                                   # RD6: lazy preventive N-1
         sens = rd_ptdf(nets[1].network)
         for r in 1:p1.n1_rounds
-            add_n1_cuts!(pm, m, nets, nwk, H, p1, sens) == 0 && break
+            add_n1_cuts!(pm, m, nets, nwk, H, p1, sens; month = Dates.month(Date(date_str))) == 0 && break
             JuMP.optimize!(m)
             JuMP.has_values(m) || break
+        end
+        # overloads redispatch could not remove, per (monitored branch, outage)
+        if JuMP.has_values(m)
+            left = Dict{Tuple{String,String},Vector{Float64}}()
+            lim_of = Dict{Tuple{String,String},Float64}()
+            for (i, (k, s)) in enumerate(RD_N1_SLACK)
+                v = JuMP.value(s) * BASEMVA
+                v > 1.0 || continue
+                key = RD_N1_PAIR[i][1:2]
+                push!(get!(left, key, Float64[]), v)
+                lim_of[key] = RD_N1_PAIR[i][3]
+            end
+            for ((mon, out), v) in left
+                push!(RD_N1_LEFT_ROWS, (date = date_str, monitored = mon, outage = out, hours = length(v),
+                                        mean_mw = round(sum(v) / length(v); digits = 1), max_mw = round(maximum(v); digits = 1),
+                                        limit_mw = round(lim_of[(mon, out)]; digits = 1)))
+            end
+            worst = sort(collect(left); by = kv -> -sum(kv[2]))
+            for ((mon, out), v) in first(worst, 5)
+                @printf "    N-1 left: %s over by %.0f MW (max %.0f, %d h) after losing %s (limit %.0f MW)\n" mon sum(v) / length(v) maximum(v) length(v) out lim_of[(mon, out)]
+            end
         end
     end
     status = string(JuMP.termination_status(m))
@@ -361,9 +466,11 @@ end
     phase1_anchor(sched, date_str, hour) -> schedule
 
 The real-time stage's starting schedule: `sched` (balancing) plus phase I/II's
-changes for the hour (a new dict; `sched` itself is left untouched).
+changes for the hour (a new dict; `sched` itself is left untouched).  With
+in_chain the balancing schedule already holds them: `sched` unchanged.
 """
 function phase1_anchor(sched, date_str, hour)
+    RD_PHASE1_IN_CHAIN && return sched
     delta = get(RD_PHASE1_DELTA, (date_str, hour), nothing)
     (delta === nothing || sched === nothing) && return sched
     out = copy(sched)
@@ -371,6 +478,43 @@ function phase1_anchor(sched, date_str, hour)
         out[name] = get(out, name, 0.0) + d
     end
     return out
+end
+
+"""
+    phase1_in_chain!(su, date_str, da_schedule)
+
+[redispatch.phase1].in_chain: phase I/II on this day's DA schedule, run between
+the DA and ID2.  Afterwards `da_schedule` holds, for every hour of the day, the
+DA schedule plus phase I/II's changes (REE's PDVP), so ID2 (and every later gate
+that falls back to the DA schedule) starts from it.  The units phase I started
+are written into UC_COMMIT as on at minimum load: ID2/ID3 with intraday starts
+keep them on (prev_on), CID and BAL bound them (uc_bounds).  The DA's own
+schedule is already in da_dispatch.csv and its price in market_prices.csv.
+"""
+function phase1_in_chain!(su, date_str, da_schedule)
+    run_phase1_day!(su, date_str)
+    n_moved = n_kept = 0
+    for ts in eachrow(filter(r -> r.date == date_str, hourly_da))
+        key = (date_str, ts.hour)
+        haskey(da_schedule, key) || continue
+        delta = get(RD_PHASE1_DELTA, key, Dict{String,Float64}())
+        if !isempty(delta)
+            pdvp = copy(da_schedule[key])
+            for (name, d) in delta
+                pdvp[name] = get(pdvp, name, 0.0) + d
+            end
+            da_schedule[key] = pdvp
+            n_moved += length(delta)
+        end
+        on = get(RD_PHASE1_ON, key, Set{String}())
+        isempty(on) && continue
+        lim = get!(UC_COMMIT, key, Dict{String,Tuple{Bool,Float64}}())
+        for name in on
+            lim[name] = (true, get(RD_PHASE1_MINLOAD, name, 0.0))
+            n_kept += 1
+        end
+    end
+    @printf "    phase I in the chain: %d unit-hours moved from the DA schedule, %d unit-hours kept on in ID2–BAL\n" n_moved n_kept
 end
 
 """
@@ -395,5 +539,6 @@ function write_rd_phase1(dir)
     isempty(RD_PHASE1_SUM) && return
     CSV.write(joinpath(dir, "rd_phase1.csv"), DataFrame(RD_PHASE1_ROWS))   # settle.py reads the changes from here too
     CSV.write(joinpath(dir, "rd_phase1_summary.csv"), DataFrame(RD_PHASE1_SUM))
+    isempty(RD_N1_LEFT_ROWS) || CSV.write(joinpath(dir, "rd_n1_left.csv"), DataFrame(RD_N1_LEFT_ROWS))
     @printf "  rd_phase1*.csv   : %d unit-hours changed, %d hours ([redispatch.phase1])\n" length(RD_PHASE1_ROWS) length(RD_PHASE1_SUM)
 end

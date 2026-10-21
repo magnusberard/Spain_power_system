@@ -46,3 +46,25 @@ end
     p3, _, c3 = rd_ptdf(tri2)
     @test abs(p3[1, c3[2]]) ≈ 1 / 3 && abs(p3[2, c3[2]]) ≈ 2 / 3   # x 0.2 direct vs 0.1 round: round takes 2/3
 end
+
+@testset "RD6 n1_outage = element: trip one of n parallel circuits" begin
+    # triangle where branch 1 (1-2) stands for two parallel circuits of x = 0.2 (merged x = 0.1);
+    # 1 MW injected at bus 2, taken at the slack (bus 1)
+    tri = Dict("bus" => Dict(bus(1, 3), bus(2, 1), bus(3, 1)),
+               "branch" => Dict(br(1, 1, 2, 0.1), br(2, 2, 3, 0.1), br(3, 3, 1, 0.1)))
+    ptdf, ids, col = rd_ptdf(tri)
+    f = ptdf[:, col[2]]                                      # pre-outage flows
+    ne = 2
+    phi = ptdf[:, col[1]] - ptdf[:, col[2]]                  # transfer bus 1 → bus 2 (branch 1's ends)
+    den = 1 - phi[1] / ne
+    post = f .+ (phi ./ (den * ne)) .* f[1]                  # add_n1_cuts!, other branches
+    rest = (1 + (phi[1] - 1) / (den * ne)) * f[1]            # add_n1_cuts!, the circuit left in branch 1
+    # exact: the network after the outage, branch 1 with one circuit (x = 0.2)
+    after = Dict("bus" => tri["bus"], "branch" => Dict(br(1, 1, 2, 0.2), br(2, 2, 3, 0.1), br(3, 3, 1, 0.1)))
+    pa, ida, cola = rd_ptdf(after)
+    fa = pa[:, cola[2]]
+    @test post[2] ≈ fa[2] && post[3] ≈ fa[3]
+    @test rest ≈ fa[1]
+    # with one element the formula is the whole-branch LODF of before
+    @test (f .+ (phi ./ (1 - phi[1])) .* f[1])[2] ≈ f[2] + lodf(ptdf, ids, col, tri, 2, 1) * f[1]
+end

@@ -13,8 +13,10 @@
 #   RD9 startups · RD5 mustrun · RD7 reserve · RD8 phase1 · RD10/11 objective "ree"
 #   with the fitted bids (CCGT 0.89, coal 0.94, storage 0.59 up mark-up), tie-break 5
 #   generator-bus voltage band 0.975–1.05 pu (REE, P.O. 1.4)
-# --n1 on adds RD6 (preventive N-1 in phase I; off by default, too strict for the
-# grid data so far).  Written with TOML.print: comments are not kept.
+# --n1 on adds RD6 (preventive N-1 in phase I) with P.O. 1.1's rules: one circuit or
+# transformer per outage (n1_outage = "element") and seasonal post-outage limits
+# (RD6b).  --in-chain runs phase I inside the market chain (needs the markets, so
+# from_saved = "").  Written with TOML.print: comments are not kept.
 using TOML
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
@@ -72,6 +74,14 @@ function main(args)
         set!(cfg, "redispatch.bids.tie_break_eur_mwh", 5.0)
         set!(cfg, "redispatch.bids.by_type", BIDS)
         set!(cfg, "redispatch.phase1.n1", opt("--n1") == "on")
+        if opt("--n1") == "on"
+            set!(cfg, "redispatch.phase1.n1_outage", "element")
+            set!(cfg, "redispatch.phase1.n1_seasonal_ratings", true)
+        end
+        if "--in-chain" in args
+            set!(cfg, "redispatch.phase1.in_chain", true)
+            set!(cfg, "redispatch.from_saved", "")
+        end
     end
     b = opt("--bids")
     b === nothing || overlay!(cfg, TOML.parsefile(b))

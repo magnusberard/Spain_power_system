@@ -284,6 +284,18 @@ fall: mark-ups and the tie-break change what the moves cost, not how many the AC
 they are voltage-driven. Suspect: `[network].gen_bus_vmin/vmax = 0.98/1.03` pu, much tighter than
 REE's operating range (~0.95–1.05 pu at 400 kV); next test is a single config change.
 
+### Week 2–8 Dec 2024, everything on (W1c/W2c, with the phase I anchor fix)
+
+All 168 hours solve. Model / REE: volume 158 %, cost 86 % (46.6 vs 54.0 M€), phase I volume 86 %
+(183 vs 214 GWh), phase I units 6.0 vs 7.9 per hour, weekend rise reproduced. Real time matches
+REE on 2–3 Dec (little phase I) but is 45–59 GWh/day against REE's 1–19 on 4–8 Dec: pumped storage
+up 22–42 GWh and solar/wind down 25–30 GWh per day. Cause: phase I's changes are computed against
+the day-ahead schedule but added to the saved balancing schedule, which the intraday markets have
+re-traded — they do not fit unit by unit and the real-time stage undoes the mismatch. In Spain
+phase I precedes the intraday markets, so their schedules include it. Clean fix: phase I inside the
+market chain between DA and ID2 (needs the market stages to run; may move intraday prices — the
+open design decision). Until then, phase I results are valid; real time is valid on low-phase-I days.
+
 ### RD6 N-1 test N6b, 2 Dec 2024 (V1 settings + soft N-1)
 
 Hard post-outage limits made phase I infeasible (238 overloads, worst 1,388 MW); with soft limits

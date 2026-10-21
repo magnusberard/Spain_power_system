@@ -220,6 +220,16 @@ fall: mark-ups and the tie-break change what the moves cost, not how many the AC
 they are voltage-driven. Suspect: `[network].gen_bus_vmin/vmax = 0.98/1.03` pu, much tighter than
 REE's operating range (~0.95–1.05 pu at 400 kV); next test is a single config change.
 
+### Voltage rule (changes a main default)
+
+`[network].gen_bus_vmin/vmax` is now **0.975/1.05 pu** on this branch (main: 0.98/1.03): REE's
+normal-operation range for the 400 kV grid, 390–420 kV (P.O. 1.4 §3.2, BOE-A-1998-20053), which
+REE's 2024 voltage-control report confirms was still the admissible band in 2024 (P.O. 1.1, 1.3,
+1.4). Copies of the texts: `litterature review/BOE1998_REE_PO1.1_1.4_Security_Criteria_Voltage_Limits.pdf`
+and `REE2024_New_Voltage_Control_Service_PO3.1_14.4_Report.pdf`. This is the one change on the
+branch that alters runs with every redispatch-realism switch off (AC voltages and flows), so the
+group should agree before merging.
+
 ### Voltage-band test V1, 2 Dec 2024 — the volume gap was the generator voltage band
 
 V1 = CAL with `[network].gen_bus_vmin/vmax = 0.95/1.05` pu (main's default 0.98/1.03, much

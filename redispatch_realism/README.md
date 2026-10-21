@@ -311,19 +311,25 @@ Full chain, both runs with the December run's market settings and every realism 
 after the markets, CH1: inside the chain; band 0.975–1.05). CH0 reproduces the saved December run
 exactly (DA, ID2, BAL schedules 0.00 MW, every price).
 
-| 2–8 Dec 2024 | W1c/W2c (after, band 0.95–1.05) | CH0 (after, 0.975–1.05) | CH1 (in chain, 0.975–1.05) | REE |
-|---|---|---|---|---|
-| extra cost | 46.6 M€ | 55.3 M€ | 62.9 M€ | 54.0 M€ |
-| phase I up / cost | 183.3 GWh / 37.3 M€ | 183.3 / 37.3 | 183.3 / 37.3 | 214.4 GWh / 38.2 M€ (+ phase II −12.3) |
-| real-time up / cost | 292 GWh / 9.2 M€ | 577 / 18.0 | **716 / 25.6** | 87 GWh / 28.1 M€ |
-| € per MWh up | 98 | 73 | 70 | 179 |
-| real-time hour-of-day correlation with REE | −0.01 | −0.06 | −0.55 | |
+| 2–8 Dec 2024 | W1c/W2c (after, band 0.95–1.05) | CH3 (in chain, 0.95–1.05) | CH0 (after, 0.975–1.05) | CH1 (in chain, 0.975–1.05) | REE |
+|---|---|---|---|---|---|
+| extra cost | 46.6 M€ | 53.3 M€ | 55.3 M€ | 63.6 M€ | 54.0 M€ |
+| phase I up / cost | 183.3 GWh / 37.3 M€ | 183.3 / 37.3 | 183.3 / 37.3 | 183.3 / 37.3 | 214.4 GWh / 38.2 M€ (+ phase II −12.3) |
+| real-time up / cost | 292 GWh / 9.2 M€ | **282 / 16.0** | 577 / 18.0 | **536 / 26.3** | 87 GWh / 28.1 M€ |
+| € per MWh up | 98 | 115 | 73 | 88 | 179 |
+| real-time hour-of-day correlation with REE | −0.01 | −0.04 | −0.06 | −0.13 | |
+
+(Corrected 21 Oct: the first version of this table showed CH1's real time as 716 GWh. `settle.py` added
+phase I's changes to the balancing schedule also for in-chain runs, where it already holds them, so
+phase I was counted twice; it now reads `in_chain` from the run's `config_used.toml`.)
 
 - DA unchanged in CH1 (0.00 MW). Intraday prices fall: ID2 −5.4 €/MWh on average (max −25), ID3 −3.4,
   CID −2.1, BAL −1.7 (phase I's started units bring must-run energy into those gates).
-- **Real time did not fall; it rose.** The phase I/BAL mismatch is not the main driver of the real-time
-  overshoot. Real time swaps wind and solar down (~330 GWh) for pumped storage and hydro up (500–600 GWh)
-  at midday, in every variant; REE's real time is mostly upward reserve at the evening ramp.
+- **In the chain, real time falls a little** (−3 % at 0.95, −7 % at 0.975), no longer turns wind and solar
+  up (54 → 0 GWh: that was the mismatch), and the price per MWh moves toward REE's. But the phase I/BAL
+  mismatch is not the main driver of the overshoot. Real time swaps wind and solar down (170–330 GWh) for
+  pumped storage and hydro up (250–500 GWh) at midday, in every variant; REE's real time that week was
+  almost only combined cycles turned up (I90DIA08: 85 GWh; pumped storage 0).
 - **The generator-bus lower voltage limit is the largest driver:** W1c/W2c and CH0 differ only in
   `gen_bus_vmin` (0.95 vs 0.975), and real time doubles. In CH0, 24 % of generator bus-hours sit at the
   0.975 limit, mostly at 220 kV buses, where REE's own lower limit is 205 kV = 0.93 pu (P.O. 1.4).

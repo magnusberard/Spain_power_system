@@ -28,6 +28,7 @@ It also prints the run's loss share, the value to put in [redispatch].loss_share
 """
 import argparse
 import json
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -78,6 +79,16 @@ def read_anchor(path, keys):
 STORAGE = {("Hydro", "reservoir"), ("Hydro", "pumped_storage"), ("Battery", "Li-Ion")}
 
 
+def phase1_in_chain(rdir):
+    """True if phase I ran inside the market chain ([redispatch.phase1].in_chain in the run's config)."""
+    f = rdir / "config_used.toml"
+    if not f.exists():
+        return False
+    with open(f, "rb") as fh:
+        c = tomllib.load(fh)
+    return bool(c.get("redispatch", {}).get("phase1", {}).get("in_chain", False))
+
+
 def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=False):
     summ = pd.read_csv(rdir / "summary.csv")
     summ = summ[summ.status.isin(SOLVED)]
@@ -86,9 +97,10 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
     pda = prices[prices.stage == "DA"][["date", "hour", "price_eur_mwh"]].rename(columns={"price_eur_mwh": "p_da"})
     anc = read_anchor(anchor_file(rdir, anchor), keys)
     # RD8: real time is measured from the balancing schedule plus phase I/II's changes
-    # (rd_phase1.csv), as REE's real-time constraints start from the programme phase I left
+    # (rd_phase1.csv), as REE's real-time constraints start from the programme phase I left.
+    # With phase I inside the market chain the balancing schedule already holds them.
     p1f = rdir / "rd_phase1.csv"
-    if p1f.exists():
+    if p1f.exists() and not phase1_in_chain(rdir):
         p1 = pd.read_csv(p1f).assign(delta=lambda d: d.phase1_mw - d.da_mw)[["date", "hour", "unit", "delta"]]
         p1 = p1.rename(columns={"unit": "unit_name"})
         anc = anc.merge(p1, on=["date", "hour", "unit_name"], how="outer")

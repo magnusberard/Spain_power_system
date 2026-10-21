@@ -477,6 +477,10 @@ voltage_limits_scope = "generator"
 #                     fleet; values >100 are allowed for sensitivity studies).
 enabled        = true
 in_service_pct = 100.0
+# switchable = true: the AC redispatch chooses how much of each bus's reactor to
+# connect (0 … installed × in_service_pct), as REE connects reactors at low load and
+# disconnects them at high load; false = all of it connected in every hour.
+switchable     = false
 
 [load]
 # Net power factor the transmission grid sees at each load bus.  Distribution-

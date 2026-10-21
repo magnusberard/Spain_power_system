@@ -336,6 +336,34 @@ phase I was counted twice; it now reads `in_chain` from the run's `config_used.t
   Next: a band per voltage level (vault issue `generator-voltage-band`, option C), and CH3 = CH1 with
   0.95 to see the in-chain step on its own.
 
+### What drives real time: voltage tests, 2–8 Dec 2024 (21 Oct, evening)
+
+All from CH0's saved schedules (phase I after the markets, every realism switch on).
+
+| Run | Change vs CH0 | Real-time up | RT cost | Storage up / wind+solar down | RT daily shape vs REE | Hours |
+|---|---|---|---|---|---|---|
+| CH0 | — (generator buses 0.975–1.05) | 577 GWh | 18.0 M€ | 320 / 334 GWh | −0.06 | 168 |
+| VL1 | band per voltage level, generator buses (`voltage_limits_by_kv`, P.O. 1.4) | 339 | 10.6 | 201 / 204 | −0.01 | 168 |
+| VL2 | the same at every bus | 413 | 12.9 | 240 / 242 | 0.07 | 168 |
+| VLX | limits 0.90–1.10 at every bus (diagnostic) | 29 | 3.2 | 5 / 3 | −0.56 | 168 |
+| **VL3** | **VL1 + wind/solar power factor 0.98** | **81** | 4.0 | 38 / 12 | **0.51** | 167 |
+| VL4 | VL1 + switchable reactors (`[reactors].switchable`) | 410 | 12.5 | 259 / 240 | 0.02 | 168 |
+| REE | | 87 GWh | 28.1 M€ | 0 / 0.2 (I90DIA08) | | |
+
+- **Voltage drives almost all of real time** (VLX). In CH0/VL1 the generator buses sit at the **lower**
+  limit: a reactive-power shortage, which real time covered by running synchronous storage and hydro up
+  and curtailing wind and solar.
+- **The shortage came mostly from RD4.** RD4 set wind and solar to power factor 1.0 (no reactive power);
+  REE's 2024 voltage report says generators followed fixed voltage or power-factor setpoints, and
+  RD 413/2014 art. 7 e) i) requires renewables to hold an hourly power factor within its Annex III range,
+  at most 0.98 capacitive to 0.98 inductive (to check against the consolidated BOE text). With 0.98
+  (VL3) real time is 81 vs REE's 87 GWh and the storage swap is nearly gone. VL3 lets the optimiser
+  choose the reactive power within the band, an upper bound: in 2024 it was a fixed setpoint.
+- **Still off in VL3:** real time is cheap (4.0 vs 28.1 M€; REE's real time is mostly combined cycles
+  started for too little upward reserve, at ~323 €/MWh), and its peak is at 23 h vs REE's 17 h.
+- **Switchable reactors (VL4) made real time larger**, although they only add freedom. Not yet understood
+  (Ipopt is a local solver; the device absorbs a chosen Mvar instead of b·V²). Off by default.
+
 ### RD6b N-1 by P.O. 1.1's rules, 2 Dec 2024 (21 Oct)
 
 P.O. 1.1 (2016) §4.3.2: after a single outage a line must stay within its **seasonal** thermal limit

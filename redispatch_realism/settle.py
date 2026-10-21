@@ -36,8 +36,9 @@ import pandas as pd
 
 CHUNK = 500_000
 SOLVED = {"LOCALLY_SOLVED", "OPTIMAL", "ALMOST_LOCALLY_SOLVED"}
-# pseudo-units with no market schedule: load shedding, the slack machine, border injections
-PSEUDO = ("LS_", "SLACK", "XB_")
+# pseudo-units with no market schedule: load shedding, the slack machine, border injections,
+# switchable reactors ([reactors].switchable, reactive power only)
+PSEUDO = ("LS_", "SLACK", "XB_", "RX_")
 # the results viewer's redispatch groups (viewer.js RD_TYPES)
 def rd_type(fuel, tech):
     if fuel == "Hydro" and tech == "pumped_storage":

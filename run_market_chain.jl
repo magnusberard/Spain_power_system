@@ -276,6 +276,8 @@ VOLT_LIMITS_SCOPE ∈ ("generator", "all") ||
 
 const REACTORS_ENABLED   = get(get(cfg, "reactors", Dict()), "enabled", true)
 const REACTOR_PCT        = Float64(get(get(cfg, "reactors", Dict()), "in_service_pct", 100.0))
+# [reactors].switchable: the AC stage chooses how much of each bus's reactor to connect
+const REACTOR_SWITCHABLE = Bool(get(get(cfg, "reactors", Dict()), "switchable", false))
 
 const LOAD_PF            = Float64(get(get(cfg, "load", Dict()), "power_factor", 1.0))
 
@@ -2261,7 +2263,7 @@ if RD_WATER_VALUE == "constant"
                               voltage_band = VOLTAGE_BAND,
                               line_rating_factor = LINE_RATING_FACTOR,
                               reactors_enabled = REACTORS_ENABLED,
-                              reactor_in_service_pct = REACTOR_PCT,
+                              reactor_in_service_pct = REACTOR_PCT, reactor_switchable = REACTOR_SWITCHABLE,
                               load_power_factor = LOAD_PF,
                               apparent_power_limit = APPARENT_POWER_LIMIT,
                               rated_power_factor = RATED_PF,
@@ -2345,7 +2347,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 voltage_band = VOLTAGE_BAND,
                                 line_rating_factor = LINE_RATING_FACTOR,
                                 reactors_enabled = REACTORS_ENABLED,
-                                reactor_in_service_pct = REACTOR_PCT,
+                                reactor_in_service_pct = REACTOR_PCT, reactor_switchable = REACTOR_SWITCHABLE,
                                 load_power_factor = LOAD_PF,
                                 apparent_power_limit = APPARENT_POWER_LIMIT,
                                 rated_power_factor = RATED_PF,

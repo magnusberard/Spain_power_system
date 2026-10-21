@@ -107,8 +107,14 @@ end
 # that file to regenerate the disaggregation (e.g. after changing the line
 # data).  `in_service_pct` then scales how much of the installed fleet is
 # energised at the operating point — set it in config.toml ([reactors]).
+#
+# `switchable` ([reactors].switchable, off by default): REE connects reactors at
+# low load and disconnects them at high load.  Each bus's reactor is then a
+# reactive-only device ("RX_<bus>": 0 MW, absorbing 0…installed × in_service_pct
+# MVAr, no cost) that the AC stage sets, instead of a fixed shunt.  Its absorption
+# is not scaled by V² as a real shunt's is (within the voltage band, ±10 %).
 function add_reactor_shunts!(network, buses, branches, bus_idx;
-                             enabled::Bool, in_service_pct::Float64)
+                             enabled::Bool, in_service_pct::Float64, switchable::Bool = false)
     enabled || return
     BASE      = network["baseMVA"]
     installed = Dict{Int,Float64}()        # bus index ⇒ installed reactor [MVAr]
@@ -153,9 +159,22 @@ function add_reactor_shunts!(network, buses, branches, bus_idx;
 
     scale = in_service_pct / 100.0
     n = length(network["shunt"])        # append after any existing shunts
+    ng = length(network["gen"])
     for (bi, q_inst) in installed
         q = q_inst * scale
         q > 1e-9 || continue
+        if switchable
+            ng += 1
+            network["gen"][string(ng)] = Dict{String,Any}(
+                "index" => ng, "gen_bus" => bi, "name" => "RX_" * buses[string(bi)]["name"],
+                "fuel" => "Reactor", "technology" => "Shunt", "installed_mw" => 0.0,
+                "pmax" => 0.0, "pmin" => 0.0, "pg" => 0.0,
+                "qmax" => 0.0, "qmin" => -q / BASE, "qg" => 0.0,
+                "vg" => 1.0, "mbase" => BASE, "gen_status" => 1,
+                "model" => 2, "ncost" => 2, "cost" => [0.0, 0.0],
+                "startup" => 0.0, "shutdown" => 0.0)
+            continue
+        end
         n += 1
         network["shunt"][string(n)] = Dict{String,Any}(
             "index"     => n,
@@ -223,6 +242,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          line_rating_factor::Float64 = 0.70,
                          reactors_enabled::Bool      = true,
                          reactor_in_service_pct::Float64 = 100.0,
+                         reactor_switchable::Bool    = false,   # [reactors].switchable: see add_reactor_shunts!
                          load_power_factor::Float64      = 1.0,
                          apparent_power_limit::Bool      = true,
                          rated_power_factor::Float64     = 0.90,
@@ -1027,7 +1047,8 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     # Attach the disaggregated shunt-reactor fleet (absorbs EHV line charging).
     add_reactor_shunts!(network, buses, branches, bus_idx;
                         enabled        = reactors_enabled,
-                        in_service_pct = reactor_in_service_pct)
+                        in_service_pct = reactor_in_service_pct,
+                        switchable     = reactor_switchable)
 
     return (
         network  = network,

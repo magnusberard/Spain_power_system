@@ -3570,6 +3570,14 @@ zone_shortfall_eur = 1.0e5     # penalty per missing unit in a voltage zone
 # in Spain: ID2–BAL start from DA + phase I/II's changes and keep its started
 # units on (needs the market stages; intraday prices may move slightly).
 in_chain           = false
+# Step C: an AC check of every hour on phase I's schedule (day-ahead profile),
+# starting units at minimum load where voltage cannot be held (RD9's loop), as
+# REE's phase I is an AC security analysis.  What it changes becomes part of
+# phase I; real time starts with those units on.  ac_check_zones = false leaves
+# out RD5's zone counts (read from REE's 2024 data), so the voltage need comes
+# from the AC grid alone.  Phase I after the markets only (not with in_chain).
+ac_check           = false
+ac_check_zones     = true
 # Preventive N-1 in phase I (step RD6): after each solve, every monitored
 # branch's flow after each single outage of a ≥ n1_min_kv line/transformer
 # (DC outage distribution factors) must stay within n1_emergency_factor × its

@@ -569,6 +569,8 @@ const RD_PHASE1_IN_CHAIN = RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.
                            RD_STARTUPS.phase1.in_chain
 RD_PHASE1_IN_CHAIN && !RUN_MARKET &&
     error("config.toml: [redispatch.phase1].in_chain = true needs the market stages (from_saved = \"\")")
+RD_PHASE1_IN_CHAIN && RD_STARTUPS.phase1.ac_check &&
+    error("config.toml: [redispatch.phase1].ac_check does not work with in_chain yet (run phase I after the markets)")
 
 # [redispatch].only: restrict the load flow to a single delivery hour (or day).
 # "" = every hour of every TARGET_DAY.  "2024-07-08 14" = that date+hour only.
@@ -2226,6 +2228,7 @@ if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && !RD_PHASE1_IN_CH
     println("\n── Phase I/II: technical constraints on the day-ahead schedule (DC unit commitment) ──")
     for d in TARGET_DAYS
         run_phase1_day!(RD_STARTUPS, d)
+        RD_STARTUPS.phase1.ac_check && phase1_ac_check_day!(RD_STARTUPS, d)   # step C
     end
 end
 println("\n── Stage 6: Redispatch ($(RD_PF_MODEL) OPF via $(RD_SOLVER_NAME), anchored to $(rd_anchor_label())) ──")

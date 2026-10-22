@@ -52,6 +52,8 @@ function load_rd_phase1(cfg)
     get(c, "enabled", false) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
     return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
+            ac_check     = Bool(get(c, "ac_check", false)),               # step C: AC voltage check in phase I
+            ac_zones     = Bool(get(c, "ac_check_zones", true)),          # step C: RD5 zone counts also in that check
             n1           = Bool(get(c, "n1", false)),                     # RD6
             n1_emergency = Float64(get(c, "n1_emergency_factor", 1.0)),   # × nominal rating after an outage
             n1_min_kv    = Float64(get(c, "n1_min_kv", 220.0)),
@@ -79,6 +81,7 @@ const RD_PHASE1_ON   = Dict{Tuple{String,Int},Set{String}}()   # units phase I c
 # every phase I start-up is counted and charged a second time in real time.
 const RD_PHASE1_DELTA = Dict{Tuple{String,Int},Dict{String,Float64}}()
 const RD_PHASE1_MINLOAD = Dict{String,Float64}()              # candidate ⇒ minimum load (fraction of installed)
+const RD_PHASE1_STARTCOST = Dict{Tuple{String,Int},Tuple{Int,Float64}}()   # (date, hour) ⇒ (DC starts, their cost EUR)
 const RD_N1_SLACK    = Tuple{Int,JuMP.VariableRef}[]          # (hour position, overload slack) of the day being solved
 const RD_N1_DONE     = Set{Tuple{Int,Int,Int}}()              # (hour position, monitored, outage) already constrained
 const RD_N1_PAIR     = Tuple{String,String,Float64}[]          # per RD_N1_SLACK entry: (monitored, outage, limit MW)
@@ -454,6 +457,8 @@ function run_phase1_day!(su, date_str)
         end
         RD_PHASE1_ON[(date_str, h)] = on
         RD_PHASE1_DELTA[(date_str, h)] = delta
+        RD_PHASE1_STARTCOST[(date_str, h)] = (nst, sum((su_terms(su, gen_of[nm])[2] for ((nm, kk), s) in starts
+                                                        if kk == k && JuMP.value(s) > 0.5); init = 0.0))
         n1_left =sum((JuMP.value(s) * BASEMVA for (kk, s) in RD_N1_SLACK if kk == k); init = 0.0)
         push!(RD_PHASE1_SUM, (date = date_str, hour = h, status = status, up_mwh = round(up_mwh; digits = 1),
                               down_mwh = round(dn_mwh; digits = 1), starts = nst, units_committed = length(on),
@@ -533,6 +538,127 @@ function apply_phase1_commitments!(network, su, date_str, hour)
         n += 1
     end
     return n
+end
+
+# ── Step C: AC voltage check in phase I ([redispatch.phase1].ac_check) ────────
+# REE's phase I is an AC security analysis on the day-ahead schedule; voltage is
+# 58 % of its phase I up energy, and its real time has almost no voltage
+# redispatch left (2–8 Dec 2024: 0.3 GWh).  The DC phase I sees no voltage, so
+# without this check the voltage problems first appear in the model's real time.
+# Per hour, after the DC solve: the AC network on the day-ahead profile, anchored
+# to phase I's schedule (DA + its changes), with the units phase I committed kept
+# on, solved with RD9's start-up loop (and RD5's zone counts if ac_check_zones,
+# no real-time reserve).  The AC solution's deviation from the DA becomes phase
+# I's change for the hour, the units it starts become phase I commitments (they
+# stay on in real time), and rd_phase1*.csv are rewritten for the hour.  With
+# ac_check_zones = false the voltage need comes from the AC grid alone, not from
+# REE's 2024 data, so a new asset can change it.  After the markets only for now
+# (not with in_chain: the AC solve is defined after the market stages).
+
+function phase1_ac_check_day!(su, date_str)
+    p1 = su.phase1
+    bv = day_bellman[date_str]
+    su_ac = merge(su, (reserve = nothing, mustrun = p1.ac_zones ? su.mustrun : nothing))
+    day_ts = sort(filter(r -> r.date == date_str, hourly_da), :hour)
+    n_ok = n_new = 0
+    prev_on = Set{String}()          # units on in the hour before (a unit kept on pays one start)
+    for ts in eachrow(day_ts)
+        h = Int(ts.hour)
+        key = (date_str, h)
+        base = phase1_sched_for(date_str, h)
+        base === nothing && continue
+        pdvp = copy(base)
+        for (name, d) in get(RD_PHASE1_DELTA, key, Dict{String,Float64}())
+            pdvp[name] = get(pdvp, name, 0.0) + d
+        end
+        net = prepare_network(rd_load_mw(ts.load_mw - xb_export_offset(date_str, h)), ts.solar_mw, ts.wind_mw;
+                              hydro_reservoir_cost = bv.water_value,
+                              crossborder_inj = crossborder_inj_for(date_str, h),
+                              crossborder_exports = WEEKS_ACTIVE || XB_EXPORT_AT_BORDER,
+                              crossborder_bus_caps = RD_XB_SPLIT == "country_total" ? XB_BUS_CAPS : nothing,
+                              crossborder_same_direction = RD_XB_SPLIT == "country_total",
+                              da_dispatch = pdvp,
+                              frozen_fuels = RD_FROZEN_FUELS, island_buses = ISLAND_BUSES, removed_units = REMOVED_UNITS,
+                              nuclear_availability = nuclear_avail_for(date_str), coal_availability = coal_avail_for(date_str),
+                              chp_blocks = chp_blocks_for(date_str), chp_siting_buses = CHP_SITING_BUSES,
+                              voltage_band = VOLTAGE_BAND, line_rating_factor = LINE_RATING_FACTOR,
+                              reactors_enabled = REACTORS_ENABLED, reactor_in_service_pct = REACTOR_PCT,
+                              reactor_switchable = REACTOR_SWITCHABLE,
+                              load_power_factor = LOAD_PF, apparent_power_limit = APPARENT_POWER_LIMIT,
+                              rated_power_factor = RATED_PF, renewable_power_factor = RENEWABLE_PF,
+                              gen_bus_voltage_control = GEN_BUS_VCTRL, gen_bus_vmin = GEN_BUS_VMIN, gen_bus_vmax = GEN_BUS_VMAX,
+                              voltage_limits_by_kv = VOLT_LIMITS_KV, voltage_limits_scope = VOLT_LIMITS_SCOPE,
+                              q_requires_online = RD_Q_ONLINE, q_online_min_frac = RD_Q_ONLINE_FRAC,
+                              q_condenser_ok = RD_Q_CONDENSER,
+                              unit_scale = UNIT_SCALE, cost_override = cost_override_for(date_str),
+                              unit_cost_override = unit_cost_override_for(date_str), bess_units = BESS_UNITS,
+                              unit_scale_by_id = UNIT_SCALE_ID, extra_units = EXTRA_UNITS, line_scale = LINE_SCALE,
+                              rating_scale = RATING_SCALE, extra_lines = EXTRA_LINES)
+        network, gens = net.network, net.gens
+        RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, h))
+        RD_CURRENT_RESERVE[] = 0.0                       # no real-time reserve in phase I
+        n_rows = length(RD_STARTUP_ROWS)
+        log_file = joinpath(IPOPT_LOG_DIR, "$(date_str)_h$(lpad(h, 2, '0'))_ph1ac.log")
+        res = solve_hour_with_startups(network, gens, k -> rd_optimizer_single(log_file = su_log(log_file, k)),
+                                       pdvp, su_ac; label = "phase I AC $date_str h$h", date_str = date_str, hour = h)
+        started = Set{String}()
+        for i in n_rows+1:length(RD_STARTUP_ROWS)        # this check's start-ups belong to phase I
+            r = RD_STARTUP_ROWS[i]
+            push!(started, r.unit)
+            RD_STARTUP_ROWS[i] = merge(r, (zone = isempty(r.zone) ? "phase I AC" : "phase I AC: " * r.zone,))
+        end
+        if !rd_su_ok(res)
+            @printf "    phase I AC check %s h%02d: %s, phase I kept as the DC result\n" date_str h string(res["termination_status"])
+            prev_on = get(RD_PHASE1_ON, key, Set{String}())
+            continue
+        end
+        n_ok += 1
+        sol = res["solution"]["gen"]
+        byname = Dict(g["name"] => (k, g) for (k, g) in gens)
+        on = union(get(RD_PHASE1_ON, key, Set{String}()), started)
+        delta = Dict{String,Float64}()
+        for (name, (k, g)) in byname
+            (rd_is_market_unit(name) || startswith(name, "BESS_")) && !startswith(name, "RX_") || continue
+            haskey(sol, k) || continue
+            d = sol[k]["pg"] * BASEMVA - get(base, name, 0.0)
+            abs(d) > 1e-3 && (delta[name] = d)
+        end
+        for name in started
+            g = byname[name][2]
+            RD_PHASE1_MINLOAD[name] = su_terms(su, g)[1]
+        end
+        # started by this check and not already on (in the DC result or in the hour before)
+        new_starts = setdiff(started, get(RD_PHASE1_ON, key, Set{String}()), prev_on)
+        n_new += length(setdiff(started, get(RD_PHASE1_ON, key, Set{String}())))
+        RD_PHASE1_ON[key] = on
+        RD_PHASE1_DELTA[key] = delta
+        # rewrite rd_phase1*.csv for the hour
+        p_da = rd_da_price(date_str, h)
+        filter!(r -> !(r.date == date_str && r.hour == h), RD_PHASE1_ROWS)
+        i_sum = findfirst(r -> r.date == date_str && r.hour == h, RD_PHASE1_SUM)
+        old = i_sum === nothing ? nothing : RD_PHASE1_SUM[i_sum]
+        up_mwh = dn_mwh = cost = 0.0
+        for (name, d) in delta
+            g = byname[name][2]
+            p_up, p_dn = rd_bid_prices(p1.bids, g, p_da)
+            d > 0 ? (up_mwh += d; cost += d * (p_up - p_da)) : (dn_mwh -= d; cost += -d * (p_da - p_dn))
+            if abs(d) > 0.5 || name in on
+                push!(RD_PHASE1_ROWS, (date = date_str, hour = h, unit = name, fuel = g["fuel"], technology = g["technology"],
+                                       da_mw = round(get(base, name, 0.0); digits = 1),
+                                       phase1_mw = round(get(base, name, 0.0) + d; digits = 1), committed = name in on))
+            end
+        end
+        dc_starts, dc_cost = get(RD_PHASE1_STARTCOST, key, (0, 0.0))
+        cost += dc_cost + sum((su_terms(su, byname[n][2])[2] for n in new_starts); init = 0.0)
+        row = (date = date_str, hour = h, status = "AC " * string(res["termination_status"]),
+               up_mwh = round(up_mwh; digits = 1), down_mwh = round(dn_mwh; digits = 1),
+               starts = dc_starts + length(new_starts), units_committed = length(on),
+               extra_cost_eur = round(cost; digits = 0), p_da = p_da,
+               n1_overload_left_mw = old === nothing ? 0.0 : old.n1_overload_left_mw)
+        i_sum === nothing ? push!(RD_PHASE1_SUM, row) : (RD_PHASE1_SUM[i_sum] = row)
+        prev_on = on
+    end
+    @printf "  phase I AC check %s: %d of %d hours solved, %d unit-hours started for voltage\n" date_str n_ok nrow(day_ts) n_new
 end
 
 function write_rd_phase1(dir)

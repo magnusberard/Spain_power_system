@@ -336,6 +336,34 @@ phase I was counted twice; it now reads `in_chain` from the run's `config_used.t
   Next: a band per voltage level (vault issue `generator-voltage-band`, option C), and CH3 = CH1 with
   0.95 to see the in-chain step on its own.
 
+### Real time by cause, and the reactive-power audit (22 Oct)
+
+**Validate by cause, not by total.** REE's real-time up that week by cause (e·sios): too little upward
+reserve 83.3 GWh (96 %), N-1 3.1, **voltage 0.3**. `compare_ree.py --relaxed <run with voltage limits
+0.90–1.10>` splits the model's real time into voltage-driven (run − relaxed) and other. VL1 vs VLX:
+voltage-driven 310 GWh vs REE's 0.3, other 29 vs REE's 86.5. So VL3's total of 81 GWh matching REE's 87
+is a coincidence of totals: the model's real time is voltage redispatch, REE's is reserve. In VL3,
+400 kV generator buses still sit at the **lower** limit in 13 % of hours (most at 22–23 h); REE's 2024
+problem is **overvoltage** in off-peak and shoulder hours. The model's reactive-power balance is biased
+toward shortage.
+
+**Audit of the reactive-power assumptions** against independent sources (not against the 2024 redispatch):
+
+| Item | Model | Rule or evidence | Verdict | Direction |
+|---|---|---|---|---|
+| Wind/solar reactive power | RD4: power factor 1.0; VL3: free within ±0.98 | RD 413/2014 art. 7 e) i) and Annex III: range 0.98 inductive to 0.98 capacitive, set yearly by resolution (BOE consolidated text, 2026; 2024 version to confirm). REE 2024: "rangos fijos de factor de potencia" | 1.0 wrong; ±0.98 is the legal range (in practice a fixed setpoint within it) | 1.0 made the shortage |
+| Renewables' connection networks | not modelled | REE 2024 voltage report: they generate reactive power "de un orden de magnitud de miles de Mvar", uncompensated, causing overvoltage at low renewable output | missing | a missing source of reactive power |
+| Loads / distribution exchange | power factor 1.0 (no reactive power) | P.O. 7.4 (2000) §6.1.3: peak draw ≤ 33 % of P, valley no injection into transmission, shoulder in between; REE: distribution cables inject at low load | inside the rule, real exchange unknown | unknown; needs REE data |
+| Synchronous generators | MVA circle at rated power factor 0.9 (≈ ±0.48 P at full load) | P.O. 7.4 (2000) §6.1.1: obligatory ±15 % of P (cos 0.989) from minimum load to full, voltage-dependent (annex 6); more is optional and paid | generous against the obligation | less shortage: the shortage exists despite it |
+| Shunt reactors | all 15.5 Gvar on in every hour | P.O. 7.4 §6.1.2: transmission owners operate reactors; REE connects them at low load | operation wrong; switchable test (VL4) not yet understood | more absorption by day |
+| Capacitors, tap changers, line opening | none / taps fixed at 1.0 | P.O. 7.4 §6.1.2 lists all of them as the transmission owner's tools | missing | the model can only move energy |
+| Voltage band | REE per level (P.O. 1.4), generator buses | P.O. 1.4 §3.2 | correct | — |
+
+Prime suspects for the remaining shortage: the missing reactive generation of renewables' connection
+networks and distribution cables, and reactors that are always on. Sources: BOE-A-2014-6123 (RD 413/2014,
+consolidated); BOE 18 Mar 2000 núm. 67 (P.O. 7.4); REE (2024) informe justificativo del nuevo servicio de
+control de tensión.
+
 ### What drives real time: voltage tests, 2–8 Dec 2024 (21 Oct, evening)
 
 All from CH0's saved schedules (phase I after the markets, every realism switch on).

@@ -54,6 +54,18 @@ def ree_esios(path, days):
     return pd.DataFrame(rows)
 
 
+def ree_rt_causes(path, days):
+    """REE's real-time up (GWh) over `days` by cause: voltage, N-1, too little upward reserve, other."""
+    t = Path(path).read_text(encoding="utf-8")
+    e = json.loads(t[t.index("=") + 1:].rstrip().rstrip(";"))
+    ix = {d: i for i, d in enumerate(e["days"])}
+    s = lambda k: sum(v or 0.0 for d in days for v in e["series"][k][ix[d] * 24:ix[d] * 24 + 24]) / 1e3
+    tot = s("rtr_up")
+    c = dict(volt=s("rtr_up_ct"), n1=s("rtr_up_sca"), reserve=s("rtr_up_rsi"))
+    c["other"] = tot - sum(c.values())
+    return c
+
+
 def ree_hourly(path, days):
     """REE's phase I and real-time up per hour (MW) over `days`."""
     t = Path(path).read_text(encoding="utf-8")
@@ -98,6 +110,9 @@ def main():
     ap.add_argument("--out", type=Path)
     ap.add_argument("--profile-out", type=Path, help="hour-of-day profile of MW turned up, model and REE")
     ap.add_argument("--zones", action="store_true", help="phase I starts per voltage zone, model vs REE")
+    ap.add_argument("--relaxed", nargs="+", type=Path,
+                    help="the same run(s) with voltage limits relaxed (e.g. 0.90-1.10): splits the model's real time "
+                         "into voltage-driven (run − relaxed) and other, to compare with REE's real time by cause")
     a = ap.parse_args()
 
     # a parent folder (a Solstorm day-by-day run) stands for its finished day folders
@@ -180,6 +195,23 @@ def main():
                 print(f"hour-of-day shape {m_[:-6]}: correlation with REE {np.corrcoef(p[m_], p[r_])[0, 1]:.2f}, "
                       f"peak model {p[m_].idxmax():02d} h vs REE {p[r_].idxmax():02d} h")
         print(f"profile written to {a.profile_out}")
+
+    # real time by cause: the model's voltage-driven part is what disappears when the voltage limits
+    # are relaxed; REE's causes from e·sios (rtr_up_ct voltage, _sca N-1, _rsi too little upward reserve)
+    rc = ree_rt_causes(a.esios, days)
+    print(f"REE real time up by cause: voltage {rc['volt']:.1f}, N-1 {rc['n1']:.1f}, too little upward reserve "
+          f"{rc['reserve']:.1f}, other {rc['other']:.1f} GWh")
+    st = pd.concat([pd.read_csv(r / "rd_startups.csv") for r in runs if (r / "rd_startups.csv").exists()]) \
+        if any((r / "rd_startups.csv").exists() for r in runs) else pd.DataFrame(columns=["round"])
+    if len(st):
+        print(f"model real-time starts: {int((st['round'] == 0).sum())} voltage-zone (RD5), "
+              f"{int((st['round'] > 0).sum())} voltage loop (RD9), {int((st['round'] < 0).sum())} reserve (RD7)")
+    if a.relaxed:
+        rel = sum(settle.settle(r, bids=a.bids, down_refund="da", storage_at_da=a.storage_at_da)[0].up_mwh.sum()
+                  for r in a.relaxed) / 1e3
+        volt = max(s.rt_up_gwh - rel, 0.0)
+        print(f"model real time up: voltage-driven {volt:.1f} GWh (vs REE {rc['volt']:.1f}), other {rel:.1f} GWh "
+              f"(REE: N-1 + reserve + other {rc['n1'] + rc['reserve'] + rc['other']:.1f})")
 
     if a.zones:
         print("\nphase I per voltage zone (unit-hours; model: started units, REE: units raised in phase I, any cause):")

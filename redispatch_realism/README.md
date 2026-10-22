@@ -365,6 +365,26 @@ networks and distribution cables, and reactors that are always on. Sources: BOE-
 consolidated); BOE 18 Mar 2000 núm. 67 (P.O. 7.4); REE (2024) informe justificativo del nuevo servicio de
 control de tensión.
 
+### Step C: voltage in phase I, week 2–8 Dec 2024 (22 Oct)
+
+`[redispatch.phase1].ac_check`: an AC check of every hour on phase I's schedule, starting units there
+(RD9's loop). C1 = VL3 + ac_check with RD5's zones; C2 = the same with RD5 off entirely (pending).
+
+| | VL3 (no AC check) | C1 | REE |
+|---|---|---|---|
+| phase I up / cost | 183 GWh / 37.3 M€ | **237 / 38.8** | 214 GWh / 38.2 M€ (+ phase II −12.3) |
+| phase I daily shape vs REE | 0.94 | 0.79 | peak 05 h |
+| real-time up / cost | 81 GWh / 4.0 M€ | **26.5 / 4.3** | 87 GWh / 28.1 M€ |
+| real time: storage up / wind+solar down | 38 / 12 GWh | 6 / 6 | 0 / 0.2 |
+| hours solved | 167 | 168 | |
+
+- Voltage leaves real time: C1's 26.5 GWh is VL3's non-voltage residual (VL3X: 25.5), so the
+  voltage-driven part fell from 55 GWh to about zero (REE: 0.3); the storage/wind/solar swap is gone.
+- What remains in real time is the missing reserve mechanism (26.5 vs REE's 86.5 GWh): step E.
+- Phase I is now 110 % of REE's. With no N-1 (off) and no distribution cause (30 % and 12 % of REE's
+  phase I), the model's voltage part of phase I (~237 GWh) is about twice REE's (125 GWh): consistent
+  with the audit's finding that the model's reactive balance leans toward shortage.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

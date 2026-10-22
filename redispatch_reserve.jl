@@ -20,6 +20,17 @@
 # Providers: gas (CCGT, gas turbine), coal, reservoir and pumped hydro that are
 # running (RD3's "online": reactive power not taken away).  Uses RD9's start-up
 # terms and writes its starts to rd_startups.csv with zone = "reserve".
+#
+# Step E1, `tertiary = true` (off by default): P.O. 1.5 (BOE-A-2022-4969, in force
+# in 2024) also requires tertiary reserve, upward "the largest loss of production
+# from a single failure, increased by 2 % of the forecast demand" (§4.3),
+# deliverable within 15 minutes.  The requirement becomes aFRR band + largest
+# scheduled single unit + tertiary_demand_share × demand, and with
+# tertiary_ramp15 a running thermal unit's headroom counts only up to what it can
+# ramp in 15 minutes (Data/power_unit_tech_params.csv, sustained rates; hydro and
+# storage are not ramp-limited, as in [da].ramp_limits).  Each hour's
+# requirement and headroom go to rd_reserve.csv.  Not yet included: §4.4's
+# supplementary reserve (REE's own forecasts against the market schedules), step E2.
 # ============================================================
 
 function load_rd_reserve(cfg)
@@ -32,13 +43,38 @@ function load_rd_reserve(cfg)
         req[(string(r.date), Int(r.hour))] = Float64(r.afrr_up_mw)
     end
     @printf "  [redispatch.reserve] requirement for %d hours\n" length(req)
+    tertiary = Bool(get(c, "tertiary", false))
     return (req = req, scale = Float64(get(c, "scale", 1.0)), extra_mw = Float64(get(c, "extra_mw", 0.0)),
             offline_hydro = Bool(get(c, "offline_hydro_counts", true)),
+            tertiary = tertiary,                                                     # step E1
+            tertiary_share = Float64(get(c, "tertiary_demand_share", 0.02)),
+            ramp15 = tertiary && Bool(get(c, "tertiary_ramp15", true)) ? load_ramp_rates() : nothing,
             providers = Set(lowercase.(String.(get(c, "providers",
                 ["Gas:Combined_cycle", "Gas:Gas_turbine", "Coal", "Hydro:reservoir", "Hydro:pumped_storage"])))))
 end
 
 const RD_CURRENT_RESERVE = Ref(0.0)      # MW needed in the hour being solved
+const RD_RESERVE_ROWS = NamedTuple[]      # per hour: requirement and headroom → rd_reserve.csv
+
+# Headroom a provider can deliver within 15 minutes (pu): with tertiary_ramp15, a
+# ramp-limited unit (thermal) up to a quarter of its hourly ramp; others in full.
+function rd_head15(rs, g)
+    h = g["pmax"] - g["pg"]
+    rs.ramp15 === nothing && return h
+    rr = get(rs.ramp15, (String(g["fuel"]), String(g["technology"])), nothing)
+    rr === nothing && return h
+    return min(h, rr * Float64(get(g, "installed_mw", g["pmax"] * BASEMVA)) / BASEMVA / 4)
+end
+rd_cap15(rs, g) = rd_head15(rs, merge(g, Dict("pg" => 0.0)))   # 15-minute cap from zero output
+
+# P.O. 1.5 §4.3: the largest single loss of production (the largest scheduled unit)
+# and the demand, from the hour's network.
+function rd_tertiary_parts(network)
+    pseudo(n) = any(p -> startswith(n, p), ("LS_", "SLACK", "XB_", "RX_", "BESS_"))
+    loss = maximum((g["pg"] * BASEMVA for (_, g) in network["gen"] if !pseudo(String(g["name"]))); init = 0.0)
+    demand = sum((l["pd"] for (_, l) in network["load"]); init = 0.0) * BASEMVA
+    return loss, demand
+end
 
 rd_reserve_need(rs, date_str, hour) =
     rs === nothing ? 0.0 : rs.scale * get(rs.req, (date_str, hour), 0.0) + rs.extra_mw
@@ -62,21 +98,33 @@ Start the cheapest offline candidates until the running providers' headroom
 function commit_for_reserve!(network, su, date_str, hour)
     rs = su.reserve
     rs === nothing && return 0
-    need = rd_reserve_need(rs, date_str, hour)
+    afrr = rd_reserve_need(rs, date_str, hour)
+    loss, demand = rs.tertiary ? rd_tertiary_parts(network) : (0.0, 0.0)
+    need = afrr + loss + rs.tertiary_share * demand * rs.tertiary            # step E1: + tertiary (P.O. 1.5 §4.3)
     RD_CURRENT_RESERVE[] = need
     need > 0 || return 0
     gens = network["gen"]
-    head(g) = (g["pmax"] - g["pg"]) * BASEMVA
+    head(g) = rd_head15(rs, g) * BASEMVA
     have = sum((head(g) for (_, g) in gens if rd_provider_on(rs, g)); init = 0.0)
+    have0 = have
+    rs.tertiary && push!(RD_RESERVE_ROWS, (date = date_str, hour = hour, afrr_mw = round(afrr; digits = 1),
+                                           largest_loss_mw = round(loss; digits = 1),
+                                           demand_part_mw = round(rs.tertiary_share * demand; digits = 1),
+                                           need_mw = round(need; digits = 1), headroom_mw = round(have0; digits = 1)))
     have >= need && return 0
-    add(g) = (Float64(get(g, "installed_mw", g["pmax"] * BASEMVA)) * (1 - su_terms(su, g)[1]))
+    function add(g)
+        inst = Float64(get(g, "installed_mw", g["pmax"] * BASEMVA))
+        a = inst * (1 - su_terms(su, g)[1])
+        rr = rs.ramp15 === nothing ? nothing : get(rs.ramp15, (String(g["fuel"]), String(g["technology"])), nothing)
+        return rr === nothing ? a : min(a, rr * inst / 4)
+    end
     cands = [g for (_, g) in gens if su_is_off(g) && su_is_candidate(su, g) && add(g) > 1.0]
     sort!(cands; by = g -> su_terms(su, g)[3] / add(g))           # EUR per MW of headroom
     n = 0
     for g in cands
         have >= need && break
         pmin_mw, start = su_commit!(su, g)
-        have += g["pmax"] * BASEMVA - pmin_mw
+        have += head(g)
         n += 1
         push!(RD_STARTUP_ROWS, (date = date_str, hour = hour, round = -1, unit = g["name"],
                                 fuel = g["fuel"], technology = g["technology"], bus_i = g["gen_bus"],
@@ -97,8 +145,28 @@ function rd_add_reserve!(pm, gens, rs, need_mw)
     (rs === nothing || need_mw <= 0) && return
     on = [g for (_, g) in gens if rd_provider_on(rs, g)]
     isempty(on) && return
-    avail = sum(g["pmax"] for g in on) * BASEMVA
-    rhs = min(need_mw, 0.98 * avail)                               # never more than exists
-    JuMP.@constraint(pm.model, sum(g["pmax"] - PowerModels.var(pm, :pg, g["index"]) for g in on) >= rhs / BASEMVA)
+    if rs.ramp15 === nothing
+        avail = sum(g["pmax"] for g in on) * BASEMVA
+        rhs = min(need_mw, 0.98 * avail)                           # never more than exists
+        JuMP.@constraint(pm.model, sum(g["pmax"] - PowerModels.var(pm, :pg, g["index"]) for g in on) >= rhs / BASEMVA)
+        return
+    end
+    # step E1, tertiary_ramp15: each provider's counted headroom h ≤ pmax − pg and
+    # h ≤ its 15-minute ramp; Σ h ≥ need
+    avail = sum(min(g["pmax"], rd_cap15(rs, g)) for g in on) * BASEMVA
+    rhs = min(need_mw, 0.98 * avail)
+    hs = JuMP.AffExpr(0.0)
+    for g in on
+        h = JuMP.@variable(pm.model, lower_bound = 0.0, upper_bound = max(rd_cap15(rs, g), 0.0))
+        JuMP.@constraint(pm.model, h <= g["pmax"] - PowerModels.var(pm, :pg, g["index"]))
+        JuMP.add_to_expression!(hs, h)
+    end
+    JuMP.@constraint(pm.model, hs >= rhs / BASEMVA)
     return
+end
+
+function write_rd_reserve(dir)
+    isempty(RD_RESERVE_ROWS) && return
+    CSV.write(joinpath(dir, "rd_reserve.csv"), DataFrame(RD_RESERVE_ROWS))
+    @printf "  rd_reserve.csv   : %d hours (requirement: aFRR + largest loss + demand share; headroom)\n" length(RD_RESERVE_ROWS)
 end

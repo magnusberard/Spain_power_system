@@ -3621,6 +3621,13 @@ extra_mw         = 0.0       # e.g. an mFRR margin on top of the aFRR band
 # minutes and carry much of the aFRR band, which the market stages do not
 # schedule (false: only running units count; more thermal start-ups).
 offline_hydro_counts = true
+# Step E1 (P.O. 1.5 §4.3): add tertiary reserve to the requirement — the largest
+# scheduled single unit + tertiary_demand_share × demand — and, with
+# tertiary_ramp15, count a running thermal unit's headroom only up to what it can
+# ramp in 15 minutes (Data/power_unit_tech_params.csv).  Writes rd_reserve.csv.
+tertiary              = false
+tertiary_demand_share = 0.02
+tertiary_ramp15       = true
 
 [redispatch.bids]
 # Prices for objective = "ree" (steps RD10/RD11, redispatch_objective.jl): REE's

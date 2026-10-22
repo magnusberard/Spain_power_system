@@ -54,3 +54,27 @@ headroom(net) = sum(((g["pmax"] - g["pg"]) * BASEMVA for (_, g) in net["gen"] if
     @test all(g["pmin"] > 0 && g["qmax"] > 0 for g in started)         # committed at minimum load
     @test !any(g["name"] in (ccgt[1]["name"], ccgt[2]["name"]) for g in started)   # running ones not restarted
 end
+
+@testset "E1 tertiary reserve (P.O. 1.5 §4.3)" begin
+    cfg_t = Dict("redispatch" => Dict("reserve" => Dict("enabled" => true, "requirement_file" => rf, "tertiary" => true)),
+                 "unit_commitment" => Dict())
+    su_t = load_rd_startups(cfg_t)
+    rs = su_t.reserve
+    @test rs.tertiary && rs.ramp15 !== nothing && rs.tertiary_share == 0.02
+    net = build().network
+    loss, demand = rd_tertiary_parts(net)
+    largest = maximum(v for (k, v) in sched)
+    @test loss ≈ largest atol = 1.0                                     # the largest scheduled unit
+    @test demand > 20_000                                               # the hour's load (30 GW less the islands' part)
+    empty!(RD_RESERVE_ROWS)
+    commit_for_reserve!(net, su_t, "2024-12-02", 3)
+    r = RD_RESERVE_ROWS[end]
+    @test r.need_mw ≈ r.afrr_mw + r.largest_loss_mw + r.demand_part_mw atol = 0.2
+    @test RD_CURRENT_RESERVE[] ≈ r.need_mw atol = 0.2
+    # 15-minute rule: the half-loaded CCGT counts at most a quarter of its hourly ramp; hydro is not limited
+    g3 = first(g for (_, g) in build().network["gen"] if g["name"] == ccgt[3]["name"])
+    rr = rs.ramp15[("Gas", "Combined_cycle")]
+    @test rd_head15(rs, g3) * BASEMVA ≈ min(head3, rr * ccgt[3]["installed_mw"] / 4) atol = 0.5
+    hyd = first(g for (_, g) in build().network["gen"] if g["fuel"] == "Hydro" && g["technology"] == "reservoir")
+    @test rd_head15(rs, hyd) ≈ hyd["pmax"] - hyd["pg"]
+end

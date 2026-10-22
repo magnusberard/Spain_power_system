@@ -300,6 +300,7 @@ function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
 end
 
 function write_rd_startups(dir)
+    write_rd_reserve(dir)                    # step E1's per-hour reserve table (redispatch_reserve.jl)
     isempty(RD_STARTUP_ROWS) && return
     CSV.write(joinpath(dir, "rd_startups.csv"), DataFrame(RD_STARTUP_ROWS))
     @printf "  rd_startups.csv  : %d start-ups (voltage, [redispatch.startups])\n" length(RD_STARTUP_ROWS)

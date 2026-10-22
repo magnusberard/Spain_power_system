@@ -365,6 +365,37 @@ networks and distribution cables, and reactors that are always on. Sources: BOE-
 consolidated); BOE 18 Mar 2000 núm. 67 (P.O. 7.4); REE (2024) informe justificativo del nuevo servicio de
 control de tensión.
 
+### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
+
+REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force
+in 2024) sets the reserve REE must hold:
+
+- secondary (§4.2): per quarter-hour, at least 500 MW up / 400 MW down; RD7 uses REE's assigned band
+  from I90 (mean 922 MW);
+- tertiary (§4.3): upward = the largest loss of production from a single failure + 2 % of the
+  forecast demand; deliverable within 15 min and held 30 min; secondary + tertiary must cover 99 % of
+  historical imbalances;
+- supplementary (§4.4): the deficit between REE's own forecasts of demand, wind and solar and the
+  market schedules (PDVP, PHF), plus the risk of thermal units starting late (≥ 5 % probability).
+
+RD7 checks only the secondary band, which running units always cover, so it never binds and real
+time never starts combined cycles. Step E: requirement = secondary + tertiary + supplementary, the
+last from e·sios forecasts (demand, wind, solar) against the model's schedules; providers limited to
+what P.O. 1.5 allows (15-minute delivery, 30-minute hold, so storage only within its energy).
+
+### Model data to check with the group (22 Oct)
+
+- `Data/transformers_reactance.csv`: 67 of the 129 220/400 kV transformers are built from 100 MVA
+  units (total 71.5 GVA, median bank 300 MVA); real 400/220 kV units are typically several hundred MVA.
+  The columns (`n_recommended`, `per_unit_MVA`) suggest a sizing heuristic; no provenance in the repo.
+  TR_30aa9055 (2 × 100 MVA, Asturias near Aboño) is the one N-1 overload left. To compare with REE's
+  published transformation capacity.
+- Solver robustness (step D, from existing runs): VL4's weekly objective is slightly lower than VL1's
+  (88.26 vs 88.47 M€), as more freedom should give, but higher in 91 of 168 hours: Ipopt lands in worse
+  local optima. Two solutions of nearly equal cost differ by ~70 GWh of real-time volume (339 vs 410),
+  so real-time volumes carry that uncertainty. A stronger least-energy-moved rule (REE's tie-break,
+  P.O. 3.2 §6.1.3) would narrow it.
+
 ### What drives real time: voltage tests, 2–8 Dec 2024 (21 Oct, evening)
 
 All from CH0's saved schedules (phase I after the markets, every realism switch on).

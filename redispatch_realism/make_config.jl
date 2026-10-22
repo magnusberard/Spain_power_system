@@ -9,10 +9,12 @@
 # so the source run's config (its config_redispatch.toml or config_used.toml) is
 # laid over this branch's config.toml — the branch supplies the new keys the
 # source config predates — and then the redispatch-realism switches are set:
-#   RD2 loss_share 0.0101 · RD3 q_requires_online · RD4 renewable_power_factor 1.0
+#   RD2 loss_share 0.0101 · RD3 q_requires_online · RD4 renewable_power_factor 0.98
+#   (RD 413/2014 art. 7 e) and Annex III: 0.98 inductive to 0.98 capacitive; was 1.0 until 22 Oct)
 #   RD9 startups · RD5 mustrun · RD7 reserve · RD8 phase1 · RD10/11 objective "ree"
 #   with the fitted bids (CCGT 0.89, coal 0.94, storage 0.59 up mark-up), tie-break 5
-#   generator-bus voltage band 0.975–1.05 pu (REE, P.O. 1.4)
+#   generator-bus voltage band 0.975–1.05 pu, and REE's band per voltage level at generator
+#   buses (P.O. 1.4: 400 kV 0.975–1.05, 220 kV 0.932–1.114)
 # --n1 on adds RD6 (preventive N-1 in phase I) with P.O. 1.1's rules: one circuit or
 # transformer per outage (n1_outage = "element") and seasonal post-outage limits
 # (RD6b).  --in-chain runs phase I inside the market chain (needs the markets, so
@@ -64,9 +66,11 @@ function main(args)
         set!(cfg, "redispatch.objective", "ree")
         set!(cfg, "redispatch.power_flow", "AC")
         set!(cfg, "redispatch.water_value", "constant")
-        set!(cfg, "generators.renewable_power_factor", 1.0)
+        set!(cfg, "generators.renewable_power_factor", 0.98)
         set!(cfg, "network.gen_bus_vmin", 0.975)
         set!(cfg, "network.gen_bus_vmax", 1.05)
+        set!(cfg, "network.voltage_limits_by_kv", Dict("400" => [0.975, 1.05], "220" => [0.932, 1.114]))
+        set!(cfg, "network.voltage_limits_scope", "generator")
         for t in ("startups", "mustrun", "reserve", "phase1")
             set!(cfg, "redispatch.$t.enabled", true)
         end

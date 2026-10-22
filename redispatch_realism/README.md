@@ -341,7 +341,8 @@ phase I was counted twice; it now reads `in_chain` from the run's `config_used.t
 **Validate by cause, not by total.** REE's real-time up that week by cause (e·sios): too little upward
 reserve 83.3 GWh (96 %), N-1 3.1, **voltage 0.3**. `compare_ree.py --relaxed <run with voltage limits
 0.90–1.10>` splits the model's real time into voltage-driven (run − relaxed) and other. VL1 vs VLX:
-voltage-driven 310 GWh vs REE's 0.3, other 29 vs REE's 86.5. So VL3's total of 81 GWh matching REE's 87
+voltage-driven 310 GWh vs REE's 0.3, other 29 vs REE's 86.5. VL3 vs VL3X (VL3 with limits 0.90–1.10,
+167/168 hours): voltage-driven 55 GWh, other 26. So VL3's total of 81 GWh matching REE's 87
 is a coincidence of totals: the model's real time is voltage redispatch, REE's is reserve. In VL3,
 400 kV generator buses still sit at the **lower** limit in 13 % of hours (most at 22–23 h); REE's 2024
 problem is **overvoltage** in off-peak and shoulder hours. The model's reactive-power balance is biased

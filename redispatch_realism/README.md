@@ -415,6 +415,32 @@ Counting start-ups once brings phase I + II from 150 to 119 % of REE with the sa
 time grew: with the lower up mark-up, gas-for-gas moves are cheaper (18 up / 28 down), and hydro rose
 24 GWh because the water budget (RD13) was not yet on. Next: C3 + RD13.
 
+### Water budget on (C4, 23 Oct) — and why the budget must not touch reserve
+
+C4 = C3 + `[redispatch.hydro_budget]` (tolerance 0), 2–8 Dec 2024, 168/168 hours.
+
+| 2–8 Dec 2024 | C3 | C4 | REE |
+|---|---|---|---|
+| phase I/II up / down | 231 / 211 GWh | 234 / 214 | 214 / 219 GWh |
+| phase I + II cost | 30.8 M€ (119 %) | 35.1 M€ (135 %) | 25.95 M€ |
+| real-time up / cost | 45.5 GWh / 7.7 M€ | 55.8 / 16.5 | 87 GWh / 28.1 M€ |
+| real time: gas up; hydro up | 18; 24 GWh | 30; 24 GWh | combined cycles 85 GWh |
+| real-time starts for reserve (RD7) | 0 | 63 | |
+
+Totals are now 96 % of REE's volume and cost, but by phase they moved away (phase I + II 135 %).
+The budget itself holds: per hydro unit and day, real time + phase I stay within 1.0 GWh of the
+BAL schedule (11 of 1,393 unit-days above it). Phase I turned reservoir hydro down 71 GWh, and the
+24 GWh of real-time hydro up is that water given back later the same day.
+
+The 63 reserve starts are a side effect: the cap lowered each hydro unit's pmax, so its headroom
+dropped out of the reserve check (RD7/E1) and gas was started instead. A water budget limits
+energy; reserve held but not used costs no water. **Fixed (code, 23 Oct):** the cap is now a
+constraint `pg ≤ cap` in the solve (`hydro_budget_constrain!`), pmax stays physical
+(`test_rd13.jl`: 17 tests, incl. a DC OPF on PowerModels' case5 where the cap binds). C4 ran on the
+old code. How much hydro headroom REE really counts for reserve stays open: REE starts CCGTs for
+reserve, so it does not count all of it; step E2 uses REE's own reserve requirement (e·sios 626,
+P.O. 3.9) instead of guessing that share.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

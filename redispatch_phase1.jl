@@ -59,6 +59,10 @@ import LinearAlgebra
 # free.  DC phase I: one constraint per unit and day.  Hour-by-hour stages (the
 # phase I AC check, real time): a running tally per stage, unit and day caps each
 # hour's output at schedule + tolerance + what earlier hours of the day gave back.
+# The cap limits energy only (a constraint pg ≤ cap in the solve, hydro_budget_constrain!),
+# not pmax: reserve held but not used costs no water, so the reserve check (RD7/E1) still
+# sees the unit's physical headroom.  Until 23 Oct the cap lowered pmax, which also took
+# hydro out of the reserve and started 63 gas units for reserve on 2–8 Dec 2024 (C4).
 
 function load_rd_hydro_budget(cfg)
     c = get(get(cfg, "redispatch", Dict()), "hydro_budget", Dict())
@@ -73,8 +77,10 @@ rd_is_hydro_budget_unit(g) = g["fuel"] == "Hydro" && abs(g["pmax"] - g["pmin"]) 
 """
     hydro_budget_cap!(network, sched, hb, stage, date_str)
 
-Before an hourly solve: cap each free hydro unit at its schedule + tolerance + the
-energy earlier hours of the day gave back (MW = MWh for one hour).
+Before an hourly solve: cap each free hydro unit's output at its schedule + tolerance +
+the energy earlier hours of the day gave back (MW = MWh for one hour).  The cap is kept
+as `g["rd_energy_cap"]` (per unit, MW/BASEMVA) and enforced by hydro_budget_constrain!;
+pmax is left alone.
 """
 function hydro_budget_cap!(network, sched, hb, stage, date_str)
     (hb === nothing || sched === nothing) && return 0
@@ -85,9 +91,27 @@ function hydro_budget_cap!(network, sched, hb, stage, date_str)
         room = hb.tolerance_mwh + max(0.0, -get(RD_HYDRO_TALLY, (stage, date_str, g["name"]), 0.0))
         cap = (s + room) / BASEMVA
         if cap < g["pmax"]
-            g["pmax"] = max(cap, g["pmin"])
+            g["rd_energy_cap"] = max(cap, g["pmin"])
             n += 1
         end
+    end
+    return n
+end
+
+rd_energy_cap(g) = get(g, "rd_energy_cap", g["pmax"])
+
+"""
+    hydro_budget_constrain!(pm, network)
+
+In the solve: pg ≤ the water-budget cap for each unit hydro_budget_cap! capped.
+"""
+function hydro_budget_constrain!(pm, network)
+    n = 0
+    for (_, g) in network["gen"]
+        haskey(g, "rd_energy_cap") || continue
+        haskey(PowerModels.ref(pm, :gen), g["index"]) || continue
+        JuMP.@constraint(pm.model, PowerModels.var(pm, :pg, g["index"]) <= g["rd_energy_cap"])
+        n += 1
     end
     return n
 end

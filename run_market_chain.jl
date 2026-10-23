@@ -2194,6 +2194,7 @@ function solve_anchored_opf(network, gens, optimizer, sched;
         JuMP.@objective(pm.model, Min, dev + xb_ct_cost)
     end
     RD_STARTUPS === nothing || rd_add_reserve!(pm, gens, RD_STARTUPS.reserve, RD_CURRENT_RESERVE[])   # RD7
+    hydro_budget_constrain!(pm, network)                                                             # RD13
     model_hook === nothing || model_hook(pm)
     result = PowerModels.optimize_model!(pm; optimizer = optimizer)
     if RD_PF_MODEL == "DC" &&

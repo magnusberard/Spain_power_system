@@ -3605,6 +3605,15 @@ n1_seasonal_ratings    = false
 n1_line_season_factor  = { winter = 1.18, spring = 1.09, summer = 1.0, autumn = 1.09 }
 n1_trafo_winter_factor = 1.10
 
+[redispatch.hydro_budget]
+# Water budget (step RD13): per hydro unit and day, the redispatch (phase I and real
+# time) may not add energy to the schedule — Σ_h (output − schedule) ≤ tolerance_mwh —
+# so it can shift hydro between hours and turn it down, but not spend water the
+# water plan kept for other days.  REE raised hydro for only 39 of 13,584 GWh of
+# phase I up in 2024 (I90), while hydro is 31 % of phase II down.
+enabled       = false
+tolerance_mwh = 0.0
+
 [redispatch.reserve]
 # Upward reserve in the real-time redispatch (step RD7, redispatch_reserve.jl).
 # 89 % of REE's 2024 real-time upward redispatch was "too little upward

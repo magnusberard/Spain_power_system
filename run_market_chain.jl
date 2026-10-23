@@ -550,6 +550,8 @@ const RD_STARTUPS = load_rd_startups(cfg)
 # objective = "ree" (steps RD10/RD11): REE's cost rule with pay-as-bid prices and
 # storage at its opportunity cost (redispatch_objective.jl, [redispatch.bids]).
 const RD_BIDS = RD_OBJECTIVE == "ree" ? load_rd_bids(cfg) : nothing
+# [redispatch.hydro_budget] (RD13): the redispatch may not add hydro energy to a unit's day
+const RD_HYDRO_BUDGET = load_rd_hydro_budget(cfg)
 
 # ── Standalone load-flow / single-hour options ───────────────────────────────
 # [redispatch].from_saved: run ONLY the network load flow (redispatch), reading
@@ -2291,12 +2293,14 @@ if RD_WATER_VALUE == "constant"
         log_file = DIAGNOSTIC_OUTPUT ? nothing :
                    joinpath(IPOPT_LOG_DIR, "$(date_str)_h$(lpad(hour, 2, '0')).log")
         RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, hour))
+        hydro_budget_cap!(network, sched_hour, RD_HYDRO_BUDGET, "rt", date_str)      # RD13 water budget
         result = RD_STARTUPS === nothing ?
             solve_anchored_opf(network, gens, rd_optimizer_single(log_file = log_file),
                                sched_hour; iis_label = label) :
             solve_hour_with_startups(network, gens, k -> rd_optimizer_single(log_file = su_log(log_file, k)),
                                      sched_hour, RD_STARTUPS; label = label, date_str = date_str, hour = hour)
         status = string(result["termination_status"])
+        status in RD_SU_OK && hydro_budget_record!(result, network, sched_hour, RD_HYDRO_BUDGET, "rt", date_str)
 
         @printf "[%2d/%d] %s\n" (n_solved + 1) n_total label
 

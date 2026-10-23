@@ -47,6 +47,67 @@
 
 import LinearAlgebra
 
+# ── RD13: water budget for hydro in the redispatch ([redispatch.hydro_budget]) ───
+# The redispatch cannot create water: the weekly water plan (SDDP) and the markets
+# already fixed each hydro unit's daily energy.  REE practically never raises hydro
+# in phase I (2024: 39 of 13,584 GWh, I90DIA03) but turns it down a lot in phase II
+# (3,657 of 11,925 GWh): going down saves water, going up spends water planned for
+# other hours.  Without a budget, phase I and real time raised hydro at 1.59 × the
+# day-ahead price instead of starting gas (2–8 Dec 2024, no zones: 297 GWh hydro up).
+# Rule: per unit and day the redispatch may not add energy to the schedule
+# (Σ_h (pg − schedule) ≤ tolerance_mwh); shifting between hours and going down stay
+# free.  DC phase I: one constraint per unit and day.  Hour-by-hour stages (the
+# phase I AC check, real time): a running tally per stage, unit and day caps each
+# hour's output at schedule + tolerance + what earlier hours of the day gave back.
+
+function load_rd_hydro_budget(cfg)
+    c = get(get(cfg, "redispatch", Dict()), "hydro_budget", Dict())
+    get(c, "enabled", false) || return nothing
+    return (tolerance_mwh = Float64(get(c, "tolerance_mwh", 0.0)),)
+end
+
+const RD_HYDRO_TALLY = Dict{Tuple{String,String,String},Float64}()   # (stage, date, unit) ⇒ MWh added so far
+
+rd_is_hydro_budget_unit(g) = g["fuel"] == "Hydro" && abs(g["pmax"] - g["pmin"]) > 1e-9
+
+"""
+    hydro_budget_cap!(network, sched, hb, stage, date_str)
+
+Before an hourly solve: cap each free hydro unit at its schedule + tolerance + the
+energy earlier hours of the day gave back (MW = MWh for one hour).
+"""
+function hydro_budget_cap!(network, sched, hb, stage, date_str)
+    (hb === nothing || sched === nothing) && return 0
+    n = 0
+    for (_, g) in network["gen"]
+        rd_is_hydro_budget_unit(g) || continue
+        s = get(sched, g["name"], 0.0)
+        room = hb.tolerance_mwh + max(0.0, -get(RD_HYDRO_TALLY, (stage, date_str, g["name"]), 0.0))
+        cap = (s + room) / BASEMVA
+        if cap < g["pmax"]
+            g["pmax"] = max(cap, g["pmin"])
+            n += 1
+        end
+    end
+    return n
+end
+
+"""
+    hydro_budget_record!(result, network, sched, hb, stage, date_str)
+
+After a solved hour: add each hydro unit's change from its schedule to the day's tally.
+"""
+function hydro_budget_record!(result, network, sched, hb, stage, date_str)
+    (hb === nothing || sched === nothing) && return
+    sol = get(get(result, "solution", Dict()), "gen", Dict())
+    for (k, g) in network["gen"]
+        rd_is_hydro_budget_unit(g) || continue
+        haskey(sol, k) || continue
+        key = (stage, date_str, g["name"])
+        RD_HYDRO_TALLY[key] = get(RD_HYDRO_TALLY, key, 0.0) + sol[k]["pg"] * BASEMVA - get(sched, g["name"], 0.0)
+    end
+end
+
 function load_rd_phase1(cfg)
     c = get(get(cfg, "redispatch", Dict()), "phase1", Dict())
     get(c, "enabled", false) || return nothing
@@ -54,6 +115,7 @@ function load_rd_phase1(cfg)
     return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
             ac_check     = Bool(get(c, "ac_check", false)),               # step C: AC voltage check in phase I
             ac_zones     = Bool(get(c, "ac_check_zones", true)),          # step C: RD5 zone counts also in that check
+            hydro_budget = load_rd_hydro_budget(cfg),                     # RD13: no added hydro energy per day
             n1           = Bool(get(c, "n1", false)),                     # RD6
             n1_emergency = Float64(get(c, "n1_emergency_factor", 1.0)),   # × nominal rating after an outage
             n1_min_kv    = Float64(get(c, "n1_min_kv", 220.0)),
@@ -379,6 +441,17 @@ function run_phase1_day!(su, date_str)
             JuMP.@constraint(m, sum(starts[(name, -j)] for j in max(1, k - p1.min_down + 1):k if haskey(starts, (name, -j))) <= 1 - u[(name, k)])
         end
     end
+    # RD13 water budget ([redispatch.hydro_budget]): phase I may not add hydro energy to a
+    # unit's day — Σ_h (pg − schedule) ≤ tolerance; shifting between hours and going down stay free
+    if p1.hydro_budget !== nothing
+        sched_mw = Dict(name => sum(get(scheds[k], name, 0.0) for k in 1:H) for (name, _) in gen_of)
+        for (name, g) in gen_of
+            g["fuel"] == "Hydro" || continue
+            pgs = [pg_of[(name, k)] for k in 1:H if haskey(pg_of, (name, k))]
+            isempty(pgs) && continue
+            JuMP.@constraint(m, sum(pgs) * BASEMVA <= sched_mw[name] + p1.hydro_budget.tolerance_mwh)
+        end
+    end
     # RD5 zone counts
     if su.mustrun !== nothing
         for (k, h) in enumerate(hours), (zone, need) in get(su.mustrun.need, (date_str, h), Tuple{String,Int}[])
@@ -597,6 +670,7 @@ function phase1_ac_check_day!(su, date_str)
         network, gens = net.network, net.gens
         RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, h))
         RD_CURRENT_RESERVE[] = 0.0                       # no real-time reserve in phase I
+        hydro_budget_cap!(network, pdvp, p1.hydro_budget, "phase1_ac", date_str)     # RD13
         n_rows = length(RD_STARTUP_ROWS)
         log_file = joinpath(IPOPT_LOG_DIR, "$(date_str)_h$(lpad(h, 2, '0'))_ph1ac.log")
         res = solve_hour_with_startups(network, gens, k -> rd_optimizer_single(log_file = su_log(log_file, k)),
@@ -613,6 +687,7 @@ function phase1_ac_check_day!(su, date_str)
             continue
         end
         n_ok += 1
+        hydro_budget_record!(res, network, pdvp, p1.hydro_budget, "phase1_ac", date_str)   # RD13
         sol = res["solution"]["gen"]
         byname = Dict(g["name"] => (k, g) for (k, g) in gens)
         on = union(get(RD_PHASE1_ON, key, Set{String}()), started)

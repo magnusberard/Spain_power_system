@@ -327,6 +327,27 @@ def line_loading(rdir, hours, corr_of, n):
     return np.where(load >= 0, np.clip(np.rint(load), 0, 254), 255).astype(np.uint8)
 
 
+def scenario_of(rdir, info):
+    """Scenario runs (run_info label other than "2024", e.g. Trinity): their study days carry 2024
+    calendar dates, but the system is the scenario year's, so no real data may be set next to them.
+    Returns None for the 2024 path, else label, EMPIRE period and weather years from the run's own
+    config_used.toml and week key file."""
+    label = str(info.get("label") or "2024")
+    if label == "2024":
+        return None
+    sc = dict(label=label, period=None, weather_years=[])
+    try:
+        import tomllib
+        cfg = tomllib.loads((rdir / "config_used.toml").read_text(encoding="utf-8"))
+        sc["period"] = cfg.get("scenario", {}).get("period")
+        key = MODEL_REPO / cfg.get("weeks", {}).get("key_file", "")
+        if cfg.get("weeks", {}).get("enabled") and key.is_file():
+            sc["weather_years"] = sorted(int(y) for y in pd.read_csv(key).climate_year.unique())
+    except Exception as e:                       # the package is still fine without these details
+        print(f"  scenario details not read ({e})")
+    return sc
+
+
 def real_reference(runs_repo, hours):
     ref = runs_repo / "reference"
     idx = pd.MultiIndex.from_tuples([(d, h) for d in hours.days for h in range(24)], names=["date", "hour"])
@@ -465,8 +486,14 @@ def build(rdir, runs_repo, args):
     corr, corr_of, frame = corridors(rdir)
     grid_load = line_loading(rdir, hours, corr_of, len(corr))
 
-    # real data and the ENTSO-E sites
+    # real data and the ENTSO-E sites (left empty for scenario runs: their dates are 2024's)
     real, real_sites, ref_sites = real_reference(runs_repo, hours)
+    scenario = scenario_of(rdir, info)
+    if scenario is not None:
+        real.loc[:, :] = np.nan
+        real_sites.loc[:, :] = np.nan
+        print(f"  scenario run ({scenario['label']}, period {scenario['period']}, weather {scenario['weather_years']}): "
+              "no real data in the package")
     site_rows = [[uidx[u] for u in s["model_units"] if u in uidx] for s in ref_sites["sites"]]
     site_model = np.array([rd_out[r].sum(axis=0) if r else np.zeros(H) for r in site_rows])
     NA = 65535
@@ -475,7 +502,7 @@ def build(rdir, runs_repo, args):
     site_real16 = np.where(np.isfinite(rs), np.clip(np.rint(np.nan_to_num(rs)), 0, NA - 1), NA).astype("<u2")
 
     data = dict(
-        schema=SCHEMA, days=hours.days, price=price,
+        schema=SCHEMA, days=hours.days, price=price, scenario=scenario,
         real_price=r1(real["price"].to_numpy()),
         status=status.tolist(), shed=r1(shed), fail_info=fail_info(rdir, summ, hours),
         categories=OMIE_CATS, categories_phys=PHYS_CATS,
@@ -566,6 +593,8 @@ def main():
                 info={k: info.get(k) for k in ("ran_by", "branch", "commit", "commit_message", "uncommitted_files",
                                                "started", "finished", "runtime_min", "power_flow", "linear_solver",
                                                "label", "reconstructed")})
+    if data.get("scenario"):
+        meta["scenario"] = data["scenario"]
     # model changes for the viewer's filters: from the run's config, else kept from the package
     # being replaced (runs published before configs were saved were tagged by hand)
     features = detect_features(rdir)

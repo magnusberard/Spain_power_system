@@ -8,8 +8,7 @@ Spanish peninsula, one row per indicator and time step (15 min or hour, as publi
               541 wind · 1777/1778 wind D+1 / H+3 · 542 PV · 1779/1780 PV D+1 / H+3
               543 solar thermal · 10249 residual demand
   actuals     1293 demand · 551 wind · 1295 PV · 1294 solar thermal
-  reserve     626/627/628 additional upward reserve (P.O. 3.9): requirement, assigned, price
-              672 tertiary need up · 1788 mFRR upward reserve requirement
+  reserve     1788 mFRR upward reserve requirement (REE's tertiary requirement, 15 min)
 
 Columns: indicator, name, datetime_utc, value (MW), geo_id, geo_name. Peninsular rows only where an
 indicator has several geographies. Every month is first written to <out>/months/ (so an
@@ -40,8 +39,10 @@ INDICATORS = {
     542: "forecast", 1779: "forecast", 1780: "forecast",
     543: "forecast", 10249: "forecast",
     1293: "actual", 551: "actual", 1295: "actual", 1294: "actual",
-    626: "reserve", 627: "reserve", 628: "reserve", 672: "reserve", 1788: "reserve",
+    1788: "reserve",
 }
+# 626/627/628 (additional upward reserve, P.O. 3.9: requirement, assigned, price) and 672 (tertiary
+# need up) are listed by the API but return no values for 2021–2024 (checked 23 Oct 2026).
 PENINSULA = (8741, "Península")       # e·sios geo id of the peninsular system
 API = "https://api.esios.ree.es/indicators/{}"
 
@@ -88,7 +89,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("start"); ap.add_argument("end")
     here = Path(__file__).resolve().parents[1]
-    dflt = Path(os.environ["ESIOS_DIR"]) / "forecasts" if "ESIOS_DIR" in os.environ else here.parent / "esios_download" / "forecasts"
+    if ".claude" in here.parts:                       # a worktree: next to the main checkout instead
+        here = Path(*here.parts[:here.parts.index(".claude")])
+    dflt =Path(os.environ["ESIOS_DIR"]) / "forecasts" if "ESIOS_DIR" in os.environ else here.parent / "esios_download" / "forecasts"
     ap.add_argument("--out", type=Path, default=dflt)
     a = ap.parse_args()
     start, end = dt.date.fromisoformat(a.start), dt.date.fromisoformat(a.end)

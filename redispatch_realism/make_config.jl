@@ -3,6 +3,7 @@
 #
 #     julia redispatch_realism/make_config.jl <out.toml> [--source <config of the source run>]
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
+#                                             [--ac-check] [--no-zones] [--hydro-budget]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -12,14 +13,18 @@
 #   RD2 loss_share 0.0101 · RD3 q_requires_online · RD4 renewable_power_factor 0.98
 #   (RD 413/2014 art. 7 e) and Annex III: 0.98 inductive to 0.98 capacitive; was 1.0 until 22 Oct)
 #   RD9 startups · RD5 mustrun · RD7 reserve · RD8 phase1 · RD10/11 objective "ree"
-#   with the fitted bids from bids_fitted.csv (up: CCGT 0.89, coal 0.94, storage 0.59; down:
-#   phase II's bids, down_refund = "bid_da", RD12), tie-break 5
+#   with the fitted bids from bids_fitted.csv (up, net of start-ups, RD10b: CCGT 0.46, coal 0.50,
+#   storage 0.59; down: phase II's bids, down_refund = "bid_da", RD12), tie-break 5
 #   generator-bus voltage band 0.975–1.05 pu, and REE's band per voltage level at generator
 #   buses (P.O. 1.4: 400 kV 0.975–1.05, 220 kV 0.932–1.114)
 # --n1 on adds RD6 (preventive N-1 in phase I) with P.O. 1.1's rules: one circuit or
 # transformer per outage (n1_outage = "element") and seasonal post-outage limits
 # (RD6b).  --in-chain runs phase I inside the market chain (needs the markets, so
-# from_saved = "").  Written with TOML.print: comments are not kept.
+# from_saved = "").  --ac-check adds step C (AC voltage check of every hour in phase I, with
+# RD5's zones there); --no-zones turns RD5 off, in real time and in the AC check (the voltage
+# need then comes from the grid alone); --hydro-budget adds RD13 (no extra hydro energy per
+# unit and day).  The local week runs: C4 = --ac-check --hydro-budget,
+# C2b = --ac-check --no-zones --hydro-budget.  Written with TOML.print: comments are not kept.
 using TOML
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
@@ -92,6 +97,15 @@ function main(args)
         if "--in-chain" in args
             set!(cfg, "redispatch.phase1.in_chain", true)
             set!(cfg, "redispatch.from_saved", "")
+        end
+        if "--ac-check" in args                                 # step C
+            set!(cfg, "redispatch.phase1.ac_check", true)
+            set!(cfg, "redispatch.phase1.ac_check_zones", !("--no-zones" in args))
+        end
+        "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
+        if "--hydro-budget" in args                             # RD13
+            set!(cfg, "redispatch.hydro_budget.enabled", true)
+            set!(cfg, "redispatch.hydro_budget.tolerance_mwh", 0.0)
         end
     end
     b = opt("--bids")

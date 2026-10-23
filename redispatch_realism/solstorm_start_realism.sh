@@ -18,7 +18,9 @@
 #   options FROM, TO (default 2024-01-01 .. 2024-12-29), LANES (default 12 —
 #           compute-5-* has 20 cores and 96 GB; each lane needs ~3 GB),
 #           IPOPT (ma57 once HSL is set up, else mumps), N1=on (add RD6),
+#           AC=on (step C), ZONES=off (RD5 off), HB=on (RD13 water budget),
 #           DRY=1 (write the config and print the plan only)
+#           Local week runs: C4 = AC=on HB=on; C2b = AC=on ZONES=off HB=on
 #
 # The config is written once (by the first node to get there):
 #     <out>/config_realism.toml = config.toml + the source run's config + realism switches
@@ -53,7 +55,11 @@ if [ ! -f "$CFG" ]; then
         first="$(head -n1 "$SRC/chunks.txt")"; [ -f "$SRC/$first/config_used.toml" ] && srccfg="$SRC/$first/config_used.toml"
     fi
     [ -n "$srccfg" ] || echo "warning: no config of the source run found - using config.toml's market settings"
-    ( cd "$REPO" && julia redispatch_realism/make_config.jl "$CFG" ${srccfg:+--source "$srccfg"} ${N1:+--n1 "$N1"} )
+    flags=()
+    [ "${AC:-}" = on ] && flags+=(--ac-check)
+    [ "${ZONES:-}" = off ] && flags+=(--no-zones)
+    [ "${HB:-}" = on ] && flags+=(--hydro-budget)
+    ( cd "$REPO" && julia redispatch_realism/make_config.jl "$CFG" ${srccfg:+--source "$srccfg"} ${N1:+--n1 "$N1"} ${flags[@]+"${flags[@]}"} )
 fi
 
 # the days, dealt out over nodes and lanes

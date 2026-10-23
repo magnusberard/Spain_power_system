@@ -1,10 +1,10 @@
 fuel,technology,up_markup,down_markup
 Biomass,Biomass,0.0,0.047
 Biomass,CHP_Waste,0.0,0.053
-Coal,Coal,0.94,0.047
+Coal,Coal,0.5,0.047
 Gas,CHP,0.0,0.072
-Gas,Combined_cycle,0.89,0.023
-Gas,Gas_turbine,0.89,0.047
+Gas,Combined_cycle,0.46,0.023
+Gas,Gas_turbine,0.46,0.047
 Hydro,pumped_storage,0.59,0.047
 Hydro,reservoir,0.59,0.037
 Hydro,run_of_river,0.0,0.038

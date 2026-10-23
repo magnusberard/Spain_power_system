@@ -603,8 +603,8 @@ RD_OBJECTIVE ∈ ("quadratic", "cost_weighted", "ree") ||
     error("config.toml: [redispatch].objective must be \"quadratic\", \"cost_weighted\" or \"ree\"")
 RD_OBJECTIVE == "ree" && RD_WATER_VALUE != "constant" &&
     error("config.toml: [redispatch].objective = \"ree\" needs water_value = \"constant\"")
-RD_BIDS !== nothing && RD_BIDS.down_refund ∉ ("da", "bid") &&
-    error("config.toml: [redispatch.bids].down_refund must be \"da\" or \"bid\"")
+RD_BIDS !== nothing && RD_BIDS.down_refund ∉ ("da", "bid", "bid_da") &&
+    error("config.toml: [redispatch.bids].down_refund must be \"da\", \"bid\" or \"bid_da\"")
 RD_XB_SPLIT ∈ ("fixed", "country_total") ||
     error("config.toml: [redispatch].crossborder_split must be \"fixed\" or \"country_total\"")
 RD_PF_MODEL ∈ ("AC", "DC") ||

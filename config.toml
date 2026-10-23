@@ -629,6 +629,10 @@ nuclear_min_gen_frac = 0.8
 #     days sat at very different fleet availability (8 Jul ≈ 93 %, 2 Dec ≈ 69 %
 #     of the 7 408 MW nameplate, from the OMIE cleared programme), so a single
 #     annual factor cannot match both.
+#   Scenario runs (e.g. 2035) ignore the per-day table: their study days carry
+#     2024 dates, and the 2024 values include that year's outages and its
+#     price-driven cuts (monthly means Mar–May 0.55 / 0.51 / 0.64, year 0.79).
+#     They use nuclear_availability for every day (our assumption).
 nuclear_availability = 0.85
 
 # ── Coal availability ───────────────────────────────────────────────────────

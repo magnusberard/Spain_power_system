@@ -353,7 +353,11 @@ const NUCLEAR_AVAIL = Float64(get(get(cfg, "da", Dict()), "nuclear_availability"
 const NUCLEAR_AVAIL_BY_DATE = Dict{String,Float64}(
     String(k) => Float64(v) for (k, v) in
         get(get(cfg, "da", Dict()), "nuclear_availability_by_date", Dict{String,Any}()))
-nuclear_avail_for(date_str) = get(NUCLEAR_AVAIL_BY_DATE, String(date_str), NUCLEAR_AVAIL)
+# Scenario runs study 2024 calendar dates, so the per-day values would carry
+# 2024's outages and its price-driven cuts (spring 2024: 0.51–0.64) into the
+# scenario year; they use the annual [da].nuclear_availability instead.
+nuclear_avail_for(date_str) = SCEN_ACTIVE ? NUCLEAR_AVAIL :
+    get(NUCLEAR_AVAIL_BY_DATE, String(date_str), NUCLEAR_AVAIL)
 # Coal availability — same treatment as nuclear, and needed for the same
 # reason: generations.csv carries the full 2 900 MW nameplate of a fleet that
 # had largely closed by 2024.  See [da].coal_availability in config.toml.

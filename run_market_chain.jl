@@ -715,10 +715,11 @@ if WEEKS_ACTIVE
                          "the 2024 study days — the sampled horizon clears its own " *
                          "exchange in the 4-zone DA; disable [crossborder]")
     # SPAIN_DAYS keeps only some days of the sampled horizon, so a long horizon
-    # (e.g. 52 weeks) can run as independent chunks in parallel
-    # (scripts/run_day_ranges.sh, solstorm_start_weeks.sh) and be joined with
-    # scripts/merge_runs.py.  Scenario runs have no unit commitment (2024 path
-    # only), so no state passes from one day to the next and chunks need no warm-up.
+    # (e.g. 52 weeks) can run as chunks, joined with scripts/merge_runs.py:
+    # in parallel (scripts/run_day_ranges.sh, solstorm_start_weeks.sh) when no
+    # state passes between days, or in order (scripts/run_markets_sequential.sh,
+    # solstorm_start_markets.sh) when [unit_commitment] is on, so each chunk
+    # starts from the previous chunk's uc_state.json (SPAIN_UC_STATE_IN).
     if haskey(ENV, "SPAIN_DAYS")
         wanted  = study_days(cfg)
         outside = setdiff(wanted, TARGET_DAYS)

@@ -18,6 +18,8 @@
 #   MARKUP    on: [costs.markup] on as well (generation tax + RSI mark-ups); off (default)
 #   HYDRO     optional hydro_state variant for [bellman] (e.g. aligned_rc_observed)
 #   RES       optional [run].res_input (accepted or offered)
+#   Scenario runs (e.g. 2035): leave GAS, MARKUP and HYDRO out; config.toml sets
+#   the switches and make_run_config.jl stops if one is given.
 #
 # Writes <out>/config_markets.toml, <out>/config_redispatch.toml and
 # <out>/chunks.txt (the chunk list step 2 reads). A finished chunk gets a file

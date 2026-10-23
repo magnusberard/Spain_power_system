@@ -26,6 +26,10 @@
 #                        Data/hydro_state/{Volume,TurbineSchedule,BellmanValuesOUT}_LABEL.csv
 #                        (branch hydro-state, hydro_state/midterm_observed.jl)
 #   --res-input X        [run] res_input = "X"
+#
+# Scenario configs ([scenario].label other than "2024", e.g. the 2035 runs) set
+# their own switches in config.toml, so --gas, --markup and --hydro (2024 options:
+# 2024 closed plants and coal price, 2024 hydro state) stop the script there.
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
 
@@ -59,6 +63,22 @@ function set_key(lines, section, key, value)
     error("config.toml: no '$key' in [$section]")
 end
 
+"The value text of `key` in [section] (comment removed), or nothing."
+function get_key(lines, section, key)
+    inside = false
+    for line in lines
+        m = match(r"^\s*\[([^\[\]]+)\]\s*(#.*)?$", line)
+        if m !== nothing
+            inside = strip(m.captures[1]) == section
+            continue
+        end
+        inside || continue
+        k = match(Regex("^\\s*" * key * "\\s*=\\s*(\"[^\"]*\"|[^#\\s]+)"), line)
+        k === nothing || return k.captures[1]
+    end
+    return nothing
+end
+
 function main(args)
     usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--config file]"
     isempty(args) && error(usage)
@@ -80,6 +100,13 @@ function main(args)
     raw = read(opt["--config"], String)
     crlf = occursin("\r\n", raw)
     lines = split(replace(raw, "\r\n" => "\n"), "\n"; keepempty = true) .|> String
+    label = strip(something(get_key(lines, "scenario", "label"), "2024"), '"')
+    if label != "2024"
+        used = [o for (o, set) in (("GAS=on", opt["--gas"] == "on"), ("MARKUP=on", opt["--markup"] == "on"),
+                                   ("HYDRO", get(opt, "--hydro", "") != "")) if set]
+        isempty(used) || error("[scenario] label = \"$label\": $(join(used, ", ")) only for 2024 runs; " *
+                               "this config sets its own switches. Start again without them.")
+    end
     if stage == "markets"
         set_key(lines, "redispatch", "enabled", "false")
     else

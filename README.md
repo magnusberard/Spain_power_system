@@ -246,8 +246,9 @@ fleet shrinks by one factor everywhere (×0.838 to 20,021 MW). With
 `[scenario.retirement] ccgt = "oldest_first"` (nodal only) whole units close
 instead, oldest first by build year (GEM, `Data/gas_unit_efficiency.csv`),
 until EMPIRE's national total is met; the unit crossing it is shrunk. Units
-under 100 MW and the Balearic plants stay at their 2024 size. 2035: 15 units
-built 2002–2004 close (6,844 MW), Arcos de la Frontera G0004 389 → 335 MW.
+under 100 MW stay at their 2024 size; the Balearic plants (`empire_regions`)
+take EMPIRE's island total, 994 → 739 MW. 2035: 14 units built 2002–2004
+close (6,457 MW), Palos G0379 387 → 200 MW.
 The list is written to `results/<run>/ccgt_fleet.csv`; `"even"` is the
 original scaling. Our 2024 list has 26.9 GW of CCGT against EMPIRE's 23.9 GW
 start (EMPIRE's regions are our units × 0.888), so 6.9 GW are removed in all.
@@ -258,7 +259,7 @@ CCGT cost is taken to be at η = 0.56 (`[scenario.efficiency].GasCCGT`) and
 rescaled per unit with the same efficiency file as 2024, fuel and CO₂ with
 0.56/η, the variable O&M (4.68 €/MWh) unchanged. 2035 costs at η 0.56 / 0.58 /
 0.60: Trinity 62.4 / 60.4 / 58.6, NECP 173.4 / 167.5 / 162.1 €/MWh; after the
-oldest-first closures 6.5 / 12.2 / 1.2 GW remain in each class. OCGTs, the CHP
+oldest-first closures 6.6 / 12.1 / 1.2 GW remain in each class. OCGTs, the CHP
 block and the mid-term SDDP keep the single CCGT cost.
 
 **Mark-ups in the scenarios (branch `2035-improvements`).** `[costs.markup]` now
@@ -267,6 +268,16 @@ also runs in scenario (weeks) runs. Their study days carry 2024 dates, so the
 IVPEE at 0 % from 2028, RDL 18/2026) and there is no RSI yet, so no gas
 mark-up. Coal keeps the 2024 constant `L_coal = 0.188` (our assumption):
 2035 coal Trinity 68.2 → 84.0, NECP 303.9 → 374.2 €/MWh in the market stages.
+
+**Island plants in the scenarios (branch `2035-improvements`).** As in 2024
+(`[islands]`), the Balearic plants get 0 MW in the market stages and run only
+in the redispatch, and Ceuta's plant is left out (no Ceuta demand in the data).
+Unlike OMIE's series, EMPIRE's load and solar/wind include the islands
+(ES532: 3.8–4.3 TWh, 0.9–1.3 GW solar in 2035), so scenario runs share the
+solar/wind series over all units (`prepare_network(; inputs_peninsular =
+false)`) and do not rescale coal; with the 2024 rule the island share
+(~1.9 % of solar) was counted twice. The Mallorca link is 277 MW in the grid
+vs 400 (Trinity) / 587 MW (NECP) in EMPIRE — to check in a test run.
 
 ### 4. Grid reinforcement
 

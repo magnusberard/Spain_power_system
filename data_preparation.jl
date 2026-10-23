@@ -298,6 +298,13 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          # true (copper-plate market gates only): units on
                          # `island_buses` are held at 0 MW.
                          islands_off_market::Bool = false,
+                         # true (2024): the solar/wind series and the coal
+                         # availability are OMIE's, i.e. peninsular, hence the
+                         # mainland-only sharing and coal rescaling above.
+                         # false (scenario runs): the EMPIRE series already
+                         # include the island units, so they are shared over
+                         # all units and coal is not rescaled.
+                         inputs_peninsular::Bool = true,
                          # Units (generations.csv unit_id) left out of the network
                          # altogether, in every stage ([islands].remove_isolated):
                          # plants of isolated systems that generations.csv attached
@@ -365,13 +372,15 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     # The solar/wind series are OMIE's, i.e. PENINSULAR output, so with
     # [islands] on they are shared over mainland units only; an island unit then
     # gets the same capacity factor without taking a share of the peninsula's.
+    # Scenario series (inputs_peninsular = false) include the islands: all units.
+    excl_island(row) = inputs_peninsular && on_island(row)
     total_solar_mw = sum(Float64(row.capacity_mw) * uscale(row) for row in eachrow(gen_df)
                          if row.primary_fuel == "Solar" && haskey(bus_idx, row.bus_id) &&
-                            !on_island(row);
+                            !excl_island(row);
                          init = 0.0)
     total_wind_mw  = sum(Float64(row.capacity_mw) * uscale(row) for row in eachrow(gen_df)
                          if row.primary_fuel == "Wind" && haskey(bus_idx, row.bus_id) &&
-                            !on_island(row);
+                            !excl_island(row);
                          init = 0.0)
     # coal_availability is the day's peak OMIE coal ÷ the WHOLE coal nameplate
     # (omie_conversion/add_nuclear_coal_calibration.py), which includes the
@@ -381,7 +390,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         all_mw  = sum(Float64(r.capacity_mw) * uscale(r) for r in eachrow(gen_df) if coal(r); init = 0.0)
         main_mw = sum(Float64(r.capacity_mw) * uscale(r) for r in eachrow(gen_df)
                       if coal(r) && !on_island(r); init = 0.0)
-        (island_buses === nothing || main_mw <= 0.0) ? 1.0 : all_mw / main_mw
+        (island_buses === nothing || !inputs_peninsular || main_mw <= 0.0) ? 1.0 : all_mw / main_mw
     end
 
     # ── Buses ────────────────────────────────────────────────

@@ -743,8 +743,9 @@ instead, oldest first, while the national total stays EMPIRE's exactly:
 units are sorted by build year (newest first; ties by unit_id) and kept until
 the target is filled; the unit that crosses the target is shrunk to the
 remainder; all older units get factor 0.  Units smaller than keep_below_mw and
-units in keep_regions (NUTS3 prefixes, e.g. the Balearic Islands ES53) stay
-at their 2024 size outside the rule.  Build years: build_year_file (GEM, the
+units in keep_regions (NUTS3 prefixes) stay at their 2024 size outside the
+rule; units in empire_regions (e.g. the Balearic Islands ES53) stay outside it
+at EMPIRE's own regional capacity (the even factor nodal_unit_scale set).  Build years: build_year_file (GEM, the
 same file as [costs.gas_unit_efficiency]).  Regional totals then differ from
 EMPIRE's, whose regional split of the existing fleet is a uniform scaling.
 Returns one row per CCGT unit (2024 MW, factor, scenario MW, status).
@@ -754,6 +755,9 @@ function ccgt_oldest_first!(scale::Dict{String,Float64}, cfg, emp;
     rcfg   = get(cfg["scenario"], "retirement", Dict())
     keep_mw  = Float64(get(rcfg, "keep_below_mw", 100.0))
     keep_reg = String.(get(rcfg, "keep_regions", ["ES53"]))
+    # empire_regions: regions kept at EMPIRE's own regional CCGT capacity (the
+    # even factor nodal_unit_scale already set), outside the oldest-first rule
+    emp_reg  = String.(get(rcfg, "empire_regions", String[]))
     yr_file  = joinpath(@__DIR__, String(get(rcfg, "build_year_file", "Data/gas_unit_efficiency.csv")))
     target   = get(emp.caps["ES"], "Gas CCGT", 0.0)
 
@@ -768,20 +772,23 @@ function ccgt_oldest_first!(scale::Dict{String,Float64}, cfg, emp;
         reg = get(b2r, String(r.bus_id), "")
         startswith(reg, "ES") || continue
         id, mw = String(r.unit_id), Float64(r.capacity_mw)
-        outside = mw < keep_mw || any(p -> startswith(reg, p), keep_reg)
+        in_emp  = any(p -> startswith(reg, p), emp_reg)
+        outside = in_emp || mw < keep_mw || any(p -> startswith(reg, p), keep_reg)
         y = get(year, id, missing)
         outside || !ismissing(y) ||
             error("[scenario.retirement]: no build year for CCGT $id in $(basename(yr_file))")
         push!(rows, (unit_id = id, name = String(r.name), build_year = y, region = reg,
-                     mw_2024 = mw, outside = outside))
+                     mw_2024 = mw, outside = outside,
+                     fixed_factor = in_emp ? get(scale, id, 1.0) : 1.0,
+                     fixed_status = in_emp ? "EMPIRE region" : "outside rule"))
     end
     fleet = DataFrame(rows)
 
-    left = target - sum(fleet.mw_2024[fleet.outside]; init = 0.0)
+    left = target - sum(fleet.mw_2024[fleet.outside] .* fleet.fixed_factor[fleet.outside]; init = 0.0)
     left >= 0 || error("[scenario.retirement]: units outside the rule ($(round(target - left)) MW) " *
                        "exceed EMPIRE's CCGT total $(round(target)) MW")
-    factor = ones(nrow(fleet))
-    status = fill("outside rule", nrow(fleet))
+    factor = copy(fleet.fixed_factor)
+    status = copy(fleet.fixed_status)
     for i in sortperm(collect(zip(coalesce.(fleet.build_year, 0), fleet.unit_id)); rev = true)
         fleet.outside[i] && continue
         mw = fleet.mw_2024[i]
@@ -798,7 +805,7 @@ function ccgt_oldest_first!(scale::Dict{String,Float64}, cfg, emp;
     fleet.mw_scen = fleet.mw_2024 .* factor
     fleet.status = status
     for r in eachrow(fleet); scale[r.unit_id] = r.factor; end
-    return select(fleet, Not(:outside))
+    return select(fleet, Not([:outside, :fixed_factor, :fixed_status]))
 end
 
 """

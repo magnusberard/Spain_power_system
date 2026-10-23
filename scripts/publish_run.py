@@ -463,6 +463,10 @@ def build(rdir, runs_repo, args):
     units["group"] = [PLANT_OF.get(k) for k in keys]
     groups, group_rows = [], []
     for (b, g), u in units.dropna(subset=["group", "bus_id"]).groupby(["bus_id", "group"], sort=False):
+        # scenario runs scale retired units to 0 MW (a technology EMPIRE no longer has, CCGTs
+        # closed oldest first): such a group has nothing to show and no capacity to divide by
+        if u.capacity_mw.sum() <= 0:
+            continue
         techs = u.technology.map(TECH_NAME).value_counts()
         x, y = proj(bus.loc[b, "x"], bus.loc[b, "y"])
         groups.append(dict(bus=b, f=g, x=x, y=y, cap=round(float(u.capacity_mw.sum()), 1), n=len(u),

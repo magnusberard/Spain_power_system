@@ -279,6 +279,20 @@ false)`) and do not rescale coal; with the 2024 rule the island share
 (~1.9 % of solar) was counted twice. The Mallorca link is 277 MW in the grid
 vs 400 (Trinity) / 587 MW (NECP) in EMPIRE — to check in a test run.
 
+**Unit commitment in the scenarios (branch `2035-improvements`).** The gas/coal
+on/off with start costs, minimum load, min up/down and the minimum-income check
+([unit_commitment], as with GAS=on in 2024) now also runs in scenario runs.
+EMPIRE gives no gas price, so the start gas (1.5 MWh/MW) is priced from its
+CCGT cost: gas + CO₂ per MWh of gas = (cost − vom) × 0.56 — 32.3 €/MWh in
+Trinity, 94.5 in NECP, one value for the run — giving 106 / 199 €/MW per start
+incl. wear (57.4 €/MW). Coal runs at full size with its own on/off and may be
+moved in the redispatch (`frozen_fuels = ["Nuclear", "Biomass"]`). With unit
+commitment the weeks are no longer independent: run the year with the market
+stages in order (`scripts/run_markets_sequential.sh`, which passes
+`uc_state.json` on) and the redispatch in parallel
+(`scripts/solstorm_start_redispatch.sh`), GAS=off since this config already has
+the switches.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,

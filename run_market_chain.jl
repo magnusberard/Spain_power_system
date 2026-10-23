@@ -402,12 +402,24 @@ end
 # [unit_commitment]: CCGTs of at least min_mw are committed in the DA (on/off,
 # minimum load, start-up cost, minimum up/down time; unit_commitment.jl, da.jl).
 # Start-up fuel is priced from the day's gas + CO2, so 2024 path only for now.
-const UC_CFG = GAS_SRMC_ON ? load_uc_config(cfg) : nothing
-if !GAS_SRMC_ON && get(get(cfg, "unit_commitment", Dict()), "enabled", false)
-    println("WARNING: [unit_commitment] ignored — needs [costs.gas_srmc] on and the 2024 path")
+const UC_CFG = (GAS_SRMC_ON || SCEN_ACTIVE) ? load_uc_config(cfg) : nothing
+if !GAS_SRMC_ON && !SCEN_ACTIVE && get(get(cfg, "unit_commitment", Dict()), "enabled", false)
+    println("WARNING: [unit_commitment] ignored — the 2024 path needs [costs.gas_srmc] on")
 end
+# Start fuel price in scenario runs: EMPIRE gives no gas price, only the CCGT
+# cost per MWh of electricity (fuel + O&M, plus our CO2 adder, all at
+# eta_ref = [scenario.efficiency].GasCCGT).  Gas + its CO2 per MWh of gas is
+# then (cost - vom) * eta_ref — the coal units' start fuel is priced the same way
+# from their own cost.  One value for the run (EMPIRE has one cost per period);
+# the 2024 path keeps the day's MIBGAS + EUA (gas_fuel_cost_th).
+const UC_GAS_FUEL_TH = (SCEN_ACTIVE && UC_CFG !== nothing) ?
+    (EMP.costs["Gas CCGT"] -
+     Float64(get(get(get(cfg["costs"], "gas_srmc", Dict()), "vom", Dict()), "ccgt", 0.0))) *
+    Float64(get(get(cfg["scenario"], "efficiency", Dict()), "GasCCGT", 0.56)) : nothing
 if UC_CFG !== nothing
     @printf "Unit commit.   : CCGT >= %.0f MW in the DA; min up %d h, down %d h; min load %.0f %% (1x1) / %.0f %% (>= %.0f MW, 2x1); start %.1f EUR/MW wear + %.1f MWh gas/MW\n" UC_CFG.min_mw UC_CFG.min_up UC_CFG.min_down 100UC_CFG.min_load_1x1 100UC_CFG.min_load_2x1 UC_CFG.two_by_one_min_mw UC_CFG.wear_eur_per_mw UC_CFG.start_fuel_mwh_per_mw
+    UC_GAS_FUEL_TH === nothing ||
+        @printf "                 start gas (scenario): %.1f EUR/MWh of gas incl. CO2, from EMPIRE's CCGT cost → %.0f EUR/MW per start\n" UC_GAS_FUEL_TH UC_CFG.wear_eur_per_mw + UC_CFG.start_fuel_mwh_per_mw * UC_GAS_FUEL_TH
 end
 const COAL_UNIT_FLEET = UC_CFG !== nothing && UC_CFG.coal !== nothing &&
                         !UC_CFG.coal.use_availability_factor
@@ -511,7 +523,7 @@ const REMOVED_UNITS = let s = get(ISLANDS_CFG, "remove_isolated", false) ?
     isempty(s) ? nothing : s
 end
 isempty(FLEET_CLOSED) || @printf "Closed plants  : %d unit(s) left out of every stage ([fleet])\n" length(FLEET_CLOSED)
-COAL_UNIT_FLEET && isempty(FLEET_CLOSED) &&
+COAL_UNIT_FLEET && isempty(FLEET_CLOSED) && !SCEN_ACTIVE &&
     println("WARNING: coal runs without the availability factor but [fleet] closes no unit — closed coal plants (e.g. As Pontes) are back at full size")
 if REMOVED_UNITS !== nothing
     @printf "Isolated plants: %d unit(s) left out of every stage ([islands])\n" length(REMOVED_UNITS)
@@ -1654,14 +1666,14 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     uc = nothing
     if label == "DA" && UC_CFG !== nothing
         prev_day = string(Date(String(date_str)) - Day(1))
-        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES; fuel_th = UC_GAS_FUEL_TH),
               init = UC_STATE_DATE[] == prev_day ? copy(UC_STATE) : nothing,
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
         UC_INIT_FOR_DAY[String(date_str)] = uc.init
     elseif label in ("ID2", "ID3") && UC_CFG !== nothing && UC_CFG.intraday_starts
         # Intraday starts: units on in the previous gate stay on, units off may
         # start (da.jl, prev_on); new starts must pay their way (intraday_clear).
-        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES; fuel_th = UC_GAS_FUEL_TH),
               init = get(UC_INIT_FOR_DAY, String(date_str), nothing),
               prev_on = uc_prev_on_for(date_str, day_ts),
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)

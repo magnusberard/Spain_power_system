@@ -358,7 +358,10 @@ closed_units = ["G0039", "G0040", "G0742"]
 # The layout is not in our data; the 54 CCGTs >= 100 MW split into 43 units of
 # 200-435 MW and 11 of 782-859 MW with nothing between (~400 MW = typical 1x1,
 # ~800 MW = typical 2x1).
-enabled               = false
+# On in branch 2035-improvements (scenario runs price the start gas from EMPIRE's
+# CCGT cost, run_market_chain.jl UC_GAS_FUEL_TH); it also turns unit commitment
+# on for 2024 runs made from this branch.
+enabled               = true
 min_mw                = 100.0
 min_up_h              = 2
 min_down_h            = 6
@@ -3457,7 +3460,9 @@ enabled = true
 # growth — see empire_nodal.jl), and pinning that inflated MW makes the local
 # network infeasible with no way to relieve it. Add "Hydro:run_of_river" here
 # to restore the old fully-frozen behaviour once the grid can actually carry it.
-frozen_fuels = ["Nuclear", "Biomass", "Coal"]
+# 2035-improvements: coal has its own on/off ([unit_commitment.coal]) and runs
+# at full size, so the redispatch may move it (as GAS=on in 2024).
+frozen_fuels = ["Nuclear", "Biomass"]
 
 # ── Manual, targeted line reinforcement ─────────────────────────────────────
 # A CSV (columns: line_id,factor) naming individual branches — AC lines,

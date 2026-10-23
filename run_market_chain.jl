@@ -99,12 +99,16 @@ end
 COAL_SRMC !== nothing && println("Coal marginal cost: quarterly coal price + EUA (per study day, [costs.coal_srmc])")
 # [costs.markup]: generation tax on all taxed fuels + RSI-based mark-ups on gas
 # and coal bids in the market stages (markup.jl).  2024 path only.
-const MARKUP = load_markup(cfg)
+const MARKUP = load_markup(cfg; scenario = SCEN_ACTIVE)
 const MARKUP_LOG = Dict{Tuple{String,Int},NamedTuple}()   # (date, hour) ⇒ tax, RSI, L
-MARKUP !== nothing && @printf("Mark-ups       : tax %s (default %.1f %%) on %s; gas/coal L from RSI (%d table points, RSI %.2f–%.2f, cap %.2f)
-",
-    join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),
-    length(MARKUP.x), MARKUP.x[1], MARKUP.x[end], MARKUP.cap)
+if MARKUP !== nothing && SCEN_ACTIVE
+    @printf("Mark-ups       : scenario run — tax %.1f %% ([costs.markup].scenario_tax), coal L %.3f, no gas mark-up (no RSI for scenarios yet)\n",
+            100MARKUP.tax_default, MARKUP.l_coal)
+elseif MARKUP !== nothing
+    @printf("Mark-ups       : tax %s (default %.1f %%) on %s; gas/coal L from RSI (%d table points, RSI %.2f–%.2f, cap %.2f)\n",
+        join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),
+        length(MARKUP.x), MARKUP.x[1], MARKUP.x[end], MARKUP.cap)
+end
 # [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
 # CCGT is priced from its own gas burn.  2024 path: gas_srmc_eta from the daily
 # MIBGAS + EUA, so it needs [costs.gas_srmc].  Scenario runs: EMPIRE's CCGT
@@ -1546,7 +1550,9 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      rating_scale = RATING_SCALE,
                      extra_lines = EXTRA_LINES)
      for ts in eachrow(day_ts)]
-    if MARKUP !== nothing && !WEEKS_ACTIVE
+    # Weeks mode is always a scenario run: load_markup(; scenario = true) then
+    # reads no 2024-dated tax or RSI, so the same call is safe there.
+    if MARKUP !== nothing
         for r in apply_markup!(nets, MARKUP, date_str, day_ts)
             MARKUP_LOG[(r.date, r.hour)] = r
         end

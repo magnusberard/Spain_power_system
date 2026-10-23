@@ -261,6 +261,13 @@ rescaled per unit with the same efficiency file as 2024, fuel and CO₂ with
 oldest-first closures 6.5 / 12.2 / 1.2 GW remain in each class. OCGTs, the CHP
 block and the mid-term SDDP keep the single CCGT cost.
 
+**Mark-ups in the scenarios (branch `2035-improvements`).** `[costs.markup]` now
+also runs in scenario (weeks) runs. Their study days carry 2024 dates, so the
+2024 tax quarters and `rsi_file` are not read: the tax is `scenario_tax` (0 —
+IVPEE at 0 % from 2028, RDL 18/2026) and there is no RSI yet, so no gas
+mark-up. Coal keeps the 2024 constant `L_coal = 0.188` (our assumption):
+2035 coal Trinity 68.2 → 84.0, NECP 303.9 → 374.2 €/MWh in the market stages.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,

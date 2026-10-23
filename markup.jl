@@ -41,11 +41,22 @@ end
 const MARKUP_GAS_TECH = Set(["Combined_cycle", "Gas_turbine"])
 const MARKUP_NO_TAX_TECH = Set(["CHP", "CHP_Waste", "mini_hydro"])
 
-function load_markup(cfg; root = @__DIR__)
+function load_markup(cfg; root = @__DIR__, scenario::Bool = false)
     m = get(get(cfg, "costs", Dict()), "markup", Dict())
     get(m, "enabled", false) || return nothing
-    rs = CSV.read(joinpath(root, m["rsi_file"]), DataFrame)
     tb = sort(CSV.read(joinpath(root, m["table_file"]), DataFrame), :rsi)
+    # Scenario runs (e.g. 2035) study 2024 calendar dates, so the 2024 tax
+    # quarters and the 2024 RSI file must not be read: one tax rate for the
+    # whole run (scenario_tax) and no RSI — hence no gas mark-up (L_gas = 0)
+    # until the model computes its own RSI; coal keeps the constant L_coal.
+    if scenario
+        return MarkupCfg(Dict{String,Float64}(), Float64(get(m, "scenario_tax", 0.0)),
+                         Set(String.(get(m, "tax_fuels", ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]))),
+                         Dict{Tuple{String,Int},Float64}(),
+                         Float64.(tb.rsi), Float64.(tb.L_gas), Float64(get(m, "L_coal", 0.0)),
+                         Float64(get(m, "cap", 0.5)))
+    end
+    rs = CSV.read(joinpath(root, m["rsi_file"]), DataFrame)
     MarkupCfg(Dict(String(k) => Float64(v) for (k, v) in get(m, "tax", Dict())),
               Float64(get(m, "tax_default", 0.07)),
               Set(String.(get(m, "tax_fuels", ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]))),

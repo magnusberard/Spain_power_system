@@ -101,9 +101,15 @@ COAL_SRMC !== nothing && println("Coal marginal cost: quarterly coal price + EUA
 # and coal bids in the market stages (markup.jl).  2024 path only.
 const MARKUP = load_markup(cfg; scenario = SCEN_ACTIVE)
 const MARKUP_LOG = Dict{Tuple{String,Int},NamedTuple}()   # (date, hour) ⇒ tax, RSI, L
+rsi_text(mk) = mk.rsi_source == "model" ?
+    @sprintf("gas L from the model's own RSI = %.3f + %.3f × (1 − %.3f) × offered MW / load", mk.rsi_offset, mk.rsi_scale, mk.largest_share) :
+    mk.rsi_source == "file" ? "gas L from the RSI file" : "no gas mark-up (no RSI)"
 if MARKUP !== nothing && SCEN_ACTIVE
-    @printf("Mark-ups       : scenario run — tax %.1f %% ([costs.markup].scenario_tax), coal L %.3f, no gas mark-up (no RSI for scenarios yet)\n",
-            100MARKUP.tax_default, MARKUP.l_coal)
+    @printf("Mark-ups       : scenario run — tax %.1f %% ([costs.markup].scenario_tax), coal L %.3f, %s\n",
+            100MARKUP.tax_default, MARKUP.l_coal, rsi_text(MARKUP))
+elseif MARKUP !== nothing && MARKUP.rsi_source != "file"
+    @printf("Mark-ups       : tax %s (default %.1f %%), coal L %.3f, %s\n",
+            join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, MARKUP.l_coal, rsi_text(MARKUP))
 elseif MARKUP !== nothing
     @printf("Mark-ups       : tax %s (default %.1f %%) on %s; gas/coal L from RSI (%d table points, RSI %.2f–%.2f, cap %.2f)\n",
         join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),

@@ -304,6 +304,29 @@ rsi_file    = "Data/markup/rsi_2024.csv"
 table_file  = "Data/markup/markup_table_2024.csv"
 L_coal      = 0.188
 cap         = 0.5
+# RSI source.  rsi_source (2024 path): "file" = rsi_file (OMIE 2024 bids),
+# "model" = computed by the model, "none".  scenario_rsi_source (scenario runs,
+# which have no OMIE data): "model" or "none".  The model's RSI needs no owner
+# data: RSI = rsi_scale × (1 − largest_share) × offered MW / load MW, with
+# offered MW the units' pmax in the market stage (no French imports, as in OMIE).
+# largest_share: Iberdrola's share of OMIE's offered MW in 2024, mean 0.214
+# (5–95 % 0.183–0.250; Data/markup/omie_hourly_2024.csv); with it fixed the
+# RSI tracks OMIE's (corr 0.98, mean |ΔL_gas| 0.007).  rsi_scale: the model's
+# offered MW / load vs OMIE's on 2024 days.
+# Calibration (2024, the 15th of every month, 288 hours, market stages): the
+# model's offered MW runs ~1.7× OMIE's (OMIE's curves hold only the auction,
+# bilateral contracts outside; hydro offers are energy-limited) and its load
+# ~1.2×.  rsi_offset/rsi_scale give the model's RSI OMIE's mean and spread
+# (least squares would shrink the tails: RSI < 1.7 in 1 % of hours vs 14 %):
+# RSI = −1.013 + 1.110 × (1 − 0.214) × offered / load → mean L_gas 0.019 vs
+# OMIE 0.020; L_gas > 0.05 in 20 % vs 17 % of hours; RSI < 1.7 13 % vs 14 %;
+# hour-by-hour corr of L 0.48; within-day corr of RSI ≥ 0.8 on 10 of 12 days
+# (15 Apr 0.50, 15 Jun 0.11).  Our method.
+rsi_source          = "file"
+scenario_rsi_source = "model"
+largest_share       = 0.214
+rsi_scale           = 1.110
+rsi_offset          = -1.013
 
 [fleet]
 # ── Plants closed in reality, left out of every stage ────────────────────────

@@ -268,6 +268,15 @@ also runs in scenario (weeks) runs. Their study days carry 2024 dates, so the
 IVPEE at 0 % from 2028, RDL 18/2026) and there is no RSI yet, so no gas
 mark-up. Coal keeps the 2024 constant `L_coal = 0.188` (our assumption):
 2035 coal Trinity 68.2 → 84.0, NECP 303.9 → 374.2 €/MWh in the market stages.
+Gas mark-up from the model's own RSI (`scenario_rsi_source = "model"`): no
+owner data is needed, since the largest firm held a near-constant 21.4 % of
+OMIE's offered MW in 2024, so RSI = rsi_offset + rsi_scale × (1 − 0.214) ×
+offered MW / load (offered = the units' pmax in the market stage, without the
+French imports and the SLACK backstop). Calibrated on 2024 (the 15th of every
+month, 288 hours) to OMIE's mean and spread: −1.013 + 1.110 × …; mean L_gas
+0.019 vs 0.020, L_gas > 0.05 in 20 % vs 17 % of hours; the tight hours within
+a day match on 10 of 12 days. `markup_hours.csv` logs RSI, offered MW and load
+per hour.
 
 **Island plants in the scenarios (branch `2035-improvements`).** As in 2024
 (`[islands]`), the Balearic plants get 0 MW in the market stages and run only

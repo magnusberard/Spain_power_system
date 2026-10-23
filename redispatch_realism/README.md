@@ -398,6 +398,23 @@ full (`offline_hydro_counts`). The tertiary rule never binds; REE's shortage tha
 from the supplementary reserve (forecast errors, §4.4; step E2, needs e·sios forecasts) and from hydro
 being less available than the model assumes.
 
+### Start-ups counted once, and phase II's down bids (C3, 23 Oct)
+
+C3 = C1 + up mark-ups net of start-ups (RD10b: CCGT 0.46, coal 0.50) + phase II down bids (RD12,
+`bid_da`), 2–8 Dec 2024, run in two lanes (2–5 and 6–8 Dec), 168/168 hours.
+
+| 2–8 Dec 2024 | C1 | C3 | REE |
+|---|---|---|---|
+| phase I/II up / down | 237 / 216 GWh | 231 / 211 | 214 / 219 GWh |
+| phase I + II cost | 38.8 M€ (150 %) | **30.8 M€ (119 %)** | 25.95 M€ |
+| phase I starts | 132 | 137 | |
+| real-time up / cost | 26.5 GWh / 4.3 M€ | 45.5 / 7.7 | 87 GWh / 28.1 M€ |
+| real time: gas up / down; hydro up | — | 18 / 28; 24 GWh | combined cycles up 85 GWh |
+
+Counting start-ups once brings phase I + II from 150 to 119 % of REE with the same decisions. Real
+time grew: with the lower up mark-up, gas-for-gas moves are cheaper (18 up / 28 down), and hydro rose
+24 GWh because the water budget (RD13) was not yet on. Next: C3 + RD13.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

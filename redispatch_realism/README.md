@@ -385,6 +385,19 @@ control de tensión.
   phase I), the model's voltage part of phase I (~237 GWh) is about twice REE's (125 GWh): consistent
   with the audit's finding that the model's reactive balance leans toward shortage.
 
+**C2 (AC check, RD5 off entirely)**: phase I 328 GWh (153 % of REE) for only 14.2 M€, mostly hydro
+(297 GWh up; gas 23) with 113 committed unit-hours (C1: 1,005; gas 167 GWh up). Without REE's zone
+counts the AC check meets the voltage need with hydro, which is too freely available in the model's
+redispatch (no water budget in phase I, RD11 only prices it); REE's phase I is mostly gas. Real time
+38.8 GWh, 162/168 hours (6 stopped at Ipopt's iteration limit). Not yet usable for a counterfactual.
+
+**E1 (C1 + tertiary reserve, P.O. 1.5 §4.3)**: identical to C1 (real time 26.5 GWh, no reserve
+starts). The requirement averages 2,843 MW (aFRR 1,202 + largest unit 1,107 + 2 % of demand 534), but
+counted headroom averages 16,447 MW (minimum 3,230) because stopped reservoir and pumped hydro count in
+full (`offline_hydro_counts`). The tertiary rule never binds; REE's shortage that week most likely came
+from the supplementary reserve (forecast errors, §4.4; step E2, needs e·sios forecasts) and from hydro
+being less available than the model assumes.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

@@ -12,7 +12,8 @@
 #   RD2 loss_share 0.0101 · RD3 q_requires_online · RD4 renewable_power_factor 0.98
 #   (RD 413/2014 art. 7 e) and Annex III: 0.98 inductive to 0.98 capacitive; was 1.0 until 22 Oct)
 #   RD9 startups · RD5 mustrun · RD7 reserve · RD8 phase1 · RD10/11 objective "ree"
-#   with the fitted bids (CCGT 0.89, coal 0.94, storage 0.59 up mark-up), tie-break 5
+#   with the fitted bids from bids_fitted.csv (up: CCGT 0.89, coal 0.94, storage 0.59; down:
+#   phase II's bids, down_refund = "bid_da", RD12), tie-break 5
 #   generator-bus voltage band 0.975–1.05 pu, and REE's band per voltage level at generator
 #   buses (P.O. 1.4: 400 kV 0.975–1.05, 220 kV 0.932–1.114)
 # --n1 on adds RD6 (preventive N-1 in phase I) with P.O. 1.1's rules: one circuit or
@@ -44,11 +45,16 @@ function set!(cfg, path::String, value)
     t[String(keys[end])] = value
 end
 
-const BIDS = [Dict("type" => "Gas:Combined_cycle", "up_markup" => 0.89),
-              Dict("type" => "Gas:Gas_turbine", "up_markup" => 0.89),
-              Dict("type" => "Coal", "up_markup" => 0.94),
-              Dict("type" => "Hydro:pumped_storage", "up_markup" => 0.59),
-              Dict("type" => "Hydro:reservoir", "up_markup" => 0.59)]
+# Mark-ups per fuel:technology from bids_fitted.csv: up (RD10, REE's 2024 phase I prices) and
+# down (RD12, phase II's down bids as a share of the day-ahead price, fit_phase2_bids.py).
+const BIDS = let rows = Dict{String,Any}[]
+    lines = readlines(joinpath(@__DIR__, "bids_fitted.csv"))
+    for l in lines[2:end]
+        f, t, u, d = split(strip(l), ",")
+        push!(rows, Dict("type" => "$f:$t", "up_markup" => parse(Float64, u), "down_markup" => parse(Float64, d)))
+    end
+    rows
+end
 
 function main(args)
     isempty(args) && (println(read(@__FILE__, String)[1:1200]); return)
@@ -77,6 +83,7 @@ function main(args)
         set!(cfg, "redispatch.startups.candidate_min_mw", 100.0)
         set!(cfg, "redispatch.bids.tie_break_eur_mwh", 5.0)
         set!(cfg, "redispatch.bids.by_type", BIDS)
+        set!(cfg, "redispatch.bids.down_refund", "bid_da")      # RD12: phase II's down bids
         set!(cfg, "redispatch.phase1.n1", opt("--n1") == "on")
         if opt("--n1") == "on"
             set!(cfg, "redispatch.phase1.n1_outage", "element")

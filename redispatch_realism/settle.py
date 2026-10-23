@@ -127,7 +127,9 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
         mk = [markups.get(k, (0.0, 0.0)) for k in zip(ch.fuel, ch.technology)]
         mu = np.array([m[0] for m in mk]); md = np.array([m[1] for m in mk])
         p_up = c * (1 + mu)
-        p_dn = ch.p_da if down_refund == "da" else c * (1 - md)
+        # "da" phase I refund; "bid_da" phase II's down bids as a share of the day-ahead price
+        # (fit_phase2_bids.py, RD12); "bid" a cost-based down bid
+        p_dn = ch.p_da if down_refund == "da" else (ch.p_da * (1 - md) if down_refund == "bid_da" else c * (1 - md))
         ch = ch.assign(up=up, down=dn, ec=up * (p_up - ch.p_da) + dn * (ch.p_da - p_dn), marginal=c * d,
                        type=[rd_type(f, t) for f, t in zip(ch.fuel, ch.technology)])
         rows.append(ch[["date", "hour", "type", "up", "down", "ec", "marginal", "p_da"]])
@@ -179,8 +181,9 @@ def main():
     ap.add_argument("run", type=Path, help="results/<run> folder")
     ap.add_argument("--anchor", default="auto", help="anchor schedule: bal, cid, id3, id2, da (default: last market stage present)")
     ap.add_argument("--bids", type=Path, help="CSV fuel,technology,up_markup,down_markup (default: marginal cost, no mark-up)")
-    ap.add_argument("--down-refund", choices=["bid", "da"], default="bid",
-                    help="price of downward energy: the unit's down bid (real time, phase II) or the day-ahead price (phase I)")
+    ap.add_argument("--down-refund", choices=["bid", "da", "bid_da"], default="bid",
+                    help="price of downward energy: the unit's down bid (real time, phase II), the day-ahead price "
+                         "(phase I), or bid_da: day-ahead × (1 − down_markup), phase II's bids (RD12)")
     ap.add_argument("--storage-at-da", action="store_true",
                     help="price reservoir/pumped hydro and batteries at the day-ahead price (RD11, objective = \"ree\")")
     ap.add_argument("--esios", type=Path, help="spain-model-runs/reference/esios_2024.js, to print REE over the same hours")
@@ -198,7 +201,7 @@ def main():
     up, dn, loss = hourly.up_mwh.sum() / 1e3, hourly.down_mwh.sum() / 1e3, hourly.losses_mw.sum() / 1e3
     ec, mg = hourly.extra_cost_eur.sum() / 1e6, hourly.marginal_eur.sum() / 1e6
     print(f"\n{a.run}  ·  {len(hourly)} solved hours  ·  anchor {anchor_file(a.run, a.anchor).name}"
-          f"  ·  down priced at {'day-ahead price' if a.down_refund == 'da' else 'down bid'}"
+          f"  ·  down priced at {dict(da='day-ahead price', bid='down bid', bid_da='phase II bids (share of day-ahead)')[a.down_refund]}"
           f"  ·  {'mark-ups from ' + str(a.bids) if a.bids else 'no mark-ups'}")
     print(f"  turned up        {up:9.1f} GWh")
     print(f"  turned down      {dn:9.1f} GWh")

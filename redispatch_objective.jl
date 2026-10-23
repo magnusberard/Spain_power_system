@@ -81,7 +81,10 @@ function rd_bid_prices(bids, g, p_da)
     mu, md = rd_markups(bids, g)
     c = rd_is_storage(g) ? p_da : g["cost"][1] / BASEMVA
     up = max(c, p_da) * (1 + mu)
-    dn = bids.down_refund == "da" ? p_da : c * (1 - md)
+    # "da": phase I's refund at the day-ahead price; "bid": the unit's cost-based down bid;
+    # "bid_da" (RD12): phase II's down bids as a share of the day-ahead price, fitted per
+    # technology to REE's 2024 phase II (fit_phase2_bids.py: ~0.95)
+    dn = bids.down_refund == "da" ? p_da : bids.down_refund == "bid_da" ? p_da * (1 - md) : c * (1 - md)
     return up, dn
 end
 

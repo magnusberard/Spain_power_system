@@ -1,0 +1,13 @@
+fuel,technology,down_markup,ratio,gwh,mean_price
+Biomass,Biomass,0.102,0.898,13.83,48.806
+Biomass,CHP_Waste,0.053,0.947,236.895,66.988
+Coal,Coal,1.0,0.0,1.239,39.274
+Gas,CHP,0.072,0.928,516.714,63.93
+Gas,Combined_cycle,0.023,0.977,117.162,101.068
+Hydro,pumped_storage,0.047,0.953,1566.549,54.762
+Hydro,reservoir,0.037,0.963,702.959,78.237
+Hydro,run_of_river,0.038,0.962,122.681,71.265
+Nuclear,Nuclear,1.0,0.0,109.431,29.888
+Oil,Combined_cycle,0.206,0.794,12.385,45.912
+Solar,PV,0.031,0.969,181.634,54.472
+Wind,Onshore,0.054,0.946,692.154,64.309

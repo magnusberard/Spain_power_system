@@ -20,6 +20,7 @@ voltage zone (unit-hours started, model vs REE's I90, zones of [redispatch.mustr
 import argparse
 import json
 import os
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -41,7 +42,8 @@ def ree_esios(path, days):
         sl = slice(ix[d] * 24, ix[d] * 24 + 24)
         g = lambda k: float(np.nansum(s[k][sl]))
         rows.append(dict(date=d,
-                         ree_ph1_up_gwh=g("rt1_up") / 1e3, ree_ph2_down_gwh=g("rt2_down") / 1e3,
+                         ree_ph1_up_gwh=g("rt1_up") / 1e3, ree_ph1_down_gwh=g("rt1_down") / 1e3,
+                         ree_ph2_down_gwh=g("rt2_down") / 1e3,
                          ree_rt_up_gwh=g("rtr_up") / 1e3,
                          ree_ph12_meur=(g("rt1_up_cost") - g("rt1_down_cost") + g("rt2_up_cost") - g("rt2_down_cost")) / 1e6,
                          ree_ph1_meur=(g("rt1_up_cost") - g("rt1_down_cost")) / 1e6,
@@ -52,6 +54,16 @@ def ree_esios(path, days):
                          ree_ph1_dist_gwh=g("rt1_up_rtd") / 1e3,
                          ree_ph1_other_gwh=(g("rt1_up_scb") + g("rt1_up_rsi") + g("rt1_up_otros")) / 1e3))
     return pd.DataFrame(rows)
+
+
+def run_down_refund(run):
+    """The run's own down-pricing rule ([redispatch.bids].down_refund in config_used.toml); "da" if unset."""
+    f = Path(run) / "config_used.toml"
+    if not f.exists():
+        return "da"
+    with open(f, "rb") as fh:
+        c = tomllib.load(fh)
+    return str(c.get("redispatch", {}).get("bids", {}).get("down_refund", "da")).lower()
 
 
 def ree_rt_causes(path, days):
@@ -125,7 +137,7 @@ def main():
     days_rows = []
     hour_rows = []
     for run in runs:
-        hourly, *_ = settle.settle(run, bids=a.bids, down_refund="da", storage_at_da=a.storage_at_da)
+        hourly, *_ = settle.settle(run, bids=a.bids, down_refund=run_down_refund(run), storage_at_da=a.storage_at_da)
         hour_rows.append(hourly[["date", "hour", "up_mwh"]].rename(columns={"up_mwh": "rt_up_mw"}))
         if (run / "rd_phase1_summary.csv").exists():
             p1h = pd.read_csv(run / "rd_phase1_summary.csv")[["date", "hour", "up_mwh"]]
@@ -175,9 +187,12 @@ def main():
     s = t.select_dtypes("number").sum()
     print(f"price per MWh up: model {1e3 * s.model_meur / s.model_up_gwh:.0f} €/MWh, REE {1e3 * s.ree_meur / s.ree_up_gwh:.0f} €/MWh")
     if "ph1_up_gwh" in s:
+        # the model's phase I and II are one stage: compare with REE's phase I + II together
+        # (until 23 Oct this line set the model's phase I/II cost against REE's phase I alone)
         print(f"phase I/II: model up {s.ph1_up_gwh:.1f} / down {s.ph1_down_gwh:.1f} GWh, {s.ph1_meur:.2f} M€ (one stage) | "
-              f"REE phase I up {s.ree_ph1_up_gwh:.1f} GWh, {s.ree_ph1_meur:.2f} M€; phase II down {s.ree_ph2_down_gwh:.1f} GWh, "
-              f"{s.ree_ph2_meur:.2f} M€")
+              f"REE phase I + II: up {s.ree_ph1_up_gwh:.1f} / down {s.ree_ph1_down_gwh + s.ree_ph2_down_gwh:.1f} GWh "
+              f"(phase II down {s.ree_ph2_down_gwh:.1f}), {s.ree_ph1_meur + s.ree_ph2_meur:.2f} M€ "
+              f"(phase I {s.ree_ph1_meur:.2f}, phase II {s.ree_ph2_meur:.2f}) → model / REE {s.ph1_meur / (s.ree_ph1_meur + s.ree_ph2_meur):.0%}")
     print(f"real time: model up {s.rt_up_gwh:.1f} GWh, {s.rt_meur:.2f} M€ | REE up {s.ree_rt_up_gwh:.1f} GWh, {s.ree_rt_meur:.2f} M€")
     cause = {k: s[f"ree_ph1_{k}_gwh"] for k in ("volt", "n1", "dist", "other")}
     print("REE phase I up by cause: " + ", ".join(f"{k} {v:.1f} GWh ({v / max(sum(cause.values()), 1e-9):.0%})"
@@ -207,7 +222,7 @@ def main():
         print(f"model real-time starts: {int((st['round'] == 0).sum())} voltage-zone (RD5), "
               f"{int((st['round'] > 0).sum())} voltage loop (RD9), {int((st['round'] < 0).sum())} reserve (RD7)")
     if a.relaxed:
-        rel = sum(settle.settle(r, bids=a.bids, down_refund="da", storage_at_da=a.storage_at_da)[0].up_mwh.sum()
+        rel = sum(settle.settle(r, bids=a.bids, down_refund=run_down_refund(r), storage_at_da=a.storage_at_da)[0].up_mwh.sum()
                   for r in a.relaxed) / 1e3
         volt = max(s.rt_up_gwh - rel, 0.0)
         print(f"model real time up: voltage-driven {volt:.1f} GWh (vs REE {rc['volt']:.1f}), other {rel:.1f} GWh "

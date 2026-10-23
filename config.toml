@@ -1470,6 +1470,11 @@ isolated_units = ["G0116"]   # Ceuta
 
 [chp]
 # ── Industrial cogeneration / waste / mini-hydro ─────────────────────────────
+# Scenario runs (e.g. 2035) ignore [chp.by_date] for their 2024-dated study
+# days and take each block's 2024 mean for the month (run_market_chain.jl,
+# CHP_BY_MONTH); gas CHP 1,761 (Apr) – 2,628 (Dec), year 2,289 MW; waste 506–717;
+# mini-hydro 313 (Sep) – 820 (May).  Our assumption: the 2024 level and
+# season carry to 2035 (EMPIRE has no CHP class).
 # OMIE clears this fleet as a single market group, "Cogeneración / Residuos /
 # Mini hidráulica" (3.4 GWh/h on 8 Jul, 3.9 on 2 Dec).  generations.csv has no
 # equivalent at all — 493 MW of Biomass — so without this block the model has to

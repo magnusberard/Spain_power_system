@@ -478,6 +478,15 @@ const CHP_CFG     = get(cfg, "chp", Dict())
 const CHP_ENABLED = get(CHP_CFG, "enabled", false)
 const CHP_SITING_BUSES = Int(get(CHP_CFG, "siting_buses", 100))
 const CHP_BY_DATE = get(CHP_CFG, "by_date", Dict{String,Any}())
+# Scenario runs study 2024 calendar dates; instead of 2024's value for that
+# date, each block takes the mean of its 2024 days in the same month (CHP
+# follows industry, mini-hydro the rain): (month, "gas_mw") => MW.
+const CHP_BY_MONTH = let acc = Dict{Tuple{Int,String},Vector{Float64}}()
+    for (dt, day) in CHP_BY_DATE, (k, v) in day
+        v isa Real && push!(get!(acc, (month(Date(String(dt))), String(k)), Float64[]), Float64(v))
+    end
+    Dict(k => mean(v) for (k, v) in acc)
+end
 # (config key prefix, fuel, technology) for each block.  The gas block keeps
 # fuel = "Gas" so emissions accounting sees it, despite its low offer price.
 const CHP_SPEC = (("gas",       "Gas",     "CHP"),
@@ -488,7 +497,10 @@ function chp_blocks_for(date_str)
     day = get(CHP_BY_DATE, String(date_str), Dict{String,Any}())
     blocks = NamedTuple[]
     for (key, fuel, tech) in CHP_SPEC
-        mw = Float64(get(day, key * "_mw", get(CHP_CFG, key * "_mw", 0.0)))
+        mw = SCEN_ACTIVE ?
+            get(CHP_BY_MONTH, (month(Date(String(date_str))), key * "_mw"),
+                Float64(get(CHP_CFG, key * "_mw", 0.0))) :
+            Float64(get(day, key * "_mw", get(CHP_CFG, key * "_mw", 0.0)))
         mw > 1e-6 || continue
         push!(blocks, (tag          = uppercase(key),
                        fuel         = fuel,

@@ -550,6 +550,26 @@ C2b settings + the RD13 fix, `[reactors].res_connection_mvar` = 0 / 1,000 / 2,00
   a double-circuit line enters as four. Counted once: 25,032 / 23,458 km (1.14× / 1.16× REE). Shared
   input data, so a group issue; on this branch a switch, off by default, to test on 9–15 Dec.
 
+### Duplicate lines counted once (`DEDUP=on`, Solstorm, 24 Oct)
+
+`[network].dedup_ab_lines = true` (`888e4db`, line charging 35.1 → 21.9 Gvar), C2b settings + RD13 fix,
+7/7 days and all hours solved in both runs.
+
+| phase I/II up | without | dedup | REE |
+|---|---|---|---|
+| 9–15 Dec (s915_r0 → s915_dedup) | 187 GWh | 125 GWh | 131 GWh |
+| 2–8 Dec (dec_C2b days → s28_dedup) | 238 GWh | 35.5 GWh | 214 GWh |
+| AC-check voltage starts (unit-hours) | 30–88 per week | 0 on every day | most of REE's phase I |
+
+- The duplicate lines drove the model's voltage redispatch: with them counted once, the units running
+  absorb the remaining line charging and no unit is started for voltage on any day.
+- Now the voltage need is too small: REE's phase I is mostly voltage (58 % on 2–8 Dec). 9–15 Dec
+  matches REE's total only by coincidence; what remains is gas-for-gas reshuffling of running units
+  (11 and 13 Dec: ~30 GWh up / 30 down, 1–2 starts), a separate question.
+- Next: the connection-network sensitivity on the corrected grid (DEDUP=on + RESMVAR 1,000 / 2,000 /
+  3,000 on 2–8 Dec), judged by cause (night voltage starts, units, daily shape). REE gives only
+  "thousands of Mvar", so choosing the value is a calibration within that range.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

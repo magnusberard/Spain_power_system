@@ -278,6 +278,7 @@ const REACTORS_ENABLED   = get(get(cfg, "reactors", Dict()), "enabled", true)
 const REACTOR_PCT        = Float64(get(get(cfg, "reactors", Dict()), "in_service_pct", 100.0))
 # [reactors].switchable: the AC stage chooses how much of each bus's reactor to connect
 const REACTOR_SWITCHABLE = Bool(get(get(cfg, "reactors", Dict()), "switchable", false))
+RES_CONNECTION_MVAR[]    = Float64(get(get(cfg, "reactors", Dict()), "res_connection_mvar", 0.0))
 
 const LOAD_PF            = Float64(get(get(cfg, "load", Dict()), "power_factor", 1.0))
 

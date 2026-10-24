@@ -32,6 +32,12 @@ const REACTOR_MVAR_400KV      = 11_750.0
 const REACTOR_MVAR_LE220KV    =  3_722.0
 const REACTOR_HV_THRESHOLD_KV = 380.0      # base_kv ≥ ⇒ "400 kV" group, else "≤220 kV"
 const REACTOR_FILE            = joinpath(DATA, "reactors.csv")
+# Reactive power of renewables' connection networks (collector cables and step-up transformers),
+# total Mvar at 1.0 pu, set from [reactors].res_connection_mvar (0 = off).  REE (2024) reports
+# that these networks generate "thousands of Mvar", uncompensated, causing overvoltage when wind
+# and solar output is low.  Added as capacitive shunts at the wind/solar buses, shared by
+# installed MW (add_res_connection_shunts!).
+const RES_CONNECTION_MVAR     = Ref(0.0)
 
 # Round-trip efficiency of the pumped-storage fleet.  Unlike the Li-Ion BESS —
 # where the loss is second order at the fleet sizes involved — Spain's ~8 GW of
@@ -185,6 +191,35 @@ function add_reactor_shunts!(network, buses, branches, bus_idx;
         )
     end
     return
+end
+
+"""
+    add_res_connection_shunts!(network, total_mvar)
+
+Capacitive shunts for the connection networks of wind and solar plants: `total_mvar` (at
+1.0 pu) shared over the buses with wind or solar units in proportion to their installed MW.
+A shunt's Mvar scales with V², as cable charging does, and does not depend on the plants'
+output.  Returns the number of buses that got one.
+"""
+function add_res_connection_shunts!(network, total_mvar::Float64)
+    total_mvar > 0 || return 0
+    BASE = network["baseMVA"]
+    mw = Dict{Int,Float64}()
+    for (_, g) in network["gen"]
+        get(g, "fuel", "") in ("Wind", "Solar") || continue
+        mw[g["gen_bus"]] = get(mw, g["gen_bus"], 0.0) + Float64(get(g, "installed_mw", g["pmax"] * BASE))
+    end
+    tot = sum(values(mw); init = 0.0)
+    tot > 0 || return 0
+    n = length(network["shunt"])
+    for (bi, m) in mw
+        n += 1
+        network["shunt"][string(n)] = Dict{String,Any}(
+            "index" => n, "shunt_bus" => bi, "gs" => 0.0,
+            "bs" => total_mvar * m / tot / BASE,     # positive ⇒ capacitive (produces reactive power)
+            "status" => 1)
+    end
+    return length(mw)
 end
 
 function marginal_cost(cost_df::DataFrame, fuel::String, tech::String)::Float64
@@ -1049,6 +1084,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                         enabled        = reactors_enabled,
                         in_service_pct = reactor_in_service_pct,
                         switchable     = reactor_switchable)
+    add_res_connection_shunts!(network, RES_CONNECTION_MVAR[])
 
     return (
         network  = network,

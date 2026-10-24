@@ -481,6 +481,11 @@ in_service_pct = 100.0
 # connect (0 … installed × in_service_pct), as REE connects reactors at low load and
 # disconnects them at high load; false = all of it connected in every hour.
 switchable     = false
+# res_connection_mvar: reactive power of wind/solar plants' own connection networks (collector
+# cables, step-up transformers), Mvar in total at 1.0 pu, as capacitive shunts at the wind/solar
+# buses shared by installed MW.  REE (2024): "thousands of Mvar", uncompensated, causing
+# overvoltage at low renewable output.  0 = not modelled (as before); a sensitivity for now.
+res_connection_mvar = 0.0
 
 [load]
 # Net power factor the transmission grid sees at each load bus.  Distribution-

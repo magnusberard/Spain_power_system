@@ -474,6 +474,27 @@ Per week, phase I up (model / REE, GWh):
   these weeks, and phase I by hour of day per week.
 - **Real time is 60 % of REE's**, as in the test week: REE's reserve redispatch is missing (step E2).
 
+### Step E2 groundwork: what drives REE's real-time reserve redispatch (24 Oct)
+
+Data: e·sios 2024 forecasts and actuals (`fetch_esios_forecasts.py`, token in `~/.esios_token`) and
+REE's hourly real-time up for "too little upward reserve" (`rtr_up_rsi`, 4.89 of 5.42 TWh in 2024).
+
+- **Not forecast errors.** Hourly correlation with REE's forecast revisions (H+3 vs D+1: demand,
+  wind, PV) is +0.00 to +0.01, with the errors (actual vs D+1) −0.05 to −0.13; REE's reserve
+  redispatch is the same 470–630 MW in every decile of the revision. The planned E2 (requirement
+  from forecast errors) has no support in the data.
+- **Ramps.** It peaks at 07–08 h (~1,150 MW) and 19–21 h (~1,900 MW) and follows the residual
+  demand (10249) falling over the next 3 hours: r = −0.38; in the two deciles with the steepest
+  fall (−6 to −10 GW in 3 h) it averages 1,200–1,330 MW and occurs in 80 % of hours, vs ~250 MW when
+  residual demand is flat or rising. Reading: the markets schedule thermal units down/off as solar
+  rises or demand falls, and REE keeps combined cycles on for synchronised upward reserve.
+- **Model check, December (dec_C2b's BAL schedules):** synchronised headroom of running gas, coal and
+  hydro averages 1,005 MW vs REE's requirement (mFRR 1788 + aFRR band) of 2,789 MW; counting only
+  running units would be short in 96 % of hours (1,022 GWh vs REE's 355 GWh; r = 0.17). Counting
+  stopped hydro in full (today's `offline_hydro_counts = true`, ~14,900 MW) never binds. REE counts
+  something in between; next: derive it from REE's own schedule (I90 PDVP) and reserve redispatch,
+  not by fitting the share to REE's total.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

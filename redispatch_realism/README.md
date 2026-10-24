@@ -441,6 +441,39 @@ old code. How much hydro headroom REE really counts for reserve stays open: REE 
 reserve, so it does not count all of it; step E2 uses REE's own reserve requirement (e·sios 626,
 P.O. 3.9) instead of guessing that share.
 
+### December 2024 on Solstorm (dec_C4, dec_C2b, 23–24 Oct)
+
+1–29 Dec 2024 from Lars Erik's full-year run 4 (`2024_r4_hydro_offered`, split run), one node
+each, 12 lanes, 29/29 days solved; settings as C4 (`AC=on HB=on`) and C2b (`AC=on ZONES=off HB=on`),
+on the code before the RD13 fix (`22f7a09`). Results copied back and compared locally.
+
+| 1–29 Dec 2024 | dec_C4 (zones) | dec_C2b (no zones) | REE |
+|---|---|---|---|
+| phase I/II up | 1,256 GWh (156 %) | 1,076 GWh (134 %) | 806 GWh |
+| phase I + II cost | 118.1 M€ (148 %) | 76.2 M€ (96 %) | 79.7 M€ |
+| phase I up by fuel | gas 1,131, hydro 13 | gas 899, coal 44, hydro 54 | mostly gas |
+| phase I starts | 555 | 148 | |
+| real-time up | 229 GWh (59 %) | 233 GWh (60 %) | 390 GWh |
+| daily phase I volume vs REE, correlation | 0.65 | 0.45 | |
+
+Per week, phase I up (model / REE, GWh):
+
+| week | dec_C4 | dec_C2b | REE |
+|---|---|---|---|
+| 2–8 Dec (the test week) | 256 | 238 | 214 |
+| 9–15 Dec | 265 | 227 | 131 |
+| 16–22 Dec | 314 | 259 | 202 |
+| 23–29 Dec | 364 | 335 | 221 |
+
+- **Without REE's zones, phase I now starts gas, not hydro** (C2b: hydro 54 of 1,076 GWh; before the
+  water budget it was 297 GWh in one week). So the voltage need can come from the grid alone.
+- **But phase I is too large outside the test week** (134–174 % of REE in 9–29 Dec): the week the
+  settings were checked on fits, the rest of the month does not. Christmas week, with low demand,
+  has the most. Suspects: the reactive balance leaning toward shortage (audit), and REE's phase I
+  depending on conditions the model does not see. Next: the reactive-power sensitivities on one of
+  these weeks, and phase I by hour of day per week.
+- **Real time is 60 % of REE's**, as in the test week: REE's reserve redispatch is missing (step E2).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

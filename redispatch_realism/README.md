@@ -526,6 +526,30 @@ REE's hourly real-time up for "too little upward reserve" (`rtr_up_rsi`, 4.89 of
   more reserve than REE's system, likely from phase I's surplus starts (134 % of REE; phase I + real
   time up 1,309 vs REE 1,196 GWh): revisit after the phase I sensitivities.
 
+### Connection-network sensitivity (9–15 Dec, Solstorm, 24 Oct) — and a likely line-data error
+
+C2b settings + the RD13 fix, `[reactors].res_connection_mvar` = 0 / 1,000 / 2,000 / 3,000 (code
+`8c59466`), 7/7 days each.
+
+| 9–15 Dec | phase I/II up | phase I + II cost | real-time up | RT voltage starts |
+|---|---|---|---|---|
+| r0 | 187 GWh | 12.5 M€ (94 %) | 34.6 GWh | 50 |
+| r1000 | 241 | 16.4 (124 %) | 44.6 | 83 |
+| r2000 | 296 | 20.9 (158 %) | 85.4 | 143 |
+| r3000 | 371 | 26.7 (202 %) | 137.7 | 214 |
+| REE | 131 | 13.2 | 122 (mostly reserve) | |
+
+- More capacitive Mvar → more redispatch (≈ +60 GWh phase I per 1,000 Mvar). 400 kV buses sit at
+  the **lower** limit (16 → 20 % of bus-hours; 2 % at the top) and more so with more Mvar: the OPF
+  lowers voltages to cut line charging (∝ V²), i.e. a reactive **surplus**. **Correction:** the
+  audit's reading (22 Oct, "buses at the lower limit ⇒ balance leans toward shortage") was wrong.
+- **Line data:** `Data/lines.csv` gives 40,713 circuit-km at 400 kV and 35,376 at 220 kV (charging
+  35.1 Gvar); REE: 22,013 and 20,189 km (Spain, end 2023; 2012 peninsula 20,104 / 18,317). 1,386 lines
+  come in a/b pairs on the same bus pair and 1,310 of them have `circuits = 2` each (the other 790
+  rows are mostly 1), and `data_preparation.jl` treats `circuits` as parallel circuits (X / N, B × N):
+  a double-circuit line enters as four. Counted once: 25,032 / 23,458 km (1.14× / 1.16× REE). Shared
+  input data, so a group issue; on this branch a switch, off by default, to test on 9–15 Dec.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

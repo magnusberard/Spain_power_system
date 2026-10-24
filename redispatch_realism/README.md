@@ -502,6 +502,17 @@ REE's hourly real-time up for "too little upward reserve" (`rtr_up_rsi`, 4.89 of
   lowest at 19–21 h. So REE keeps a synchronised margin well above the formal requirement. The
   model's December BAL headroom (1,005 MW) is not comparable yet (REE's UGH hydro units carry whole
   portfolios); next: the same headroom with the model's units and capacities via the crosswalk.
+- **Counted the same way** (CCGTs unit by unit, 50 units / 24.6 GW on both sides; hydro and pumping
+  as totals; REE's UGH hydro portfolios cannot be mapped to model units): over 2024 REE's reserve
+  redispatch follows **scheduled hydro** (r = +0.70) and pumping (−0.46), less the CCGT headroom
+  (−0.30), hardly the number of CCGTs running (−0.04). Reading: hydro carries the upward reserve;
+  when the schedule uses it for energy (evening peak) REE keeps CCGTs on; stoppable pumping at
+  midday is reserve. December, model BAL vs REE PDVP per hour: CCGTs running 2.7 vs 14.3 (PDVP
+  includes REE's phase I; with the model's ~10 phase I units ≈ 13 vs 14), CCGT headroom 187 vs
+  3,345 MW, hydro scheduled 4,522 vs 3,141 MW (+44 %), pumping 316 vs 720 MW.
+- Proposed E2 (to agree): requirement = REE's mFRR + aFRR (hourly, data); synchronised thermal
+  headroom counts in full; hydro (running or stopped) counts only up to what its daily water budget
+  leaves; judged first by timing (evening peak, weak midday) against REE.
 
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 

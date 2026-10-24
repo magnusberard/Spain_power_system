@@ -513,6 +513,18 @@ REE's hourly real-time up for "too little upward reserve" (`rtr_up_rsi`, 4.89 of
 - Proposed E2 (to agree): requirement = REE's mFRR + aFRR (hourly, data); synchronised thermal
   headroom counts in full; hydro (running or stopped) counts only up to what its daily water budget
   leaves; judged first by timing (evening peak, weak midday) against REE.
+- **Replay on dec_C2b (no runs), 1–29 Dec:** the real-time anchor (BAL + phase I) has 21.4 thermal
+  units running, 1,682 MW thermal headroom, 804 MW pumping, 697 MW running-hydro headroom, ~14,500 MW
+  stopped hydro; need 2,785 MW; REE's reserve redispatch 362 GWh, 59 % of it at 17–22 h.
+  Thermal + pumping only (the proposal with the water budget used up): short 727 GWh (2× REE),
+  r = +0.41, right in the evening (~1,500 vs 1,280 MW at 17–21 h) but far too much at midday
+  (1,200–1,600 vs 125–205 MW at 11–15 h). Adding running hydro: 460 GWh, same midday error. Adding a
+  share of stopped hydro: 2 % gives REE's total but is wrong at both times of day; 10 % gets midday
+  right (145 vs 165 MW) and leaves the evening 4× too low (331 vs 1,277); half or all of it never
+  binds. Stopped hydro varies too little over the day (16 GW midday, 10 GW evening) for any share to
+  separate the two. **E2 on hold:** a rule would be calibrated, not derived. The model's evening has
+  more reserve than REE's system, likely from phase I's surplus starts (134 % of REE; phase I + real
+  time up 1,309 vs REE 1,196 GWh): revisit after the phase I sensitivities.
 
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 

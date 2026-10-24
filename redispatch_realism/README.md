@@ -494,6 +494,14 @@ REE's hourly real-time up for "too little upward reserve" (`rtr_up_rsi`, 4.89 of
   stopped hydro in full (today's `offline_hydro_counts = true`, ~14,900 MW) never binds. REE counts
   something in between; next: derive it from REE's own schedule (I90 PDVP) and reserve redispatch,
   not by fitting the share to REE's total.
+- **REE's own schedule (PDVP, 8,709 h of 2024):** synchronised upward headroom of running CCGT, coal,
+  hydro and pumped turbines (REE capacities from the crosswalk) plus stoppable pumping averages
+  14,600 MW (min 5,857), never below mFRR + aFRR (2,492 MW): that requirement is not the trigger.
+  But REE's reserve redispatch follows the headroom closely (r = −0.54): 1,589 MW (action in 90 % of
+  hours) in the lowest decile (~9,700 MW) down to 19 MW (2 %) in the highest (~18,700 MW); headroom is
+  lowest at 19–21 h. So REE keeps a synchronised margin well above the formal requirement. The
+  model's December BAL headroom (1,005 MW) is not comparable yet (REE's UGH hydro units carry whole
+  portfolios); next: the same headroom with the model's units and capacities via the crosswalk.
 
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 

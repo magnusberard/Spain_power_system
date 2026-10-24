@@ -38,6 +38,32 @@ const REACTOR_FILE            = joinpath(DATA, "reactors.csv")
 # and solar output is low.  Added as capacitive shunts at the wind/solar buses, shared by
 # installed MW (add_res_connection_shunts!).
 const RES_CONNECTION_MVAR     = Ref(0.0)
+# Data/lines.csv lists 694 lines twice, as rows "<id>a" and "<id>b" identical in every field, each
+# with circuits = 2 (692 pairs), so a double-circuit line enters as four parallel circuits: line
+# charging 35 Gvar instead of the ~21 Gvar this README states for "~48 000 km" of 400/220 kV
+# circuits, and 1.8× REE's circuit-km (22,013 km at 400 kV, 20,189 at 220 kV, end 2023).
+# [network].dedup_ab_lines = true counts each such pair once (the circuits of each row halved).
+const DEDUP_AB_LINES          = Ref(false)
+
+"""
+    ab_duplicate_ids(line_df) -> Set{String}
+
+Ids of the lines whose a/b twin is an identical copy (same buses, voltage, circuits, length,
+impedance, capacitance and rating).
+"""
+function ab_duplicate_ids(line_df)
+    ids = Set{String}()
+    cols = (:bus0, :bus1, :voltage, :circuits, :length, :r_per_length, :x_per_length, :c_per_length, :Imax)
+    byid = Dict(String(r.line_id) => r for r in eachrow(line_df))
+    for (id, r) in byid
+        m = match(r"^(.*)([ab])$", id)
+        m === nothing && continue
+        twin = get(byid, m.captures[1] * (m.captures[2] == "a" ? "b" : "a"), nothing)
+        twin === nothing && continue
+        all(isequal(r[c], twin[c]) for c in cols) && push!(ids, id)
+    end
+    return ids
+end
 
 # Round-trip efficiency of the pumped-storage fleet.  Unlike the Li-Ion BESS —
 # where the loss is second order at the fleet sizes involved — Spain's ~8 GW of
@@ -494,6 +520,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     # ── Branches: AC lines ───────────────────────────────────
     branches  = Dict{String,Any}()
     br_count  = 0
+    ab_dup    = DEDUP_AB_LINES[] ? ab_duplicate_ids(line_df) : Set{String}()
     for row in eachrow(line_df)
         haskey(bus_idx, row.bus0) || continue
         haskey(bus_idx, row.bus1) || continue
@@ -505,6 +532,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         # thermal rating (√3·V·Imax per circuit) multiply by N.  The corridor
         # expansion factor of the nodal scenario acts as extra parallel circuits.
         nc     = max(Float64(row.circuits), 1.0) * lscale(row.line_id)
+        String(row.line_id) in ab_dup && (nc /= 2)          # [network].dedup_ab_lines
         r_pu   = (Float64(row.r_per_length) * L) / z_base / nc
         x_pu   = max((Float64(row.x_per_length) * L) / z_base / nc, 1e-4)
         c_F    = Float64(row.c_per_length) * 1e-9 * L

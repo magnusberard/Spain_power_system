@@ -4,7 +4,7 @@
 #     julia redispatch_realism/make_config.jl <out.toml> [--source <config of the source run>]
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
-#                                             [--res-mvar <total Mvar>]
+#                                             [--res-mvar <total Mvar>] [--dedup-ab]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -25,7 +25,8 @@
 # RD5's zones there); --no-zones turns RD5 off, in real time and in the AC check (the voltage
 # need then comes from the grid alone); --hydro-budget adds RD13 (no extra hydro energy per
 # unit and day); --res-mvar X adds X Mvar of capacitive connection networks at the
-# wind/solar buses ([reactors].res_connection_mvar, a sensitivity).  The local week runs: C4 = --ac-check --hydro-budget,
+# wind/solar buses ([reactors].res_connection_mvar, a sensitivity); --dedup-ab counts the a/b
+# duplicate rows of Data/lines.csv once ([network].dedup_ab_lines).  The local week runs: C4 = --ac-check --hydro-budget,
 # C2b = --ac-check --no-zones --hydro-budget.  Written with TOML.print: comments are not kept.
 using TOML
 
@@ -105,6 +106,7 @@ function main(args)
             set!(cfg, "redispatch.phase1.ac_check_zones", !("--no-zones" in args))
         end
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
+        "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         r = opt("--res-mvar")                                   # renewables' connection networks
         r === nothing || set!(cfg, "reactors.res_connection_mvar", parse(Float64, r))
         if "--hydro-budget" in args                             # RD13

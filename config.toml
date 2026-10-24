@@ -424,6 +424,11 @@ reuse = true
 cache_file = "hourly_ntc.csv"
 
 [network]
+# dedup_ab_lines: Data/lines.csv lists 692 lines twice ("<id>a"/"<id>b", identical, circuits = 2
+# each), so a double-circuit line enters as four circuits (line charging 35 Gvar instead of the
+# ~21 Gvar the README states; 1.8× REE's circuit-km).  true = count each pair once.  Off by default
+# until the group agrees: it changes every AC result.
+dedup_ab_lines = false
 # Operator-tunable network security limits applied when assembling the grid.
 #
 #   voltage_band        — acceptable bus voltage deviation from nominal (1.0 pu).

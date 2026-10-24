@@ -265,8 +265,11 @@ rd_season(month::Int) = month in (11, 12, 1, 2, 3) ? "winter" : month in (4, 5) 
 const RD_N1_ELEMENTS = Dict{String,Int}()
 function rd_n1_elements()
     isempty(RD_N1_ELEMENTS) || return RD_N1_ELEMENTS
-    for r in eachrow(CSV.read(joinpath(DATA, "lines.csv"), DataFrame))
-        RD_N1_ELEMENTS[String(r.line_id)] = max(Int(round(r.circuits)), 1)
+    ldf = CSV.read(joinpath(DATA, "lines.csv"), DataFrame)
+    dup = DEDUP_AB_LINES[] ? ab_duplicate_ids(ldf) : Set{String}()     # [network].dedup_ab_lines
+    for r in eachrow(ldf)
+        c = String(r.line_id) in dup ? r.circuits / 2 : r.circuits
+        RD_N1_ELEMENTS[String(r.line_id)] = max(Int(round(c)), 1)
     end
     for r in eachrow(CSV.read(joinpath(DATA, "transformers_reactance.csv"), DataFrame))
         RD_N1_ELEMENTS[String(r.transformer_id)] = max(Int(round(r.n_recommended)), 1)

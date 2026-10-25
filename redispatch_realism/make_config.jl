@@ -4,7 +4,7 @@
 #     julia redispatch_realism/make_config.jl <out.toml> [--source <config of the source run>]
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
-#                                             [--res-mvar <total Mvar>] [--dedup-ab]
+#                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -26,7 +26,8 @@
 # need then comes from the grid alone); --hydro-budget adds RD13 (no extra hydro energy per
 # unit and day); --res-mvar X adds X Mvar of capacitive connection networks at the
 # wind/solar buses ([reactors].res_connection_mvar, a sensitivity); --dedup-ab counts the a/b
-# duplicate rows of Data/lines.csv once ([network].dedup_ab_lines).  The local week runs: C4 = --ac-check --hydro-budget,
+# duplicate rows of Data/lines.csv once ([network].dedup_ab_lines); --sync-q F limits synchronous
+# units to |Q| ≤ F × installed MW ([generators].sync_q_frac; P.O. 7.4: 0.15).  The local week runs: C4 = --ac-check --hydro-budget,
 # C2b = --ac-check --no-zones --hydro-budget.  Written with TOML.print: comments are not kept.
 using TOML
 
@@ -107,6 +108,8 @@ function main(args)
         end
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
+        sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)
+        sq === nothing || set!(cfg, "generators.sync_q_frac", parse(Float64, sq))
         r = opt("--res-mvar")                                   # renewables' connection networks
         r === nothing || set!(cfg, "reactors.res_connection_mvar", parse(Float64, r))
         if "--hydro-budget" in args                             # RD13

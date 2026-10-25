@@ -517,6 +517,11 @@ power_factor = 0.98
 #                          Spanish grid-code reactive requirement.
 apparent_power_limit   = true
 rated_power_factor     = 0.90
+# sync_q_frac: reactive band of synchronous units, |Q| ≤ sync_q_frac × installed MW, on top of the
+# MVA circle.  0.15 = P.O. 7.4's obligatory band (±15 % of P, power factor 0.989); 0 = the full
+# circle (as before; ~±1.1 × installed at low output, generous: the ENTSO-E blackout report found
+# conventional units below 75 % of the reactive power REE requested).
+sync_q_frac            = 0.0
 # 2024 (step RD4): Spanish wind and solar followed power-factor set-points and
 # did not offer dynamic voltage control; that service (P.O. 7.4) was approved by
 # CNMC on 12 June 2025.  For a 2024 redispatch set renewable_power_factor = 1.0

@@ -44,6 +44,12 @@ const RES_CONNECTION_MVAR     = Ref(0.0)
 # circuits, and 1.8× REE's circuit-km (22,013 km at 400 kV, 20,189 at 220 kV, end 2023).
 # [network].dedup_ab_lines = true counts each such pair once (the circuits of each row halved).
 const DEDUP_AB_LINES          = Ref(false)
+# Reactive band of synchronous units (thermal, hydro, nuclear, CHP), as a fraction of installed MW
+# on top of the MVA circle: |Q| ≤ sync_q_frac · installed.  P.O. 7.4 (2000) obliges generators to a
+# band of ±15 % of P (power factor 0.989); more is optional and paid.  The ENTSO-E report on the
+# 28 April 2025 blackout found conventional units below 75 % of the reactive power REE asked for.
+# [generators].sync_q_frac = 0 keeps the full MVA circle (as before).
+const SYNC_Q_FRAC             = Ref(0.0)
 
 """
     ab_duplicate_ids(line_df) -> Set{String}
@@ -737,6 +743,10 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
             else
                 smax_pu = cap_mw > 0 ? (cap_mw / BASEMVA) / rated_power_factor : Inf
                 isfinite(smax_pu) && ((qmax_pu, qmin_pu) = (smax_pu, -smax_pu))
+                if SYNC_Q_FRAC[] > 0 && cap_mw > 0                     # [generators].sync_q_frac
+                    qb = SYNC_Q_FRAC[] * cap_mw / BASEMVA
+                    qmax_pu, qmin_pu = min(qmax_pu, qb), max(qmin_pu, -qb)
+                end
             end
         end
 
@@ -884,6 +894,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                 # RD3: a block cleared at (about) 0 MW is not running.
                 q_pu  = (q_requires_online && da_dispatch !== nothing &&
                          (da_pu === nothing || da_pu < q_online_min_frac * p_pu)) ? 0.0 : s_pu
+                SYNC_Q_FRAC[] > 0 && (q_pu = min(q_pu, SYNC_Q_FRAC[] * p_pu))   # [generators].sync_q_frac
                 gen_count += 1
                 gens[string(gen_count)] = Dict{String,Any}(
                     "index"        => gen_count,

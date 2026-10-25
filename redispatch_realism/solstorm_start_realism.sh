@@ -21,6 +21,7 @@
 #           AC=on (step C), ZONES=off (RD5 off), HB=on (RD13 water budget),
 #           RESMVAR=<Mvar> (renewables' connection networks, capacitive, in total),
 #           DEDUP=on (count the a/b duplicate rows of Data/lines.csv once),
+#           SYNCQ=<frac> (synchronous units |Q| <= frac x installed MW; P.O. 7.4: 0.15),
 #           DRY=1 (write the config and print the plan only)
 #           Local week runs: C4 = AC=on HB=on; C2b = AC=on ZONES=off HB=on
 #
@@ -63,6 +64,7 @@ if [ ! -f "$CFG" ]; then
     [ "${HB:-}" = on ] && flags+=(--hydro-budget)
     [ -n "${RESMVAR:-}" ] && flags+=(--res-mvar "$RESMVAR")
     [ "${DEDUP:-}" = on ] && flags+=(--dedup-ab)
+    [ -n "${SYNCQ:-}" ] && flags+=(--sync-q "$SYNCQ")
     ( cd "$REPO" && julia redispatch_realism/make_config.jl "$CFG" ${srccfg:+--source "$srccfg"} ${N1:+--n1 "$N1"} ${flags[@]+"${flags[@]}"} )
 fi
 

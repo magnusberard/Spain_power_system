@@ -280,6 +280,7 @@ const REACTOR_PCT        = Float64(get(get(cfg, "reactors", Dict()), "in_service
 const REACTOR_SWITCHABLE = Bool(get(get(cfg, "reactors", Dict()), "switchable", false))
 RES_CONNECTION_MVAR[]    = Float64(get(get(cfg, "reactors", Dict()), "res_connection_mvar", 0.0))
 DEDUP_AB_LINES[]         = Bool(get(get(cfg, "network", Dict()), "dedup_ab_lines", false))
+SYNC_Q_FRAC[]            = Float64(get(get(cfg, "generators", Dict()), "sync_q_frac", 0.0))
 
 const LOAD_PF            = Float64(get(get(cfg, "load", Dict()), "power_factor", 1.0))
 

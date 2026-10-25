@@ -570,6 +570,23 @@ C2b settings + the RD13 fix, `[reactors].res_connection_mvar` = 0 / 1,000 / 2,00
   3,000 on 2–8 Dec), judged by cause (night voltage starts, units, daily shape). REE gives only
   "thousands of Mvar", so choosing the value is a calibration within that range.
 
+### Connection networks on the corrected grid (DEDUP=on + RESMVAR, 2–8 Dec, Solstorm, 25 Oct)
+
+| RESMVAR | phase I up | AC-check voltage starts | night 400 kV mean / at upper limit |
+|---|---|---|---|
+| 0 | 35.5 GWh | 0 | 1.018 pu / 6 % |
+| 1,000 | 35.5 | 0 | 1.017 / 6 % |
+| 2,000 | 35.6 | 0 | 1.016 / 5 % |
+| 3,000 | 35.7 | 0 | 1.014 / 3 % |
+| REE | 214 GWh (58 % voltage) | | overvoltage at night |
+
+The Mvar is applied (configs, voltages move) but phase I does not change (identical hour profile, peak
+14 h vs REE 05 h, r = −0.52): the running units absorb 3 Gvar more without a start. Synchronous units
+get the full MVA circle (S = installed / 0.90) with the reactive box widened to ±S, so a 400 MW CCGT at
+~160 MW absorbs ~410 Mvar; P.O. 7.4's obligatory band is ±15 % (~±60 Mvar), typical under-excited
+limits about a third of rated MVA. Next: limit synchronous reactive power to (a) P.O. 7.4's ±15 % of
+installed MW, (b) a typical capability curve (−0.33 / +0.6 of rated MVA, an assumption).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

@@ -638,6 +638,14 @@ shortfall takes ten or more starts; the replay had no such limit. REE's real-tim
 "insufficient upward reserve" is about the coming hours (it starts CCGTs, which take hours), so a
 running unit's whole headroom should count: `--sync-reserve-hours` (Solstorm RESERVE=sync_hours).
 
+**Run (t28_rth, t915_rth; RESERVE=sync_hours):** real-time up 46 GWh (REE 87, 0.53×) and 46 GWh
+(REE 122, 0.38×), 58 / 37 reserve starts, shape r = −0.21 / −0.45. Decision rule set before the run:
+within 0.5–2× of REE in both weeks and REE's timing. Neither variant passes (sync: timing in one week,
+2.4–4.6× the volume; sync_hours: too small in 9–15 Dec, wrong timing in both). REE lies between them;
+choosing a point would be fitting. **Decision (25 Oct): the year runs without a reserve rule** (zones
+off in real time only); real time is a documented gap with the mechanism known from REE's data.
+Full year: `y24_base` = AC=on HB=on DEDUP=on SYNCQ=0.15 RTZONES=off.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

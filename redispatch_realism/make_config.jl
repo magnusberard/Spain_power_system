@@ -109,9 +109,12 @@ function main(args)
         end
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
         "--no-rt-zones" in args && set!(cfg, "redispatch.mustrun.realtime", false)   # zones in phase I only
-        if "--sync-reserve" in args          # E1 tertiary (P.O. 1.5) held by synchronised units only
+        if "--sync-reserve" in args || "--sync-reserve-hours" in args   # E1 tertiary held by synchronised units only
             set!(cfg, "redispatch.reserve.tertiary", true)
             set!(cfg, "redispatch.reserve.offline_hydro_counts", false)
+            # -hours: a running unit's whole headroom counts (reserve for the coming hours, which is why
+            # REE starts CCGTs for it), not only what it reaches in 15 minutes
+            "--sync-reserve-hours" in args && set!(cfg, "redispatch.reserve.tertiary_ramp15", false)
         end
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)

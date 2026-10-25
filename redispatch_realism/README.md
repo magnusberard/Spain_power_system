@@ -629,6 +629,15 @@ Reserve held by synchronised units only comes close in volume and evening share 
 E1's tertiary requirement (largest unit + 2 % of demand ≈ 1.6 GW, close to REE's mFRR requirement
 ~1,570 MW) with `offline_hydro_counts = false` (`make_config --sync-reserve`, Solstorm RESERVE=sync).
 
+**Run (t28_rt, t915_rt; RTZONES=off, RESERVE=sync):** real-time zone starts 0 as intended (the 82 / 47
+`compare_ree` showed as "voltage-zone" were phase I's AC-check starts, now counted apart, `f63770e`).
+The reserve rule overshoots: real-time up 211 GWh (REE 87) and 559 (REE 122), cost 102 / 235 M€
+(REE 28 / 37), from 12.7 / 19.0 CCGT starts per hour at ~195 MW minimum load; shape r = 0.20 / 0.91.
+Cause: with `tertiary_ramp15` a running CCGT counts only what it reaches in 15 minutes, so a ~1 GW
+shortfall takes ten or more starts; the replay had no such limit. REE's real-time action for
+"insufficient upward reserve" is about the coming hours (it starts CCGTs, which take hours), so a
+running unit's whole headroom should count: `--sync-reserve-hours` (Solstorm RESERVE=sync_hours).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

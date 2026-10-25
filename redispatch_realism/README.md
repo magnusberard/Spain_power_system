@@ -587,6 +587,32 @@ get the full MVA circle (S = installed / 0.90) with the reactive box widened to 
 limits about a third of rated MVA. Next: limit synchronous reactive power to (a) P.O. 7.4's ±15 % of
 installed MW, (b) a typical capability curve (−0.33 / +0.6 of rated MVA, an assumption).
 
+### Sourced parameter set with REE's 2024 zones (Solstorm, 25 Oct)
+
+Approach agreed 25 Oct: every grid parameter from a source, not from the result; 2024 run once and
+the gap to REE reported by cause; RD5 (REE's 2024 zones) on for testing 2024, off for 2035. All six
+runs: DEDUP=on, AC check, RD5 zones, water budget, REE's band per level, RD4 0.98, REE's prices
+(`7531498`); generator band `[generators].sync_q_frac` (P.O. 7.4) and connection networks varied.
+
+| phase I/II up (cost vs REE), shape r | base: SYNCQ 0.15 | full MVA circle | 0.15 + RESMVAR 2,000 | REE |
+|---|---|---|---|---|
+| 2–8 Dec | 247 GWh (116 %), 0.91 | 226 (105 %), 0.95 | 245 (115 %), 0.92 | 214 |
+| 9–15 Dec | 260 GWh (173 %), 0.91 | 244 (163 %), 0.94 | 259 (173 %), 0.91 | 131 |
+| real-time up | 37 / 49 GWh | 32 / 48 | 37 / 49 | 87 / 122 |
+
+- With RD5 on, the uncertain reactive parameters move phase I by only ~20 GWh; shape good (peak
+  03–04 h vs REE 03–05 h).
+- CCGTs running per hour before → after phase I: REE 9.2 → 17.5 (2–8 Dec) and 16.6 → 20.9 (9–15),
+  model 0.2 → 7.7 and 2.2 → 7.1 (REE's PDBF = PDVP − phase I/II changes, I90). The model starts a
+  similar number of CCGTs (+7.5 / +4.9 vs REE +8.3 / +4.3) from a day-ahead with almost none: the
+  model's DA (run 4) runs 117 / 1,210 MW of CCGT vs REE's 3,200 / 6,635 MW — a market-model issue.
+- 9–15 Dec excess = gas-for-gas reshuffling: model CCGT up 195 / down 113 GWh (net 82) vs REE
+  111 / 13 (net 98); REE turns down hydro, pumped storage and others. Likely cause: the phase II down
+  prices are nearly the same for every technology (95–98 % of p_DA), so the down choice is arbitrary.
+- Real time ~40 % of REE with the wrong shape (r ≈ −0.6): REE's reserve redispatch missing (E2 on
+  hold); the model's real-time starts are RD5 zone starts at night.
+- Next: all of 2024 with the base case (`y24_base`, 5 nodes).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

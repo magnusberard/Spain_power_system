@@ -613,6 +613,22 @@ runs: DEDUP=on, AC check, RD5 zones, water budget, REE's band per level, RD4 0.9
   hold); the model's real-time starts are RD5 zone starts at night.
 - Next: all of 2024 with the base case (`y24_base`, 5 nodes).
 
+**Real time, two changes before the year (25 Oct):** (1) `[redispatch.mustrun].realtime = false`
+(`62c20b1`): REE's zones in phase I only; the 92 night-time zone starts per week in real time were
+a modelling error since step C. (2) Reserve replay on t28_base / t915_base (real-time anchor, REE's
+mFRR + aFRR), sourced rules only:
+
+| shortfall, GWh (REE's reserve redispatch) | 2–8 Dec (83) | 9–15 Dec (111) | timing r hourly, 2–8 / 9–15 |
+|---|---|---|---|
+| running thermal + stoppable pumping | 199 | 163 | +0.71 / +0.49 |
+| + running hydro headroom (stopped hydro not counted) | 127 | 100 | +0.63 / +0.35 |
+| + all stopped hydro (today) | 0 | 0 | — |
+
+Reserve held by synchronised units only comes close in volume and evening share (47 / 45 % at
+17–22 h vs REE 55 / 46 %), with too much at 23 h and midday; a replay, not a run. In the model:
+E1's tertiary requirement (largest unit + 2 % of demand ≈ 1.6 GW, close to REE's mFRR requirement
+~1,570 MW) with `offline_hydro_counts = false` (`make_config --sync-reserve`, Solstorm RESERVE=sync).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

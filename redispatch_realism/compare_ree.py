@@ -219,6 +219,9 @@ def main():
     st = pd.concat([pd.read_csv(r / "rd_startups.csv") for r in runs if (r / "rd_startups.csv").exists()]) \
         if any((r / "rd_startups.csv").exists() for r in runs) else pd.DataFrame(columns=["round"])
     if len(st):
+        ac = st["zone"].fillna("").astype(str).str.startswith("phase I AC") if "zone" in st else pd.Series(False, index=st.index)
+        ac.sum() and print(f"model phase I AC-check starts (step C): {int(ac.sum())}")
+        st = st[~ac]                                    # the rest are real-time starts
         print(f"model real-time starts: {int((st['round'] == 0).sum())} voltage-zone (RD5), "
               f"{int((st['round'] > 0).sum())} voltage loop (RD9), {int((st['round'] < 0).sum())} reserve (RD7)")
     if a.relaxed:

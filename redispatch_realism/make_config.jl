@@ -5,6 +5,7 @@
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
+#                                             [--no-rt-zones]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -107,6 +108,7 @@ function main(args)
             set!(cfg, "redispatch.phase1.ac_check_zones", !("--no-zones" in args))
         end
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
+        "--no-rt-zones" in args && set!(cfg, "redispatch.mustrun.realtime", false)   # zones in phase I only
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)
         sq === nothing || set!(cfg, "generators.sync_q_frac", parse(Float64, sq))

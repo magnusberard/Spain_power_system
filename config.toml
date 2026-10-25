@@ -3565,6 +3565,9 @@ enabled          = false
 zones_file       = "redispatch_realism/data/voltage_zone_units.csv"
 requirement_file = "redispatch_realism/data/voltage_zone_requirement.csv"
 scale            = 1.0      # sensitivity: multiplies every zone's count
+# realtime = false: the zones apply in phase I only (with [redispatch.phase1].ac_check, voltage is
+# handled in phase I, as REE does); true = also in real time (as before 25 Oct).
+realtime         = true
 
 [redispatch.phase1]
 # REE's phase I/II as a daily stage on the day-ahead schedule (step RD8,

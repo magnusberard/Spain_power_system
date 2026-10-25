@@ -550,6 +550,11 @@ const RD_Q_CONDENSER   = String.(get(get(cfg, "redispatch", Dict()), "q_condense
 # [redispatch.startups] (step RD9): start offline units at minimum load where
 # reactive power is missing (redispatch_startups.jl).  nothing = off.
 const RD_STARTUPS = load_rd_startups(cfg)
+# [redispatch.mustrun].realtime = false: REE's voltage zones (RD5) only in phase I, not in real time.
+# Since step C handles voltage in phase I, as REE does (its real-time voltage redispatch was 0.3 GWh on
+# 2–8 Dec 2024), zone starts in real time are a modelling error (25 Oct: 92 night-time starts a week).
+const RD_MUSTRUN_RT = Bool(get(get(get(cfg, "redispatch", Dict()), "mustrun", Dict()), "realtime", true))
+const RD_STARTUPS_RT = (RD_STARTUPS === nothing || RD_MUSTRUN_RT) ? RD_STARTUPS : merge(RD_STARTUPS, (mustrun = nothing,))
 # objective = "ree" (steps RD10/RD11): REE's cost rule with pay-as-bid prices and
 # storage at its opportunity cost (redispatch_objective.jl, [redispatch.bids]).
 const RD_BIDS = RD_OBJECTIVE == "ree" ? load_rd_bids(cfg) : nothing
@@ -2302,7 +2307,7 @@ if RD_WATER_VALUE == "constant"
             solve_anchored_opf(network, gens, rd_optimizer_single(log_file = log_file),
                                sched_hour; iis_label = label) :
             solve_hour_with_startups(network, gens, k -> rd_optimizer_single(log_file = su_log(log_file, k)),
-                                     sched_hour, RD_STARTUPS; label = label, date_str = date_str, hour = hour)
+                                     sched_hour, RD_STARTUPS_RT; label = label, date_str = date_str, hour = hour)
         status = string(result["termination_status"])
         status in RD_SU_OK && hydro_budget_record!(result, network, sched_hour, RD_HYDRO_BUDGET, "rt", date_str)
 

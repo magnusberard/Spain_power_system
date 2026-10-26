@@ -101,8 +101,13 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
     # (rd_phase1.csv), as REE's real-time constraints start from the programme phase I left.
     # With phase I inside the market chain the balancing schedule already holds them.
     p1f = rdir / "rd_phase1.csv"
+    acf = rdir / "rd_phase1_ac.csv"     # in_chain + ac_check: the AC check's own changes, made after the markets
+    p1 = None
     if p1f.exists() and not phase1_in_chain(rdir):
         p1 = pd.read_csv(p1f).assign(delta=lambda d: d.phase1_mw - d.da_mw)[["date", "hour", "unit", "delta"]]
+    elif acf.exists() and phase1_in_chain(rdir):
+        p1 = pd.read_csv(acf).rename(columns={"ac_mw": "delta"})[["date", "hour", "unit", "delta"]]
+    if p1 is not None and len(p1):
         p1 = p1.rename(columns={"unit": "unit_name"})
         anc = anc.merge(p1, on=["date", "hour", "unit_name"], how="outer")
         anc["anchor_mw"] = anc.anchor_mw.fillna(0.0) + anc.delta.fillna(0.0)

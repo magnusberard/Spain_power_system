@@ -26,6 +26,7 @@
 #           RESERVE=sync (tertiary reserve, P.O. 1.5, held by synchronised units only, 15-min headroom),
 #           RESERVE=sync_hours (the same, a running unit's whole headroom counts),
 #           DOWNONLY=on (nuclear and CHP may be turned down, not up, in the redispatch),
+#           UNITREQ=on (units REE raised in phase I on half the days are required, 2024 only),
 #           DRY=1 (write the config and print the plan only)
 #           Local week runs: C4 = AC=on HB=on; C2b = AC=on ZONES=off HB=on
 #
@@ -74,6 +75,7 @@ if [ ! -f "$CFG" ]; then
     [ "${RESERVE:-}" = sync ] && flags+=(--sync-reserve)
     [ "${RESERVE:-}" = sync_hours ] && flags+=(--sync-reserve-hours)
     [ "${DOWNONLY:-}" = on ] && flags+=(--down-only)
+    [ "${UNITREQ:-}" = on ] && flags+=(--unit-req)
     ( cd "$REPO" && julia redispatch_realism/make_config.jl "$CFG" ${srccfg:+--source "$srccfg"} ${N1:+--n1 "$N1"} ${flags[@]+"${flags[@]}"} )
 fi
 

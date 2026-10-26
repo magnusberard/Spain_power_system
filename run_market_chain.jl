@@ -581,8 +581,11 @@ const RD_PHASE1_IN_CHAIN = RD_ENABLED && RD_STARTUPS !== nothing && RD_STARTUPS.
                            RD_STARTUPS.phase1.in_chain
 RD_PHASE1_IN_CHAIN && !RUN_MARKET &&
     error("config.toml: [redispatch.phase1].in_chain = true needs the market stages (from_saved = \"\")")
-RD_PHASE1_IN_CHAIN && RD_STARTUPS.phase1.ac_check &&
-    error("config.toml: [redispatch.phase1].ac_check does not work with in_chain yet (run phase I after the markets)")
+# in_chain + ac_check (level 1, 26 Oct): phase I's unit commitment (DC) runs between DA and ID2, so the
+# intraday markets trade from its schedule; the AC check runs after the markets on that schedule, and
+# only its own changes are added to real time's anchor (phase1_anchor, rd_phase1_ac.csv).
+RD_PHASE1_IN_CHAIN && RD_STARTUPS.phase1.ac_check && DIAGNOSTIC_OUTPUT &&
+    error("config.toml: in_chain with ac_check needs the full DA schedule after the markets (diagnostic_output = false)")
 
 # [redispatch].only: restrict the load flow to a single delivery hour (or day).
 # "" = every hour of every TARGET_DAY.  "2024-07-08 14" = that date+hour only.
@@ -2242,6 +2245,11 @@ if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && !RD_PHASE1_IN_CH
     for d in TARGET_DAYS
         run_phase1_day!(RD_STARTUPS, d)
         RD_STARTUPS.phase1.ac_check && phase1_ac_check_day!(RD_STARTUPS, d)   # step C
+    end
+elseif RD_PHASE1_IN_CHAIN && RD_STARTUPS.phase1.ac_check                       # level 1: DC part was in the chain
+    println("\n── Phase I AC check after the markets (phase I's unit commitment ran in the chain) ──")
+    for d in TARGET_DAYS
+        phase1_ac_check_day!(RD_STARTUPS, d)
     end
 end
 println("\n── Stage 6: Redispatch ($(RD_PF_MODEL) OPF via $(RD_SOLVER_NAME), anchored to $(rd_anchor_label())) ──")

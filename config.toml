@@ -3590,6 +3590,10 @@ enabled            = false
 mip_gap            = 1e-3
 time_limit_s       = 600.0
 zone_shortfall_eur = 1.0e5     # penalty per missing unit in a voltage zone
+# Fix 2 (2024 only, like RD5): units REE raised in phase I on at least half the days of 2024 are
+# required in the hours REE raised them (build_unit_requirement.py --min-days 183: Aboño 2, Cartagena 1,
+# Besós 5, San Roque 2, Aceca 4, Bahía de Bizkaia, As Pontes 5). "" = off.
+unit_requirement_file = ""
 # Where phase I runs: false = after all market stages, on the (saved) DA schedule
 # (works with from_saved); true = inside the market chain after each day's DA, as
 # in Spain: ID2–BAL start from DA + phase I/II's changes and keep its started

@@ -5,7 +5,7 @@
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
-#                                             [--no-rt-zones] [--sync-reserve] [--down-only]
+#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -110,6 +110,8 @@ function main(args)
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
         "--no-rt-zones" in args && set!(cfg, "redispatch.mustrun.realtime", false)   # zones in phase I only
         "--down-only" in args && set!(cfg, "redispatch.down_only", ["Nuclear", "CHP", "CHP_Waste"])   # may turn down
+        "--unit-req" in args && set!(cfg, "redispatch.phase1.unit_requirement_file",                   # fix 2
+                                     "redispatch_realism/data/phase1_unit_requirement.csv")
         if "--sync-reserve" in args || "--sync-reserve-hours" in args   # E1 tertiary held by synchronised units only
             set!(cfg, "redispatch.reserve.tertiary", true)
             set!(cfg, "redispatch.reserve.offline_hydro_counts", false)

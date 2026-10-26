@@ -157,7 +157,23 @@ function load_rd_phase1(cfg)
             min_up       = Int(get(uc, "min_up_h", 2)),
             min_down     = Int(get(uc, "min_down_h", 6)),
             zone_short_eur = Float64(get(c, "zone_shortfall_eur", 1.0e5)),
+            units_req    = load_rd_unit_requirement(c),                   # fix 2: units REE needs specifically
             bids         = load_rd_bids(cfg))
+end
+
+# Fix 2 (2024 only, like RD5): units REE raised in phase I on most days of the year are required in
+# the hours REE raised them (build_unit_requirement.py; RD5's zone counts let the model meet a zone
+# with its cheapest members, but REE kept e.g. Aboño 2 on through phase I on 358 days).
+function load_rd_unit_requirement(c)
+    f = String(get(c, "unit_requirement_file", ""))
+    isempty(f) && return nothing
+    f = isabspath(f) ? f : joinpath(@__DIR__, f)
+    req = Dict{Tuple{String,Int},Vector{String}}()
+    for r in eachrow(CSV.read(f, DataFrame))
+        push!(get!(req, (string(r.date), Int(r.hour)), String[]), String(r.unit_id))
+    end
+    @printf "  [redispatch.phase1] unit requirement: %d unit-hours in %d hours\n" sum(length, values(req)) length(req)
+    return req
 end
 
 const RD_PHASE1_ON   = Dict{Tuple{String,Int},Set{String}}()   # units phase I committed, per hour
@@ -174,6 +190,11 @@ const RD_N1_PAIR     = Tuple{String,String,Float64}[]          # per RD_N1_SLACK
 const RD_N1_LEFT_ROWS = NamedTuple[]                          # overloads left after phase I → rd_n1_left.csv
 const RD_PHASE1_ROWS = NamedTuple[]
 const RD_PHASE1_SUM  = NamedTuple[]
+# in_chain: the day-ahead schedule before phase I moved it (the report's da_mw), per (date, hour)
+const RD_DA_BEFORE_PHASE1 = Dict{Tuple{String,Int},Dict{String,Float64}}()
+# in_chain + ac_check: the AC check's own changes (MW per unit), which the markets did not see; real
+# time is anchored to BAL plus these, and settle.py reads them from rd_phase1_ac.csv
+const RD_PHASE1_AC_ROWS = Dict{Tuple{String,Int},Dict{String,Float64}}()
 const RD_SAVED_DA    = Ref{Any}(nothing)
 
 phase1_sched_for(date_str, hour) =
@@ -490,6 +511,17 @@ function run_phase1_day!(su, date_str)
             JuMP.add_to_expression!(obj, p1.zone_short_eur, short)
         end
     end
+    # fix 2: units REE needs specifically must be on in the hours REE raised them (on in the
+    # day-ahead already counts; a unit that is neither on nor a candidate cannot be forced)
+    if p1.units_req !== nothing
+        for (k, h) in enumerate(hours), nm in get(p1.units_req, (date_str, h), String[])
+            abs(get(scheds[k], nm, 0.0)) >= 1.0 && continue
+            haskey(u, (nm, k)) || continue
+            short = JuMP.@variable(m, lower_bound = 0.0, upper_bound = 1.0)
+            JuMP.@constraint(m, u[(nm, k)] + short >= 1)
+            JuMP.add_to_expression!(obj, p1.zone_short_eur, short)
+        end
+    end
     JuMP.@objective(m, Min, obj)
     opt = gurobi_da(log_file = joinpath(IPOPT_LOG_DIR, "$(date_str)_phase1.log"))
     JuMP.set_optimizer(m, opt)
@@ -575,7 +607,9 @@ changes for the hour (a new dict; `sched` itself is left untouched).  With
 in_chain the balancing schedule already holds them: `sched` unchanged.
 """
 function phase1_anchor(sched, date_str, hour)
-    RD_PHASE1_IN_CHAIN && return sched
+    # in_chain: the DC changes are in BAL already; only the AC check's own changes (made after the
+    # markets) are added — RD_PHASE1_DELTA holds just those then (phase1_in_chain! clears the rest)
+    RD_PHASE1_IN_CHAIN && !RD_STARTUPS.phase1.ac_check && return sched
     delta = get(RD_PHASE1_DELTA, (date_str, hour), nothing)
     (delta === nothing || sched === nothing) && return sched
     out = copy(sched)
@@ -602,6 +636,7 @@ function phase1_in_chain!(su, date_str, da_schedule)
     for ts in eachrow(filter(r -> r.date == date_str, hourly_da))
         key = (date_str, ts.hour)
         haskey(da_schedule, key) || continue
+        RD_DA_BEFORE_PHASE1[key] = copy(da_schedule[key])         # for the report (rd_phase1.csv da_mw)
         delta = get(RD_PHASE1_DELTA, key, Dict{String,Float64}())
         if !isempty(delta)
             pdvp = copy(da_schedule[key])
@@ -611,6 +646,9 @@ function phase1_in_chain!(su, date_str, da_schedule)
             da_schedule[key] = pdvp
             n_moved += length(delta)
         end
+        # the changes are now part of the schedule ID2–BAL start from: nothing is added on top of
+        # BAL for them later; after the markets RD_PHASE1_DELTA only holds the AC check's own changes
+        RD_PHASE1_DELTA[key] = Dict{String,Float64}()
         on = get(RD_PHASE1_ON, key, Set{String}())
         isempty(on) && continue
         lim = get!(UC_COMMIT, key, Dict{String,Tuple{Bool,Float64}}())
@@ -740,16 +778,26 @@ function phase1_ac_check_day!(su, date_str)
         i_sum = findfirst(r -> r.date == date_str && r.hour == h, RD_PHASE1_SUM)
         old = i_sum === nothing ? nothing : RD_PHASE1_SUM[i_sum]
         up_mwh = dn_mwh = cost = 0.0
-        for (name, d) in delta
+        # the report measures phase I against the day-ahead before it: in_chain, `base` already holds
+        # the DC changes (they are in the schedule the markets traded from), so measure from the
+        # schedule kept before phase I and include the units the DC part moved but this check did not
+        orig = RD_PHASE1_IN_CHAIN ? get(RD_DA_BEFORE_PHASE1, key, base) : base
+        names = RD_PHASE1_IN_CHAIN ?
+            union(keys(delta), (n for n in keys(base) if abs(get(base, n, 0.0) - get(orig, n, 0.0)) > 1e-3 && haskey(byname, n))) :
+            keys(delta)
+        for name in names
             g = byname[name][2]
+            p1mw = get(base, name, 0.0) + get(delta, name, 0.0)
+            d = p1mw - get(orig, name, 0.0)
             p_up, p_dn = rd_bid_prices(p1.bids, g, p_da)
             d > 0 ? (up_mwh += d; cost += d * (p_up - p_da)) : (dn_mwh -= d; cost += -d * (p_da - p_dn))
             if abs(d) > 0.5 || name in on
                 push!(RD_PHASE1_ROWS, (date = date_str, hour = h, unit = name, fuel = g["fuel"], technology = g["technology"],
-                                       da_mw = round(get(base, name, 0.0); digits = 1),
-                                       phase1_mw = round(get(base, name, 0.0) + d; digits = 1), committed = name in on))
+                                       da_mw = round(get(orig, name, 0.0); digits = 1),
+                                       phase1_mw = round(p1mw; digits = 1), committed = name in on))
             end
         end
+        RD_PHASE1_IN_CHAIN && (RD_PHASE1_AC_ROWS[key] = copy(delta))   # the part the markets did not see → real time's anchor
         dc_starts, dc_cost = get(RD_PHASE1_STARTCOST, key, (0, 0.0))
         cost += dc_cost + sum((su_terms(su, byname[n][2])[2] for n in new_starts); init = 0.0)
         row = (date = date_str, hour = h, status = "AC " * string(res["termination_status"]),
@@ -767,6 +815,12 @@ function write_rd_phase1(dir)
     isempty(RD_PHASE1_SUM) && return
     CSV.write(joinpath(dir, "rd_phase1.csv"), DataFrame(RD_PHASE1_ROWS))   # settle.py reads the changes from here too
     CSV.write(joinpath(dir, "rd_phase1_summary.csv"), DataFrame(RD_PHASE1_SUM))
+    if !isempty(RD_PHASE1_AC_ROWS)                                         # in_chain + ac_check
+        rows = [(date = k[1], hour = k[2], unit = n, ac_mw = round(v; digits = 1))
+                for (k, dl) in RD_PHASE1_AC_ROWS for (n, v) in dl if abs(v) > 0.5]
+        CSV.write(joinpath(dir, "rd_phase1_ac.csv"),
+                  isempty(rows) ? DataFrame(date = String[], hour = Int[], unit = String[], ac_mw = Float64[]) : DataFrame(rows))
+    end
     isempty(RD_N1_LEFT_ROWS) || CSV.write(joinpath(dir, "rd_n1_left.csv"), DataFrame(RD_N1_LEFT_ROWS))
     @printf "  rd_phase1*.csv   : %d unit-hours changed, %d hours ([redispatch.phase1])\n" length(RD_PHASE1_ROWS) length(RD_PHASE1_SUM)
 end

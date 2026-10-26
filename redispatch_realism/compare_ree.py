@@ -164,7 +164,8 @@ def main():
     u, ph = ree_units(a.i90, days)
     t = m.merge(r, on="date").merge(u, on="date", how="left")
     t["ree_units_per_h"] = [ph[ph.date == d].groupby("hour").ree_unit.nunique().mean() for d in t.date]
-    t["ph1_units_matching_ree"] = [len((p if isinstance(p, set) else set()) & q) for p, q in zip(t.get("ph1_units", [set()] * len(t)), t.ree_model_units)]
+    t["ph1_units_matching_ree"] = [len((p if isinstance(p, set) else set()) & (q if isinstance(q, set) else set()))
+                                   for p, q in zip(t.get("ph1_units", [set()] * len(t)), t.ree_model_units)]
     t["model_up_gwh"] = t.rt_up_gwh + t.get("ph1_up_gwh", 0).fillna(0)
     t["ree_up_gwh"] = t.ree_ph1_up_gwh + t.ree_rt_up_gwh
     t["model_meur"] = t.rt_meur + t.get("ph1_meur", 0).fillna(0)

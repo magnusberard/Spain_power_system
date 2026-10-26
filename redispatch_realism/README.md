@@ -657,6 +657,35 @@ choosing a point would be fitting. **Decision (25 Oct): the year runs without a 
 off in real time only); real time is a documented gap with the mechanism known from REE's data.
 Full year: `y24_base` = AC=on HB=on DEDUP=on SYNCQ=0.15 RTZONES=off.
 
+### The full year 2024 (`y24_base`, Solstorm 5 nodes, 25–26 Oct; on the results website as "2024 redispatch REE way")
+
+8,721 of 8,736 AC hours solved; markets from Lars Erik's run 4 (offered).
+
+| 2024 | model | REE | model / REE |
+|---|---|---|---|
+| phase I/II up / down | 14,003 / 12,824 GWh | 13,537 / 13,596 | 103 % / 94 % |
+| phase I + II cost | 1,244 M€ | 1,220 M€ | 102 % |
+| phase I hour-of-day shape | peak 04 h | peak 04 h | r = 0.95 |
+| real-time up / cost | 2,139 GWh / 184 M€ | 5,397 / 1,284 | 40 % / 14 % |
+
+The year total hides offsetting seasonal errors: the model's phase I is ~1,080–1,280 GWh in every
+month while REE's goes from 682 to 1,982; daily r over the year 0.38. Phase I model / REE by month:
+Jan 1.60, Feb 1.43, Mar 0.81, Apr 0.58, May 0.69, Jun 0.97, Jul 1.38, Aug 1.26, Sep 1.14, Oct 1.23,
+Nov 1.13, Dec 1.42. Real time 0.26–0.68 every month.
+
+By technology (phase I/II up, GWh): REE raises CCGT (1,859–2,344 per season), coal (437–597) and,
+in spring, **nuclear (2,491)**; the model only CCGT (3,085–3,378 per season), coal 0–80, nuclear 0.
+Day-ahead before phase I (REE's PDBF = PDVP − phase I/II, I90) vs the model's DA:
+- nuclear, spring: model 9,050 GWh vs REE 7,462 before phase I and 9,294 after. The model's nuclear
+  input already contains REE's spring nuclear redispatch (input from actual output, i.e. after
+  REE raised the units that had offered themselves out at low prices), so its phase I has nothing to
+  do: most of the spring gap. Other seasons ≈ REE.
+- coal: model DA 0 in every season (REE 57–184 before, 497–715 after phase I), and the model's
+  phase I almost never starts coal.
+- CCGT: model DA close to REE in winter, lower in summer/autumn, higher in spring.
+Next: zone- and unit-level analysis (Asturias / Soto de Ribera), why CCGT beats coal in phase I; then
+test fixes: nuclear DA from REE's PDBF for 2024 tests + phase I allowed to raise nuclear; coal.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

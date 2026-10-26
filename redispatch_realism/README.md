@@ -712,6 +712,23 @@ test fixes: nuclear DA from REE's PDBF for 2024 tests + phase I allowed to raise
 Phase I consists almost only of starts (37–48 unit-days a day, ~10 h on); raised running units
 0–8 GWh a month.
 
+**Fixes and diagnostics (26 Oct):**
+- Fix 1 (`98afcd8`): `bids_fitted.csv` covers solar thermal (PV's values: no thermosolar unit in the
+  crosswalk), offshore wind (onshore's), mini hydro (run-of-river's); a technology missing from the
+  table takes its fuel's mean mark-ups, never 0 (`test_bids_fallback.jl`).
+- Fix 4 (`98afcd8`): `[redispatch].down_only = ["Nuclear", "CHP", "CHP_Waste"]` (make_config
+  `--down-only`, Solstorm DOWNONLY=on): pmax = schedule, pmin = CHP blocks' min_frac or
+  `down_only_min_frac` (0.5) × installed; redispatch builds only (`test_down_only.jl`, 28 tests).
+- Diagnostic 3, real time (every 4th day of y24_base): CCGT down 885 GWh, of which 90 % undoes phase
+  I's change; hydro up 516 (100 % undoes phase I), PV up 236 (96 %), solar thermal up 253 (100 %); CCGT
+  up 920, 77 % on units phase I and intraday left alone. Real time mostly takes back phase I: phase I
+  is computed on the DA schedule and added on top of a BAL schedule whose intraday markets never saw
+  it (run 4 ran without phase I), so the rebalancing is counted twice. Structural fix: phase I in the
+  market chain (`in_chain`, built 21 Oct; not yet with the AC check, needs the markets rerun).
+- Diagnostic 5: started CCGTs sit at ~48 % of capacity (median), as REE's at minimum load; above
+  0.55 in 25 % of unit-hours (14 % of their energy), mostly 12–21 h (37–46 %), at night 5–16 %. Likely
+  the free solar-thermal down (fix 1); to recheck on the test pair f_apr / f_dec.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

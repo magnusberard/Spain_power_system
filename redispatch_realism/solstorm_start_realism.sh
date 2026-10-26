@@ -34,7 +34,8 @@
 # Watch:   tail -n 3 <out>/lane-*.log
 #          ls <out>/*/summary.csv | wc -l      (finished days, all nodes)
 # Stop:    pkill -u $USER -f run_days.sh; pkill -u $USER julia   (this node only)
-# Join:    python3 scripts/merge_runs.py <merged folder> <out>
+# Join:    python3 redispatch_realism/prepare_merge.py <out>   (cut the linked week files to each day first)
+#          python3 scripts/merge_runs.py <merged folder> <out>
 # Check:   python3 redispatch_realism/compare_ree.py <out> --bids ... (see README)
 set -eu
 

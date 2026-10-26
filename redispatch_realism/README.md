@@ -82,7 +82,18 @@ a busy node. Estimates with MA57: one month ≈ 30 min on one node (12 lanes); t
      --out /storage/users/$USER/results/realism_dec/vs_ree.csv
    ```
    and copy `vs_ree.csv` back (`scp <user>@solstorm-login.iot.ntnu.no:/storage/users/<user>/results/realism_dec/vs_ree.csv .`).
-   `python3 scripts/merge_runs.py <merged> <out>` joins the days into one folder if needed.
+8. **Joining the days into one folder** (for `publish_run.py` and the results website): each day
+   folder links to the source run's whole-week market files, and `merge_runs.py` concatenates every
+   CSV, so first cut those files to each folder's own day (otherwise every week appears seven times;
+   tested 26 Oct on a week: 392,449 BAL rows = 7 × one day):
+   ```
+   module load Python/3.11.5-GCCcore-13.2.0
+   python3 redispatch_realism/prepare_merge.py /storage/users/$USER/results/realism_2024
+   python3 scripts/merge_runs.py /storage/users/$USER/results/realism_2024_merged /storage/users/$USER/results/realism_2024
+   ```
+   On the website (spain-model-runs) a realism run's redispatch volume, plant map and grid load are
+   right, but its redispatch **cost** is the viewer's own (marginal cost × change, all phases
+   together), not REE's pay-as-bid by phase: use `settle.py` / `compare_ree.py` for that.
 
 Locally the same lanes run with `LANES=2` (memory: ~3 GB per lane on 16 GB).
 

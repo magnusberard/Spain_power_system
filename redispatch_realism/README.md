@@ -729,6 +729,15 @@ Phase I consists almost only of starts (37–48 unit-days a day, ~10 h on); rais
   0.55 in 25 % of unit-hours (14 % of their energy), mostly 12–21 h (37–46 %), at night 5–16 %. Likely
   the free solar-thermal down (fix 1); to recheck on the test pair f_apr / f_dec.
 
+**Test pair of fixes 1 + 4 (f_apr 8–14 Apr, f_dec 2–8 Dec; vs the same weeks in y24_base):** totals
+unchanged within 1 % (phase I/II up 286 → 283 / 247 → 248 GWh, REE 376 / 214; cost 71 % / 116–117 % of
+REE; real time 29 → 30 / 35 → 36 GWh). Solar thermal turned down 62 → 9 / 44 → 4 GWh, but PV turned
+down rose by about as much (65 → 111 / 46 → 76): the down side still has no merit order (every
+technology refunds 93–98 % of p_DA), so the next-cheapest renewable takes over. Nuclear and CHP are
+never turned down (CHP refunds 92.8 %, nuclear 0 %: last in line). Started CCGTs above 0.55 of capacity
+unchanged (day 20 % / 46 %, night 3 % / 5 % of unit-hours), so not caused by fix 1's bug; measured
+against minimum load (0.48) only 1–5 % of their energy: small, left alone.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

@@ -685,6 +685,32 @@ Day-ahead before phase I (REE's PDBF = PDVP − phase I/II, I90) vs the model's 
 - CCGT: model DA close to REE in winter, lower in summer/autumn, higher in spring.
 Next: zone- and unit-level analysis (Asturias / Soto de Ribera), why CCGT beats coal in phase I; then
 test fixes: nuclear DA from REE's PDBF for 2024 tests + phase I allowed to raise nuclear; coal.
+(26 Oct, Magnus: data issues such as the nuclear input are given; look only for structural errors.)
+
+**Structural errors in the year (26 Oct):**
+1. *Bid table gaps:* `Solar:Solar Thermal` is not in `bids_fitted.csv` and falls back to
+   `down_markup = 0`, so turning it down costs nothing in REE's objective: phase I turns down 3.1 TWh
+   of solar thermal in 2024 (PV 3.5, hydro 3.0, pumped 1.3, CCGT 1.1, wind 0.8 TWh). Every
+   technology needs a fitted value or its fuel's.
+2. *Zones too coarse for units REE needs specifically:* REE's coal redispatch is Aboño 2 (G0058,
+   1,945 GWh on 358 days at 181 €/MWh; Soto de Ribera 3 41 GWh, Aboño 1 27, Los Barrios 2). The model
+   meets the zone "Soto de Ribera" (6 members: Aboño 1/2, Soto 3 coal; Soto 4/5 CCGT; one more) with
+   CCGTs (61 vs 103 €/MWh) and never runs Aboño 2. Phase I units match REE's in 34 % of REE's
+   unit-days (1,841 of 5,384). Fix: unit-specific requirements for units REE kept on in phase I on
+   most days (I90; 2024 only, like RD5).
+3. *Real time reshuffles:* without border flows, real time is ~2.1 TWh up / 1.8 down: CCGT 823 up /
+   902 down, hydro 603 up (water given back), solar thermal 266 / 168, PV 264 / 511, wind 104 / 128;
+   peak at midday. REE's real time acts only on constraints. Renewables move almost for free under
+   the cost rule (up mark-up 0, refund ≈ p_DA). To check: cost-driven swaps or AC fixes after the
+   intraday changes; candidate fix: a minimum-deviation real time.
+4. *Down side without a merit order:* refunds 93–98 % of p_DA for every technology; CHP and nuclear
+   frozen, while REE turned down 0.8 TWh CHP and 0.9 TWh nuclear (I90, crosswalk; 6 TWh of REE's
+   down is on units not in the crosswalk, mostly renewable aggregators).
+5. *Started units above minimum load:* 20–40 % of started units' phase I energy (127–500 GWh a
+   month); REE starts at technical minimum. Cause to find (phase I network check with the halved
+   duplicate-line ratings, or the cost rule).
+Phase I consists almost only of starts (37–48 unit-days a day, ~10 h on); raised running units
+0–8 GWh a month.
 
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 

@@ -11,4 +11,7 @@ Hydro,run_of_river,0.0,0.038
 Nuclear,Nuclear,0.0,1.0
 Oil,Combined_cycle,0.0,0.047
 Solar,PV,0.0,0.031
+Solar,Solar Thermal,0.0,0.031
 Wind,Onshore,0.0,0.054
+Wind,Offshore,0.0,0.054
+Hydro,mini_hydro,0.0,0.038

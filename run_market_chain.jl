@@ -281,6 +281,8 @@ const REACTOR_SWITCHABLE = Bool(get(get(cfg, "reactors", Dict()), "switchable", 
 RES_CONNECTION_MVAR[]    = Float64(get(get(cfg, "reactors", Dict()), "res_connection_mvar", 0.0))
 DEDUP_AB_LINES[]         = Bool(get(get(cfg, "network", Dict()), "dedup_ab_lines", false))
 SYNC_Q_FRAC[]            = Float64(get(get(cfg, "generators", Dict()), "sync_q_frac", 0.0))
+DOWN_ONLY[]              = Set(String.(get(get(cfg, "redispatch", Dict()), "down_only", String[])))
+DOWN_ONLY_MIN_FRAC[]     = Float64(get(get(cfg, "redispatch", Dict()), "down_only_min_frac", 0.5))
 
 const LOAD_PF            = Float64(get(get(cfg, "load", Dict()), "power_factor", 1.0))
 

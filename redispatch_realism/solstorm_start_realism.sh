@@ -25,6 +25,7 @@
 #           RTZONES=off (REE's voltage zones in phase I only, not in real time),
 #           RESERVE=sync (tertiary reserve, P.O. 1.5, held by synchronised units only, 15-min headroom),
 #           RESERVE=sync_hours (the same, a running unit's whole headroom counts),
+#           DOWNONLY=on (nuclear and CHP may be turned down, not up, in the redispatch),
 #           DRY=1 (write the config and print the plan only)
 #           Local week runs: C4 = AC=on HB=on; C2b = AC=on ZONES=off HB=on
 #
@@ -72,6 +73,7 @@ if [ ! -f "$CFG" ]; then
     [ "${RTZONES:-}" = off ] && flags+=(--no-rt-zones)
     [ "${RESERVE:-}" = sync ] && flags+=(--sync-reserve)
     [ "${RESERVE:-}" = sync_hours ] && flags+=(--sync-reserve-hours)
+    [ "${DOWNONLY:-}" = on ] && flags+=(--down-only)
     ( cd "$REPO" && julia redispatch_realism/make_config.jl "$CFG" ${srccfg:+--source "$srccfg"} ${N1:+--n1 "$N1"} ${flags[@]+"${flags[@]}"} )
 fi
 

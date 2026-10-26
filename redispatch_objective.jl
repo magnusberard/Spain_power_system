@@ -70,8 +70,16 @@ rd_is_storage(g) = g["fuel"] == "Battery" ||
                    (g["fuel"] == "Hydro" && lowercase(g["technology"]) in ("reservoir", "pumped_storage"))
 
 function rd_markups(bids, g)
-    get(bids.by_type, lowercase("$(g["fuel"]):$(g["technology"])"),
-        get(bids.by_type, lowercase(g["fuel"]), (bids.up_markup, bids.down_markup)))
+    k = lowercase("$(g["fuel"]):$(g["technology"])")
+    haskey(bids.by_type, k) && return bids.by_type[k]
+    f = lowercase(String(g["fuel"]))
+    haskey(bids.by_type, f) && return bids.by_type[f]
+    # A technology missing from the table takes its fuel's mark-ups (the mean over the fuel's rows),
+    # not the global default: with down_markup = 0 a missing technology refunded 100 % of p_DA, so
+    # turning it down cost nothing (solar thermal, 3.1 TWh in 2024 before 26 Oct).
+    same = [v for (kk, v) in bids.by_type if startswith(kk, f * ":")]
+    isempty(same) && return (bids.up_markup, bids.down_markup)
+    return (sum(first, same) / length(same), sum(last, same) / length(same))
 end
 
 """

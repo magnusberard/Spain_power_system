@@ -3422,6 +3422,13 @@ enabled = true
 # network infeasible with no way to relieve it. Add "Hydro:run_of_river" here
 # to restore the old fully-frozen behaviour once the grid can actually carry it.
 frozen_fuels = ["Nuclear", "Biomass", "Coal"]
+# down_only: fuels or technologies that, instead of frozen at the schedule, may be turned down but not
+# up in the redispatch (pmax = schedule; pmin = CHP blocks' min_frac, others down_only_min_frac ×
+# installed). REE turned down 0.8 TWh of CHP and 0.9 TWh of nuclear in 2024's phase I/II (I90).
+# Priced by [redispatch.bids] (nuclear's fitted down mark-up 1.0: no refund, so a last resort).
+# [] = as before.  Realism runs: ["Nuclear", "CHP", "CHP_Waste"].
+down_only          = []
+down_only_min_frac = 0.5
 
 # ── Manual, targeted line reinforcement ─────────────────────────────────────
 # A CSV (columns: line_id,factor) naming individual branches — AC lines,

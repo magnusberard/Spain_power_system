@@ -50,6 +50,13 @@ const DEDUP_AB_LINES          = Ref(false)
 # 28 April 2025 blackout found conventional units below 75 % of the reactive power REE asked for.
 # [generators].sync_q_frac = 0 keeps the full MVA circle (as before).
 const SYNC_Q_FRAC             = Ref(0.0)
+# Down-only units in the redispatch ([redispatch].down_only, fuels or technologies, e.g. ["Nuclear",
+# "CHP"]): instead of frozen at the day-ahead set-point they may be turned down, not up: pmax = the
+# schedule, pmin = their technical minimum (CHP blocks: min_frac; others: down_only_min_frac ×
+# installed).  REE turned down 0.8 TWh of CHP and 0.9 TWh of nuclear in 2024's phase I/II (I90).
+const DOWN_ONLY               = Ref(Set{String}())
+const DOWN_ONLY_MIN_FRAC      = Ref(0.5)
+is_down_only(fuel, tech) = !isempty(DOWN_ONLY[]) && (fuel in DOWN_ONLY[] || tech in DOWN_ONLY[])
 
 """
     ab_duplicate_ids(line_df) -> Set{String}
@@ -786,6 +793,11 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         pmin_free = is_pumped ? -pmax_pu : nuc_floor
         pmin_g  = is_frozen ? frozen_pu : pmin_free
         pmax_g  = is_frozen ? frozen_pu : pmax_pu
+        # redispatch builds only (they pass da_dispatch; the market stages freeze nuclear via
+        # nuclear_da_dispatch and must keep it frozen)
+        if is_frozen && da_dispatch !== nothing && is_down_only(String(row.primary_fuel), String(row.technology))   # [redispatch].down_only
+            pmin_g = min(frozen_pu, DOWN_ONLY_MIN_FRAC[] * cap_mw / BASEMVA)
+        end
         pg_strt = frozen_pu !== nothing ? clamp(frozen_pu, pmin_free, pmax_pu) :
                   nuc_floor > 0.0       ? pmax_pu :
                   is_pumped             ? 0.0     : pmax_pu/2
@@ -904,7 +916,8 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                     "technology"   => String(blk.technology),
                     "installed_mw" => p_mw,
                     "pmax"         => da_pu === nothing ? p_pu  : da_pu,
-                    "pmin"         => da_pu === nothing ? lo_pu : da_pu,
+                    "pmin"         => da_pu === nothing ? lo_pu :
+                                      is_down_only(String(blk.fuel), String(blk.technology)) ? min(da_pu, lo_pu) : da_pu,
                     "pg0"          => da_pu === nothing ? p_pu  : da_pu,
                     "pg"           => da_pu === nothing ? p_pu  : da_pu,
                     "qmax"         => q_pu,   "qmin" => -q_pu,

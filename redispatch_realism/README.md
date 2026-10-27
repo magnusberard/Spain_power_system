@@ -738,6 +738,24 @@ never turned down (CHP refunds 92.8 %, nuclear 0 %: last in line). Started CCGTs
 unchanged (day 20 % / 46 %, night 3 % / 5 % of unit-hours), so not caused by fix 1's bug; measured
 against minimum load (0.48) only 1–5 % of their energy: small, left alone.
 
+**Fix 2, unit-specific requirement (f2_apr, f2_dec, Solstorm, 27 Oct; vs f_apr / f_dec):** units REE
+raised in phase I on ≥ 183 days of 2024 (Aboño 2, Cartagena 1, Besós 5, San Roque 2, Aceca 4, Bahía de
+Bizkaia, As Pontes 5) required in REE's hours (`6d8bcfc`).
+
+| | Apr before / fix 2 / REE | Dec before / fix 2 / REE |
+|---|---|---|
+| phase I/II up | 283 / 314 / 376 GWh | 248 / 285 / 214 GWh |
+| phase I + II cost vs REE | 71 % / 84 % | 117 % / 134 % |
+| units per hour | 7.6 / 8.7 / 9.5 | 6.4 / 7.8 / 7.9 |
+| unit-days matching REE's units | 47 / 70 of 121 | 66 / 83 of 116 |
+| coal up | 0 / 26.5 GWh | 2.4 / 21.7 GWh (REE 24.7) |
+| CCGT up | 262 / 266 GWh | 228 / 247 GWh (REE 190) |
+
+Aboño 2 on 136 (Apr) and 104 (Dec) hours a week (before 0). Unit choice clearly closer to REE; volume
+closer in April, further over in December: the required units come on top of the other starts
+(started unit-hours 2,509 → 2,684 in Dec), so the zone counts are not what drives the other CCGT starts.
+Level 1 (l1_apr, l1_dec): still running when packed (27 Oct), to be copied again.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

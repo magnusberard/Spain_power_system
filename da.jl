@@ -391,8 +391,10 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # `sec_limits` : (h, unit_id) ⇒ (lower MW, upper MW), NaN = none — REE's security limits on
     # phase I/II's changes for the gates after the DA ([redispatch.phase1].security_limits, in_chain):
     # a unit phase I turned down cannot sell back above its post-phase-I output, a unit it raised
-    # cannot sell below it.  A limit that would contradict a forced on/off (unit commitment) or
-    # another bound is left out rather than made infeasible.
+    # cannot sell below it.  Where a limit lies beyond what this gate allows (below a unit's floor in
+    # the market — e.g. hydro, whose market minimum is above what phase I's grid model allows — or below a
+    # committed unit's minimum load; above the available capacity), the unit is held at that edge
+    # instead: as close to the limit as the gate allows, never infeasible.
     if sec_limits !== nothing
         for ((h, name), (lo, hi)) in sec_limits
             h in free || continue
@@ -401,14 +403,14 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             ub = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : Inf
             lb = JuMP.has_lower_bound(p) ? JuMP.lower_bound(p) : -Inf
             if !isnan(hi)
-                hp = hi / BASEMVA
-                # a unit with on/off decisions may be forced on (prev_on): never cap it below its minimum load
-                ml = haskey(uc_on, (h, name)) ? Float64(uc.units[name].min_load) * ub : 0.0
-                (hp >= lb - 1e-9 && hp >= ml - 1e-9 && hp < ub) && JuMP.set_upper_bound(p, hp)
+                # a unit with on/off decisions may be forced on (prev_on): never below its minimum load
+                ml = haskey(uc_on, (h, name)) ? Float64(uc.units[name].min_load) * ub : -Inf
+                hp = max(hi / BASEMVA, lb, ml)
+                hp < ub && JuMP.set_upper_bound(p, hp)
             end
             if !isnan(lo)
-                lp = lo / BASEMVA
-                (lp <= ub + 1e-9 && lp > lb) && JuMP.set_lower_bound(p, lp)
+                lp = min(lo / BASEMVA, ub)
+                lp > lb && JuMP.set_lower_bound(p, lp)
             end
         end
     end

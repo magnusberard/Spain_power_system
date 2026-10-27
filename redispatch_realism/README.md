@@ -769,6 +769,22 @@ rerun with run 4's settings (`solstorm_start_inchain.sh`), AC check and real tim
   started units on (UC_COMMIT) but does not cap the units it turned down.
 - Not for the year as built. Next: a cap in ID2–BAL for units phase I turned down, then Dec again.
 
+**Security limits (l2_apr, l2_dec; `845223b`, 27 Oct):** in ID2–BAL a unit phase I turned down may
+not sell back above its post-phase-I output, a unit it raised not below it.
+
+| €/MWh | run 4 | in chain | in chain + limits | real |
+|---|---|---|---|---|
+| Apr ID2 / ID3 / CID / BAL | 28.7 / 33.6 / 36.6 / 35.8 | 22.4 / 22.2 / 34.5 / 34.8 | 24.9 / 33.7 / 36.0 / 35.5 | (no auctions) |
+| Dec ID2 / ID3 / CID / BAL | 100.4 / 108.1 / 102.4 / 103.8 | 69.0 / 72.7 / 69.2 / 62.7 | 75.3 / 86.6 / 88.0 / 89.0 | 102.0 / 108.4 / 100.1 / — |
+
+Real time: up 19 / 22 GWh (REE 162 / 87), shape r = +0.08 / −0.10 (outside the chain −0.47 / −0.36),
+reversing phase I 40 % / 34 % (outside 86 / 82 %). Solar sold back above its limit 109–119 → 1 GWh
+(Dec). Left, measured against the limits themselves (phase I's output before the AC check): hydro
+13–25 GWh and gas 20–25 GWh (Dec) above the upper limit. Cause: the cap was skipped whenever it fell
+below the unit's floor in the market (hydro's market minimum is above what phase I's grid model allows;
+a committed gas unit's minimum load). Fixed: the unit is held at that floor instead (as close to the
+limit as the gate allows, never infeasible). Next: Dec again (l3_dec).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

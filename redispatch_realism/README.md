@@ -756,6 +756,19 @@ closer in April, further over in December: the required units come on top of the
 (started unit-hours 2,509 → 2,684 in Dec), so the zone counts are not what drives the other CCGT starts.
 Level 1 (l1_apr, l1_dec): still running when packed (27 Oct), to be copied again.
 
+**Level 1, phase I's unit commitment inside the chain (l1_apr, l1_dec; vs f2_*; 27 Oct):** markets
+rerun with run 4's settings (`solstorm_start_inchain.sh`), AC check and real time after.
+- Real time reversing phase I: Apr 86 % → 10 %, Dec 82 % → 17 %; April solves 168/168 hours (157).
+- Real time's volume and shape unchanged in substance: up 30 → 35 / 36 → 29 GWh (REE 162 / 87),
+  shape r = −0.18, peak at midday (REE 17–20 h); phase I unchanged (314 / 281 GWh).
+- **Intraday prices fall:** Dec ID2 100.4 → 69.0, ID3 108.1 → 72.7, CID 102.4 → 69.2, BAL 103.8 → 62.7
+  €/MWh (DA 93.1 → 91.7); real Dec 2–8: DA 104.1, IDA2 102.0, IDA3 108.4, continuous 100.1. April
+  ID2 −6.3, ID3 −11.5. The reversal moved from real time into the intraday markets: units phase I
+  turned down sell the energy back there. In Spain phase I/II's changes carry security limits the
+  intraday markets must respect (P.O. 3.2; per unit in I90DIA34/35); the model keeps phase I's
+  started units on (UC_COMMIT) but does not cap the units it turned down.
+- Not for the year as built. Next: a cap in ID2–BAL for units phase I turned down, then Dec again.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

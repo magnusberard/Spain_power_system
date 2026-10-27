@@ -399,6 +399,26 @@ def build(rdir, runs_repo, args):
                 v = out[rows].sum(axis=0) if rows else np.zeros(H)
                 dest[st][c] = r1(np.where(seen, v, np.nan))
 
+    # 4-zone runs (2035 weeks mode): the joint day-ahead clears the France/Portugal exchange and the
+    # network takes it as fixed border injections, not as CrossBorder units, so the loop above finds
+    # no imports. Take it from xb_flows.csv (+ = import to Spain); later stages keep the day-ahead
+    # exchange, so every stage gets the same imports. The signed flows go in the package so the
+    # viewer can show exports too.
+    exchange = None
+    if (rdir / "xb_flows.csv").exists() and "CrossBorder" not in {f for f, _ in keys}:
+        xb = pd.read_csv(rdir / "xb_flows.csv")
+        xb = xb[xb.date.isin(hours.day_i)]
+        fr, pt = np.full(H, np.nan), np.full(H, np.nan)
+        fr[hours.of(xb)] = xb.fr_mw.to_numpy()
+        pt[hours.of(xb)] = xb.pt_mw.to_numpy()
+        imp = np.clip(fr, 0, None) + np.clip(pt, 0, None)
+        for st, (_, _, seen) in per_unit.items():
+            for dest in (mix, phys):
+                dest[st]["Imports"] = r1(np.where(seen, imp, np.nan))
+        exchange = dict(FR=r1(fr), PT=r1(pt))
+        print(f"  4-zone exchange (xb_flows.csv): imports {np.nansum(imp) / 1e6:.2f} TWh, exports "
+              f"{np.nansum(np.clip(-fr, 0, None) + np.clip(-pt, 0, None)) / 1e6:.2f} TWh")
+
     # balancing stage: what BAL moved relative to CID, summed up and down over the responding units
     # (wind, solar and the fixed cross-border injections left out), and the forecast change it had
     # to cover (CID -> BAL
@@ -513,7 +533,7 @@ def build(rdir, runs_repo, args):
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
-        balancing=balancing, redispatch=redispatch, traded=traded,
+        balancing=balancing, redispatch=redispatch, traded=traded, exchange=exchange,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}

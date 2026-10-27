@@ -102,6 +102,8 @@ function main(args)
         if "--in-chain" in args
             set!(cfg, "redispatch.phase1.in_chain", true)
             set!(cfg, "redispatch.from_saved", "")
+            # REE's security limits on phase I's changes in ID2–BAL (off only with --no-security-limits)
+            set!(cfg, "redispatch.phase1.security_limits", !("--no-security-limits" in args))
         end
         if "--ac-check" in args                                 # step C
             set!(cfg, "redispatch.phase1.ac_check", true)

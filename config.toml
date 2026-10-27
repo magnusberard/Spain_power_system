@@ -3594,6 +3594,11 @@ zone_shortfall_eur = 1.0e5     # penalty per missing unit in a voltage zone
 # required in the hours REE raised them (build_unit_requirement.py --min-days 183: Aboño 2, Cartagena 1,
 # Besós 5, San Roque 2, Aceca 4, Bahía de Bizkaia, As Pontes 5). "" = off.
 unit_requirement_file = ""
+# security_limits (in_chain only): REE's limits on phase I/II's changes in the gates after the DA (P.O. 3.2;
+# per unit in I90DIA34/35): a unit phase I turned down may not sell back above its post-phase-I output in
+# ID2–BAL, a unit it raised may not sell below it. Without them the intraday markets undo phase I (27 Oct:
+# Dec 2024 ID2–CID ~30 % below the real prices).
+security_limits = false
 # Where phase I runs: false = after all market stages, on the (saved) DA schedule
 # (works with from_saved); true = inside the market chain after each day's DA, as
 # in Spain: ID2–BAL start from DA + phase I/II's changes and keep its started

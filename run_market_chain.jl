@@ -422,6 +422,18 @@ function uc_prev_on_for(date_str, day_ts)
     end
     return on
 end
+# (h_idx, unit) ⇒ (lower, upper) MW: phase I's security limits for the gates after the DA
+# ([redispatch.phase1].security_limits, in_chain only; redispatch_phase1.jl, RD_PHASE1_LIMITS)
+function phase1_limits_for(date_str, day_ts)
+    (RD_PHASE1_IN_CHAIN && RD_STARTUPS.phase1.security_limits) || return nothing
+    b = Dict{Tuple{Int,String},Tuple{Float64,Float64}}()
+    for (h_idx, ts) in enumerate(eachrow(day_ts))
+        for (name, v) in get(RD_PHASE1_LIMITS, (String(date_str), ts.hour), Dict{String,Tuple{Float64,Float64}}())
+            b[(h_idx, name)] = v
+        end
+    end
+    return isempty(b) ? nothing : b
+end
 function uc_bounds_for(date_str, day_ts)
     UC_CFG === nothing && !RD_PHASE1_IN_CHAIN && return nothing    # in_chain: phase I's units stay on
     b = Dict{Tuple{Int,String},Tuple{Bool,Float64}}()
@@ -1697,7 +1709,8 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
                         hydro_budget_mwh = get(bv, :budget, nothing),
-                        uc = u, uc_bounds = ucb)
+                        uc = u, uc_bounds = ucb,
+                        sec_limits = label == "DA" ? nothing : phase1_limits_for(date_str, day_ts))
     if uc !== nothing && label == "DA" && UC_CFG.mic_check
         # Minimum-income check loop (unit_commitment.jl, mic_clear)
         result, mic_log = mic_clear(solve_gate, uc, UC_CFG.max_rounds)
@@ -1789,7 +1802,8 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
         result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
                             hydro_budget_mwh = get(bv, :budget, nothing),
-                            uc_bounds = uc_bounds_for(date_str, day_ts))
+                            uc_bounds = uc_bounds_for(date_str, day_ts),
+                            sec_limits = phase1_limits_for(date_str, day_ts))
         result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
             error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
         committed[hgate] = result.sched[hgate]

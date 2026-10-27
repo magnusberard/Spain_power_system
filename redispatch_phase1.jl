@@ -137,6 +137,7 @@ function load_rd_phase1(cfg)
     get(c, "enabled", false) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
     return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
+            security_limits = Bool(get(c, "security_limits", false)),     # in_chain: ID2–BAL keep phase I's changes
             ac_check     = Bool(get(c, "ac_check", false)),               # step C: AC voltage check in phase I
             ac_zones     = Bool(get(c, "ac_check_zones", true)),          # step C: RD5 zone counts also in that check
             hydro_budget = load_rd_hydro_budget(cfg),                     # RD13: no added hydro energy per day
@@ -195,6 +196,10 @@ const RD_DA_BEFORE_PHASE1 = Dict{Tuple{String,Int},Dict{String,Float64}}()
 # in_chain + ac_check: the AC check's own changes (MW per unit), which the markets did not see; real
 # time is anchored to BAL plus these, and settle.py reads them from rd_phase1_ac.csv
 const RD_PHASE1_AC_ROWS = Dict{Tuple{String,Int},Dict{String,Float64}}()
+# in_chain + [redispatch.phase1].security_limits: REE's limits on phase I/II's changes (P.O. 3.2; per unit in
+# I90DIA34/35), per (date, hour) ⇒ unit ⇒ (lower MW, upper MW) for ID2–BAL: a unit phase I turned down may not
+# sell back above its post-phase-I output, a unit it raised may not sell below it (NaN = no limit)
+const RD_PHASE1_LIMITS = Dict{Tuple{String,Int},Dict{String,Tuple{Float64,Float64}}}()
 const RD_SAVED_DA    = Ref{Any}(nothing)
 
 phase1_sched_for(date_str, hour) =
@@ -645,6 +650,14 @@ function phase1_in_chain!(su, date_str, da_schedule)
             end
             da_schedule[key] = pdvp
             n_moved += length(delta)
+            if su.phase1.security_limits
+                lim = Dict{String,Tuple{Float64,Float64}}()
+                for (name, d) in delta
+                    abs(d) > 0.5 || continue
+                    lim[name] = d < 0 ? (NaN, pdvp[name]) : (pdvp[name], NaN)
+                end
+                RD_PHASE1_LIMITS[key] = lim
+            end
         end
         # the changes are now part of the schedule ID2–BAL start from: nothing is added on top of
         # BAL for them later; after the markets RD_PHASE1_DELTA only holds the AC check's own changes

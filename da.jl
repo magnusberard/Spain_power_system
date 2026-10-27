@@ -49,7 +49,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                   foreign = nothing,
                   hydro_budget_mwh::Union{Nothing,Float64} = nothing,
                   uc = nothing,
-                  uc_bounds = nothing)
+                  uc_bounds = nothing,
+                  sec_limits = nothing)
     H     = length(nets)
     # Net indices (1-based) whose generation is tradable at this gate.  Hours not
     # in `free` are frozen at the previous gate's schedule (`prev_sched`, MW): they
@@ -384,6 +385,30 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             else
                 JuMP.set_upper_bound(p, 0.0)
                 JuMP.has_lower_bound(p) && JuMP.lower_bound(p) > 0 && JuMP.set_lower_bound(p, 0.0)
+            end
+        end
+    end
+    # `sec_limits` : (h, unit_id) ⇒ (lower MW, upper MW), NaN = none — REE's security limits on
+    # phase I/II's changes for the gates after the DA ([redispatch.phase1].security_limits, in_chain):
+    # a unit phase I turned down cannot sell back above its post-phase-I output, a unit it raised
+    # cannot sell below it.  A limit that would contradict a forced on/off (unit commitment) or
+    # another bound is left out rather than made infeasible.
+    if sec_limits !== nothing
+        for ((h, name), (lo, hi)) in sec_limits
+            h in free || continue
+            p = get(pg_by_name, (h, name), nothing)
+            p === nothing && continue
+            ub = JuMP.has_upper_bound(p) ? JuMP.upper_bound(p) : Inf
+            lb = JuMP.has_lower_bound(p) ? JuMP.lower_bound(p) : -Inf
+            if !isnan(hi)
+                hp = hi / BASEMVA
+                # a unit with on/off decisions may be forced on (prev_on): never cap it below its minimum load
+                ml = haskey(uc_on, (h, name)) ? Float64(uc.units[name].min_load) * ub : 0.0
+                (hp >= lb - 1e-9 && hp >= ml - 1e-9 && hp < ub) && JuMP.set_upper_bound(p, hp)
+            end
+            if !isnan(lo)
+                lp = lo / BASEMVA
+                (lp <= ub + 1e-9 && lp > lb) && JuMP.set_lower_bound(p, lp)
             end
         end
     end

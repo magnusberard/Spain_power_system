@@ -384,7 +384,7 @@ end
 
 # ── Optional seasonal envelope on the ES reservoir ([midterm4].es_rule_curve_file) ──
 # Empty (the default): no limits beyond 0 ≤ V ≤ vmax, as before.  Set (2024 path
-# only): the end-of-stage ES volume is kept within lower_fill · vmax … upper_fill ·
+# and scenario runs, whose weeks use the same stage calendar): the end-of-stage ES volume is kept within lower_fill · vmax … upper_fill ·
 # vmax per stage (rule curves: flood-control margins above, minimum reserves below),
 # from a file built out of REE's observed fill over calibration years
 # (hydro_state/build_rule_curves.py).  Soft: each MWh outside costs
@@ -396,7 +396,6 @@ const ES_RULE_PENALTY = Float64(get(mcfg, "es_rule_curve_penalty", END_PENALTY))
 const ES_RULE_CURVE = if ES_RULE_FILE == ""
     nothing
 else
-    SCEN_ACTIVE && error("[midterm4].es_rule_curve_file is for the 2024 path only")
     es_rc = CSV.read(joinpath(@__DIR__, ES_RULE_FILE), DataFrame)
     nrow(es_rc) >= N_STAGES || error("$ES_RULE_FILE: $(nrow(es_rc)) rows < n_stages = $N_STAGES")
     all(0 .<= es_rc.lower_fill .<= es_rc.upper_fill .<= 1) ||
@@ -433,7 +432,7 @@ reservoirs = Dict(
 # Replaces the 2024 capacity / cost / demand / NTC / storage tables (all four
 # zones) with the EMPIRE run at the configured period.  Kept at 2024: every
 # hourly shape (EDF climate years, EMPIRE 2015–2019 weather), the reservoir
-# volumes / initial fills / inflows, and the ES CHP block.
+# volumes / initial fills / inflows, and the ES CHP blocks (2024 monthly means).
 if SCEN_ACTIVE
     println("Scenario $(EMP.label): EMPIRE period $(EMP.period), CO2 " *
             "$(round(EMP.co2_price; digits = 1)) EUR/t ($(EMP.co2_src)) — " *
@@ -444,16 +443,44 @@ if SCEN_ACTIVE
         caps[z] = copy(EMP.caps[z])
     end
 
-    # thermal fleet: EMPIRE capacities × [midterm4.availability], EMPIRE costs
-    # (marginal_costs + CO2 adder); ES cogeneration kept as in 2024 (EMPIRE has
-    # no CHP class — near-baseload heat-driven output with heat-credited cost).
+    # thermal fleet: EMPIRE capacities × [midterm4.availability] (ES nuclear:
+    # [midterm4.availability.ES], the chain's 0.85), EMPIRE costs (marginal_costs
+    # + CO2 adder).
     therm = [(zone = z, tech = t,
               pmax = EMP.caps[z][t] * avail(z, empire_avail_key(t)),
               cost = EMP.costs[t], src = "EMPIRE $(EMP.label)")
              for z in ZONES for t in EMPIRE_THERMAL_TECHS
              if get(EMP.caps[z], t, 0.0) > 0.0]
-    push!(therm, (zone = "ES", tech = "Cogeneration", pmax = 2400.0, cost = 50.0,
-                  src = "added (REE 2024 CHP)"))
+    # ES cogeneration / waste / mini-hydro (EMPIRE has no CHP class): the market
+    # chain's three [chp] blocks at their prices, each sized per stage by its 2024
+    # mean for the month (run_market_chain.jl, CHP_BY_MONTH) averaged over the
+    # stage's 7 days, so the water values see the CHP supply the day-ahead stage
+    # sees.  pmax = the largest stage; the per-stage size goes in ES_STAGE_PMAX
+    # (empty here: es_stage_supply_file is 2024-only).
+    let chp = get(cfg, "chp", Dict())
+        if get(chp, "enabled", false)
+            by_month = Dict{Tuple{Int,String},Vector{Float64}}()
+            for (dt, day) in get(chp, "by_date", Dict()), (k, v) in day
+                v isa Real && push!(get!(by_month, (month(Date(String(dt))), String(k)), Float64[]),
+                                    Float64(v))
+            end
+            for (key, tech) in (("gas", "Cogeneration"), ("waste", "Waste_CHP"),
+                                ("minihydro", "Mini_hydro"))
+                dflt = Float64(get(chp, key * "_mw", 0.0))
+                mw_month = m -> haskey(by_month, (m, key * "_mw")) ? mean(by_month[(m, key * "_mw")]) : dflt
+                pmax_t = [mean(mw_month(month(BGN_DATE + Day(7 * (t - 1) + k))) for k in 0:6)
+                          for t in 1:N_STAGES]
+                maximum(pmax_t) > 1e-6 || continue
+                push!(therm, (zone = "ES", tech = tech, pmax = maximum(pmax_t),
+                              cost = Float64(get(chp, key * "_cost_eur_mwh", 0.0)),
+                              src = "added ([chp] $key, 2024 monthly mean)"))
+                ES_STAGE_PMAX[length(therm)] = pmax_t
+                @printf("ES %-12s %.0f…%.0f MW per stage (2024 monthly means), %.1f EUR/MWh
+",
+                        tech, extrema(pmax_t)..., therm[end].cost)
+            end
+        end
+    end
 
     # ES VRE: EMPIRE capacities, EMPIRE real-weather shapes; run-of-river keeps
     # the EDF daily profile with capacity and annual energy scaled by the

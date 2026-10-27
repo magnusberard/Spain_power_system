@@ -118,7 +118,8 @@ read_in_tab(dir, f; ncol) = CSV.read(joinpath(dir, "Input", "Tab", f), DataFrame
 #                      restore the old no-carbon behaviour)
 #   co2_price_file   — EnVis CSV; "" falls back to General_CO2Price.tab
 #   co2_price_region — default "ES"
-#   co2_price_year   — default 2025 + 5·period  (period 2 → 2035)
+#   co2_price_year   — default 2020 + 5·period, the end year of the EMPIRE period
+#                      (OpenEMPIRE: period i = 2020+5(i-1) … 2020+5i), so 3 → 2035
 #   co2_price_model  — default: matched from basename(empire_dir)
 
 # "REPowerEU++ v1.2.0" → "repowereu";  "GoRES" → "gores"
@@ -195,7 +196,7 @@ function load_empire_scenario(cfg; data_dir = joinpath(@__DIR__, "Data"))
         if haskey(scfg, "co2_price")
             Float64(scfg["co2_price"]), "config [scenario].co2_price"
         elseif !isempty(co2_path) && isfile(co2_path)
-            yr = Int(get(scfg, "co2_price_year", 2025 + 5 * period))
+            yr = Int(get(scfg, "co2_price_year", 2020 + 5 * period))
             rg = String(get(scfg, "co2_price_region", "ES"))
             md = String(get(scfg, "co2_price_model", basename(rstrip(String(scfg["empire_dir"]), '/'))))
             envis_co2_price(co2_path, md, rg, yr),

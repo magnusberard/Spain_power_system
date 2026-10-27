@@ -69,15 +69,15 @@ end
 
     gen(name, fuel, tech) = Dict{String,Any}("name" => name, "fuel" => fuel, "technology" => tech,
                                               "pmin" => 0.0, "pmax" => 5.0, "pg0" => 2.5)
-    nets = [Dict("gen" => Dict("1" => gen("CCGT1", "Gas", "Combined_cycle"),
+    nets = [(gens = Dict("1" => gen("CCGT1", "Gas", "Combined_cycle"),
                                "2" => gen("CHP_GAS_X", "Gas", "CHP"),
-                               "3" => gen("ROR1", "Hydro", "run_of_river"))) for _ in 1:2]
+                               "3" => gen("ROR1", "Hydro", "run_of_river")),) for _ in 1:2]
     day_ts = DataFrame(date = ["2024-07-01", "2024-07-01"], hour = [0, 1])
     hold = Dict(("2024-07-01", 0) => Dict("CCGT1" => 300.0, "CHP_GAS_X" => 120.0, "ROR1" => 40.0))
     @test hold_units!(nets, day_ts, "2024-07-01", hold, el, 100.0) == 2   # hour 1 has no schedule
-    g = nets[1]["gen"]
+    g = nets[1].gens
     @test g["1"]["pmax"] == 5.0                                          # eligible: free
     @test g["2"]["pmin"] == g["2"]["pmax"] == 1.2                        # held at 120 MW
     @test g["3"]["pmin"] == g["3"]["pmax"] == 0.4
-    @test nets[2]["gen"]["2"]["pmax"] == 5.0
+    @test nets[2].gens["2"]["pmax"] == 5.0
 end

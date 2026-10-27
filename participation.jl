@@ -77,13 +77,14 @@ bal_may_move(fuel, tech, eligible) =
     isempty(eligible) || fuel in BAL_ALWAYS_FREE || fuel in eligible ||
     lowercase("$(fuel):$(tech)") in lowercase.(eligible)
 
-# Fix every unit that may not move at its MW in `hold_sched[(date, hour)]`.
+# Fix every unit that may not move at its MW in `hold_sched[(date, hour)]`;
+# `nets` are prepare_network's per-hour outputs (named tuples with `gens`).
 function hold_units!(nets, day_ts, date_str, hold_sched, eligible, basemva)
     n_held = 0
     for (h_idx, ts) in enumerate(eachrow(day_ts))
         ps = get(hold_sched, (date_str, ts.hour), nothing)
         ps === nothing && continue
-        for g in values(nets[h_idx]["gen"])
+        for g in values(nets[h_idx].gens)              # the dict solve_da reads
             bal_may_move(String(g["fuel"]), String(g["technology"]), eligible) && continue
             v = get(ps, String(g["name"]), nothing)
             v === nothing && continue

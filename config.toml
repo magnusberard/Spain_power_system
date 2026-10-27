@@ -3302,6 +3302,33 @@ enabled = true
 # BE factor).  Nuclear stays frozen at its DA dispatch.  The cleared balancing
 # schedule — and the BE profiles — anchor the redispatch.  Requires [da].enabled.
 enabled = true
+# Units that may move in balancing, as "Fuel" or "Fuel:technology" (unit table
+# names; the BESS fleet is "Battery"). The others hold their CID MW; wind and solar
+# keep their curtailment and nuclear its DA freeze. Empty = every unit (the
+# behaviour before this switch). In Spain only units qualified by REE provide
+# balancing energy (aFRR, mFRR, RR), and the same qualification (tertiary / RR)
+# admits units to phase II of the technical constraints (P.O. 3.2 §6.2,
+# BOE-A-2024-6215; renewables may qualify since Res. 18 Dec 2015, BOE-A-2015-13875).
+# Proposed list (Magnus's [redispatch.reserve].providers + batteries):
+#   ["Gas:Combined_cycle", "Gas:Gas_turbine", "Coal", "Hydro:reservoir",
+#    "Hydro:pumped_storage", "Battery"]
+eligible = []
+
+[participation]
+# ── Share of each forecast update traded per intraday stage ─────────────────
+# Each intraday stage clears against a forecast only partly updated from what the
+# previous stage planned: planned = previous + α · (new forecast − previous), per
+# source (load, wind, solar); balancing always gets the full final forecast, so
+# whatever is not traded intraday is balanced there. 1.0 = every actor trades its
+# whole update (PowerVision's active case; the default and the behaviour before
+# this switch), 0.0 = no trading in that stage (passive).
+# Measured for CID from REE e·sios, 14 Jun–31 Dec 2024 (schedules after IDA2 /
+# IDA3 / continuous trading and actual output, per technology; slope of the CID
+# change on the error left after the last auction): wind 0.07, solar (PV +
+# thermal) 0.06, load 0.07 (by volume 0.16 / 0.13 / 0.17).
+id2 = { load = 1.0, wind = 1.0, solar = 1.0 }
+id3 = { load = 1.0, wind = 1.0, solar = 1.0 }
+cid = { load = 1.0, wind = 1.0, solar = 1.0 }
 
 [crossborder]
 # Fix the market-cleared FR/PT import/export schedule at the border buses.

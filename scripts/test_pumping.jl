@@ -1,6 +1,6 @@
 # Tests for pumping.jl ([run].remove_pumping), on the real 2024 files.
 #     julia --project=. scripts/test_pumping.jl
-using Test, CSV, DataFrames
+using Test, CSV, DataFrames, JSON
 include(joinpath(@__DIR__, "..", "pumping.jl"))
 
 const ES_OLD = joinpath(@__DIR__, "..", "Data", "ES_old", "load")
@@ -85,4 +85,68 @@ end
 
     # a pumped plant missing from the table is an error, not a silent full capacity
     @test_throws ErrorException prepare_network(30000.0; pump_mw = Dict("G0019" => 225.0))
+end
+
+include(joinpath(@__DIR__, "..", "da.jl"))
+using HiGHS
+carrycfg(on) = Dict("da" => Dict{String,Any}("pumped_carry" => on))
+
+@testset "pumped carry: config and state" begin
+    @test load_pumped_carry(carrycfg(false), false) === nothing
+    @test load_pumped_carry(Dict{String,Any}(), false) === nothing
+    @test_throws ErrorException load_pumped_carry(carrycfg(true), true)       # 2035 refused
+    @test_throws ErrorException load_pumped_carry(carrycfg("yes"), false)
+    c = load_pumped_carry(carrycfg(true), false)
+    @test c.mixed == Set(["G0070", "G0162", "G0095", "G0323", "G0740"]) && c.days == 7
+
+    # first day: plants start half full and keep that level (no price yet)
+    st = PumpedState()
+    p1 = pumped_input(c, st, "2024-02-26")
+    @test isempty(p1.start) && p1.price === nothing && p1.mixed == c.mixed
+    # the next day continues from the end level, valued at the mean of the days so far
+    pumped_end_of_day!(c, st, "2024-02-26", Dict("G0019" => 500.0), 40.0)
+    p2 = pumped_input(c, st, "2024-02-27")
+    @test p2.start == Dict("G0019" => 500.0) && p2.price ≈ 40.0
+    for (i, d) in enumerate(Date(2024, 2, 27):Day(1):Date(2024, 3, 5))       # 8 more days
+        pumped_end_of_day!(c, st, string(d), Dict("G0019" => 500.0), 40.0 + i)
+    end
+    @test length(st.prices) == 7 && st.prices[end] == 48.0               # only the last 7 days
+    @test pumped_input(c, st, "2024-03-06").price ≈ sum(42.0:48.0) / 7
+    # a gap (a day skipped) starts over from half full
+    @test isempty(pumped_input(c, st, "2024-03-08").start)
+    # the state survives uc_state.json
+    st2 = pumped_state_from!(PumpedState(), JSON.parse(JSON.json(pumped_state_dict(st))))
+    @test st2.date == st.date && st2.soc == st.soc && st2.prices == st.prices
+end
+
+@testset "pumped carry: the day-ahead LP" begin
+    # one day: cheap solar at midday, gas at night; reservoir hydro at 60 EUR/MWh
+    solar = [h in 9:17 ? 20000.0 : 0.0 for h in 0:23]
+    nets  = [prepare_network(30000.0, solar[h], 3000.0; hydro_reservoir_cost = 60.0,
+                             pump_mw = load_pump_limits(dacfg(true), false)) for h in 1:24]
+    pure  = Dict(g["name"] => g["energy_mwh"] for g in values(nets[1].gens)
+                 if haskey(g, "energy_mwh") && get(g, "technology", "") == "pumped_storage")
+    c     = load_pumped_carry(carrycfg(true), false)
+    solve(p) = solve_da(nets, Int[], [], 0.0, HiGHS.Optimizer; pumped = p)
+    tot(d)   = sum(values(d))
+    half     = Dict(n => 0.5 * e for (n, e) in pure if !(n in c.mixed))
+
+    # off: as before, no end levels reported
+    r0 = solve(nothing)
+    @test r0.status == "OPTIMAL" && r0.pumped_end === nothing
+    # first day (no start given): half full in, half full out
+    r1 = solve((start = Dict{String,Float64}(), price = nothing, mixed = c.mixed))
+    @test r1.status == "OPTIMAL" && isapprox(tot(r1.pumped_end), tot(half); rtol = 1e-6)
+    @test !any(n in c.mixed for n in keys(r1.pumped_end))               # mixed plants are not stores
+    # stored water worth a lot: the plants end fuller than they started
+    r2 = solve((start = half, price = 500.0, mixed = c.mixed))
+    @test tot(r2.pumped_end) > tot(half) + 1000
+    # worthless: they empty
+    r3 = solve((start = half, price = 0.0, mixed = c.mixed))
+    @test tot(r3.pumped_end) < 1.0
+    # start empty and keep it: nothing to turbine in hour 1
+    empty = Dict(n => 0.0 for n in keys(half))
+    r4 = solve((start = empty, price = nothing, mixed = c.mixed))
+    @test all(get(r4.sched[1], n, 0.0) <= 1e-6 for n in keys(empty))
+    @test isapprox(tot(r4.pumped_end), 0.0; atol = 1e-3)
 end

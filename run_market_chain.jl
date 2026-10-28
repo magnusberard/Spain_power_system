@@ -693,6 +693,14 @@ PUMPING === nothing || println("Pumping        : real 2024 pumping taken out of 
 const PUMP_MW = load_pump_limits(cfg, SCEN_ACTIVE)
 PUMP_MW === nothing ||
     @printf "Pump limits    : %.0f MW of pumping over %d plants (Data/pumped_storage_pump_mw.csv)\n" sum(values(PUMP_MW)) length(PUMP_MW)
+# [da].pumped_carry: pumped storage keeps its water from one day to the next (pumping.jl, da.jl).
+const PUMPED_CARRY    = load_pumped_carry(cfg, SCEN_ACTIVE)
+const PUMPED_STATE    = PumpedState()                 # end of the last finished day
+const PUMPED_DA_PRICE = Dict{String,Float64}()        # day ⇒ mean DA price
+PUMPED_CARRY !== nothing && RUN_MARKET && !BAL_ENABLED &&
+    error("[da].pumped_carry carries the level after balancing: it needs [balancing].enabled = true")
+PUMPED_CARRY === nothing ||
+    @printf "Pumped carry   : pure plants keep their level across days, valued at √η × %d-day mean DA price; %d mixed plants use the reservoir water value\n" PUMPED_CARRY.days length(PUMPED_CARRY.mixed)
 
 function es_filename(date_str)
     d = Date(date_str)
@@ -1651,7 +1659,8 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
                         hydro_budget_mwh = get(bv, :budget, nothing),
-                        uc = u, uc_bounds = ucb)
+                        uc = u, uc_bounds = ucb,
+                        pumped = pumped_input(PUMPED_CARRY, PUMPED_STATE, String(date_str)))
     if uc !== nothing && label == "DA" && UC_CFG.mic_check
         # Minimum-income check loop (unit_commitment.jl, mic_clear)
         result, mic_log = mic_clear(solve_gate, uc, UC_CFG.max_rounds)
@@ -1743,7 +1752,8 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
         result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
                             hydro_budget_mwh = get(bv, :budget, nothing),
-                            uc_bounds = uc_bounds_for(date_str, day_ts))
+                            uc_bounds = uc_bounds_for(date_str, day_ts),
+                            pumped = pumped_input(PUMPED_CARRY, PUMPED_STATE, String(date_str)))
         result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
             error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
         committed[hgate] = result.sched[hgate]
@@ -1777,6 +1787,17 @@ if UC_CFG !== nothing && RUN_MARKET && UC_STATE_IN != "" && isfile(UC_STATE_IN) 
             @printf "UC state in    : %d units, end of %s (%s)\n" length(UC_STATE) want UC_STATE_IN
         else
             println("UC state in    : $(UC_STATE_IN) is for $(j["date"]), not $want — first-day rule used")
+        end
+    end
+end
+# [da].pumped_carry: the pumped-storage level and price history from the previous chunk
+if PUMPED_CARRY !== nothing && RUN_MARKET && UC_STATE_IN != "" && isfile(UC_STATE_IN) && !isempty(TARGET_DAYS)
+    let j = JSON.parsefile(UC_STATE_IN), want = string(Date(String(first(TARGET_DAYS))) - Day(1))
+        if haskey(j, "pumped") && String(j["pumped"]["date"]) == want
+            pumped_state_from!(PUMPED_STATE, j["pumped"])
+            @printf "Pumped state in: pure plants %.1f GWh, %d days of prices, end of %s\n" sum(values(PUMPED_STATE.soc)) / 1e3 length(PUMPED_STATE.prices) want
+        else
+            println("Pumped state in: none for $want in $(UC_STATE_IN) — plants start half full")
         end
     end
 end
@@ -1836,6 +1857,8 @@ if RUN_MARKET && DA_ENABLED
         result  = run_copper_plate!(da_schedule, da_rows_all, "DA", date_str, day_ts, bv, "da";
                                     foreign = foreign,
                                     nuclear_schedule_acc = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : nothing)
+        PUMPED_CARRY === nothing ||
+            (PUMPED_DA_PRICE[date_str] = sum(values(result.es_price)) / length(result.es_price))
         if result.xb !== nothing
             store_xb_da!(date_str, result.xb)
             for h in 1:24
@@ -1900,10 +1923,16 @@ if RUN_MARKET && DA_ENABLED
         # Stage 5 — Balancing: all 24 hours, anchored to the latest market view.
         if BAL_ENABLED
             day_ts = filter(r -> r.date == date_str, hourly_bal)
-            run_copper_plate!(bal_schedule, bal_rows_all, "BAL", date_str, day_ts, bv, "bal";
+            res_bal = run_copper_plate!(bal_schedule, bal_rows_all, "BAL", date_str, day_ts, bv, "bal";
                               nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
                               prev_schedule = pre_bal_schedule,
                               hold_sched = isempty(BAL_ELIGIBLE) ? nothing : pre_bal_schedule)
+            # [da].pumped_carry: the level after balancing starts the next day
+            if PUMPED_CARRY !== nothing
+                p_in = pumped_input(PUMPED_CARRY, PUMPED_STATE, date_str)
+                pumped_end_of_day!(PUMPED_CARRY, PUMPED_STATE, date_str, res_bal.pumped_end, PUMPED_DA_PRICE[date_str])
+                @printf "    pumped storage: pure plants %.1f → %.1f GWh, stored water valued at %s\n" sum(values(p_in.start); init = NaN) / 1e3 sum(values(PUMPED_STATE.soc)) / 1e3 (p_in.price === nothing ? "— (first day: level kept)" : @sprintf("%.1f EUR/MWh", sqrt(PUMPED_ROUND_TRIP_EFF) * p_in.price))
+            end
             clear_stage_day!(date_str, da_schedule, da_nuclear_schedule,
                              id2_schedule, id3_schedule, cid_schedule)
         end
@@ -2606,13 +2635,17 @@ end
 # ── End-of-run unit-commitment state → results/uc_state.json ──────────────────
 # The state after the last study day (on/off, hours in that state), read by the
 # next chunk via SPAIN_UC_STATE_IN (scripts/run_markets_sequential.sh).
-if RUN_MARKET && UC_CFG !== nothing && UC_STATE_DATE[] != ""
+# With [da].pumped_carry it also holds the pumped-storage level and price history.
+if RUN_MARKET && ((UC_CFG !== nothing && UC_STATE_DATE[] != "") ||
+                  (PUMPED_CARRY !== nothing && PUMPED_STATE.date != ""))
+    state = Dict{String,Any}("date"  => UC_STATE_DATE[] != "" ? UC_STATE_DATE[] : PUMPED_STATE.date,
+                             "units" => Dict(u => Dict("on" => v.on, "up" => v.up, "down" => v.down)
+                                             for (u, v) in UC_STATE))
+    PUMPED_CARRY === nothing || (state["pumped"] = pumped_state_dict(PUMPED_STATE))
     open(joinpath(RESULTS, "uc_state.json"), "w") do io
-        JSON.print(io, Dict("date" => UC_STATE_DATE[],
-                            "units" => Dict(u => Dict("on" => v.on, "up" => v.up, "down" => v.down)
-                                            for (u, v) in UC_STATE)), 2)
+        JSON.print(io, state, 2)
     end
-    @printf "  uc_state.json : %d units, end of %s\n" length(UC_STATE) UC_STATE_DATE[]
+    @printf "  uc_state.json : %d units, end of %s%s\n" length(UC_STATE) state["date"] (PUMPED_CARRY === nothing ? "" : @sprintf(", pumped storage %.1f GWh", sum(values(PUMPED_STATE.soc)) / 1e3))
 end
 
 # ── Run info: finish time, runtime and solved AC hours (results/<run>/run_info.json) ──

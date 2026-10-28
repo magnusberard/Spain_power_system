@@ -15,6 +15,9 @@ Rule (decided 2026-10-28):
      matched plants (0.63): Aldeadávila II (JRC has no pumping, and its entry includes the
      conventional Aldeadávila I), Bolarque (no pumping in JRC), G0740 "Soutelo 2" (Soutelo or
      Conso: the name and size say Soutelo, the location Conso).
+`kind` = pure or mixed pumped storage, from OMIE's unit list (OMIE_data/unit_technology_map_merged.csv):
+the pumping units DUEB, TAJB and SILB are "Consumo Bombeo Mixto" (a river reservoir with pumps), the others pure
+pumped storage ([da].pumped_carry: mixed plants pump into the reservoir and use its water value).
 The `check` column holds independent figures (owner, OMIE's highest 2024 pumping bid per
 market unit, from OMIE_data/curva_pbc_uof); they are not used.
 
@@ -22,7 +25,7 @@ market unit, from OMIE_data/curva_pbc_uof); they are not used.
     python omie_conversion/build_pump_mw.py --jrc ../jrc_download/jrc-hydro-power-plant-database.csv
 
 Writes Data/pumped_storage_pump_mw.csv: unit_id, name, turbine_mw_model, pump_mw, source,
-jrc_name, jrc_turbine_mw, jrc_pump_mw, check.
+jrc_name, jrc_turbine_mw, jrc_pump_mw, kind, check.
 """
 import argparse
 import os
@@ -53,6 +56,9 @@ MATCH = {
     "G0740": None,   # Soutelo or Conso
 }
 NAMES = {"G0162": "Aldeadavila II", "G0302": "Bolarque II", "G0853": "Aguayo", "G0705": "Montamara"}
+# OMIE pumping unit type: "Consumo Bombeo Mixto" (DUEB: Villarino + Aldeadavila II; TAJB: Valdecanas +
+# Torrejon; SILB: Sil basin); every other plant pure
+MIXED = {"G0070", "G0162", "G0095", "G0323", "G0740"}
 # independent figures, for checking only (OMIE: highest pumping bid of the market unit in 2024;
 # several units are a company's group of plants in one basin)
 CHECK = {
@@ -109,6 +115,7 @@ def main():
     out.loc[~jm, "pump_mw"] = out.turbine_mw_model[~jm] * ratio
     out.loc[~jm, "source"] = f"ratio {ratio:.3f} x model capacity"
     out["pump_mw"] = out.pump_mw.round(1)
+    out["kind"] = ["mixed" if u in MIXED else "pure" for u in out.unit_id]
     out["check"] = out.unit_id.map(CHECK)
     out = out.sort_values("unit_id")
     out.to_csv(args.out, index=False, lineterminator="\n")
@@ -116,7 +123,7 @@ def main():
     print(f"{args.out}: {len(out)} plants")
     print(f"  ratio pumping / model capacity (JRC-matched plants): {ratio:.3f}")
     print(f"  pumping {out.pump_mw.sum():.0f} MW (model capacity {out.turbine_mw_model.sum():.0f} MW)")
-    print(out[["unit_id", "name", "turbine_mw_model", "pump_mw", "source"]].to_string(index=False))
+    print(out[["unit_id", "name", "turbine_mw_model", "pump_mw", "source", "kind"]].to_string(index=False))
 
 
 if __name__ == "__main__":

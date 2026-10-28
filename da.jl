@@ -49,7 +49,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                   foreign = nothing,
                   hydro_budget_mwh::Union{Nothing,Float64} = nothing,
                   uc = nothing,
-                  uc_bounds = nothing)
+                  uc_bounds = nothing,
+                  pumped = nothing)
     H     = length(nets)
     # Net indices (1-based) whose generation is tradable at this gate.  Hours not
     # in `free` are frozen at the previous gate's schedule (`prev_sched`, MW): they
@@ -174,6 +175,25 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     total_hydro_puh = isempty(reservoir_gen_ids) ? JuMP.AffExpr(0.0) :
         sum(pg[(h, string(gid))] for h in 1:H for gid in reservoir_gen_ids)
 
+    # [da].pumped_carry (pumping.jl): a mixed pumped plant (a river reservoir with
+    # pumps) turbines from and pumps into the reservoir, so its energy counts in the
+    # reservoir volume and the daily budget, and the Bellman cuts price it: it pumps
+    # below η_rt × the water value and turbines above it.  Turbining draws one MWh of
+    # reservoir energy per MWh, pumping gives back η_rt per MWh.
+    if pumped !== nothing && !isempty(pumped.mixed)
+        for (_, g) in nets[1].gens
+            g["name"] in pumped.mixed || continue
+            p_nom  = Float64(get(g, "installed_mw", 0.0)) / BASEMVA
+            eta_rt = Float64(get(g, "eta_rt", 1.0))
+            for j in 1:H
+                dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
+                chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
+                JuMP.@constraint(model, pg_by_name[(j, g["name"])] == dis - chg)
+                total_hydro_puh = total_hydro_puh + dis - eta_rt * chg
+            end
+        end
+    end
+
     JuMP.@variable(model, V_ES_puh >= 0)   # reservoir volume at end of day [pu·h]
     JuMP.@variable(model, θ_future >= 0)   # future cost relative to its value at v_es_0 [EUR]
     JuMP.set_start_value(V_ES_puh, v_es_0_puh)
@@ -212,12 +232,24 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # never does it and no complementarity constraint is needed.  Lossless units
     # (the EMPIRE BESS) keep the original single-variable form, leaving the 2035
     # scenario LPs unchanged.
+    #
+    # [da].pumped_carry (pumping.jl): a pure pumped plant starts the day at the
+    # level the day before ended (pumped.start, MWh) and need not end where it
+    # started; what is left at the end of the day is worth √η_rt × pumped.price
+    # per MWh stored (it sells later at that price after the turbine loss), so it
+    # pumps below η_rt × pumped.price.  pumped.price === nothing (no price history
+    # yet, a run's first day): the start level is kept as the end level. Mixed
+    # plants are in the reservoir block above.
+    pumped_value = JuMP.AffExpr(0.0)
+    pumped_draw  = Dict{String,Tuple{Float64,JuMP.AffExpr}}()   # name ⇒ (start level, day's drawdown) [pu·h]
     for (_, g) in nets[1].gens
         haskey(g, "energy_mwh") || continue
         name   = g["name"]                        # stable across hours (unlike key k)
+        pumped !== nothing && name in pumped.mixed && continue
         e_puh  = g["energy_mwh"] / BASEMVA
         e_puh > 0 || continue
-        soc0   = 0.5 * e_puh
+        carry  = pumped !== nothing && haskey(pumped.start, name)
+        soc0   = carry ? clamp(pumped.start[name] / BASEMVA, 0.0, e_puh) : 0.5 * e_puh
         eta_rt = Float64(get(g, "eta_rt", 1.0))
         if eta_rt >= 1.0
             draw = [pg_by_name[(j, name)] for j in 1:H]
@@ -240,7 +272,14 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         for h in 1:H
             JuMP.@constraint(model, 0.0 <= soc0 - sum(draw[j] for j in 1:h) <= e_puh)
         end
-        JuMP.@constraint(model, sum(draw) == 0.0)
+        pumped === nothing || (pumped_draw[name] = (soc0, JuMP.AffExpr(0.0) + sum(draw)))
+        if carry && pumped.price !== nothing
+            # value of the end-of-day level [EUR], counted as a negative cost
+            JuMP.add_to_expression!(pumped_value,
+                -sqrt(eta_rt) * pumped.price * BASEMVA, soc0 - sum(draw))
+        else
+            JuMP.@constraint(model, sum(draw) == 0.0)
+        end
     end
 
     # ── Thermal ramp limits ───────────────────────────────────────────────────
@@ -396,7 +435,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     for h in 1:H, (k, g) in nets[h].gens
         JuMP.add_to_expression!(op, g["cost"][1], pg[(h, k)])
     end
-    cost_expr = op + θ_future + foreign_cost + start_cost_expr
+    cost_expr = op + θ_future + foreign_cost + start_cost_expr + pumped_value
 
     # ── Minimum-movement anchor (intraday gates only) ─────────────────────────
     # For every tradable-hour unit that has a previous-gate set-point, add L1
@@ -482,7 +521,10 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     objval = NaN
     xb     = nothing
     prices = nothing
+    pumped_end = nothing    # [da].pumped_carry: pure plants' level at the end of the day [MWh]
     if status in ("OPTIMAL", "LOCALLY_SOLVED")
+        pumped === nothing ||
+            (pumped_end = Dict(n => (s0 - JuMP.value(d)) * BASEMVA for (n, (s0, d)) in pumped_draw))
         # Always report the dispatch cost, even after the pass-2 movement solve.
         objval = JuMP.value(cost_expr)
         for h in 1:H
@@ -506,7 +548,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         end
     end
     return (sched = sched, status = status, objective = objval, xb = xb,
-            prices = prices, es_price = es_price, setter = setter, uc = uc_result)
+            prices = prices, es_price = es_price, setter = setter, uc = uc_result,
+            pumped_end = pumped_end)
 end
 
 # ── Price setter: which unit is on the margin in each priced hour ─────────────

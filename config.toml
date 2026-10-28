@@ -568,6 +568,19 @@ nuclear_min_gen_frac = 0.8
 # only: a scenario run stops with an error.
 pump_limits = false
 
+# Pumped storage keeps its water from one day to the next. false (as before):
+# every pumped plant starts each day half full and must end it so, so whatever
+# it pumps it turbines the same day. true (pumping.jl, da.jl): a pure plant starts
+# at the level the day before ended (after balancing) and values what is left at
+# the end of the day at √0.75 × the mean day-ahead price of the last
+# pumped_price_days days (the run's first day keeps its level); a mixed plant
+# (column `kind` of Data/pumped_storage_pump_mw.csv, from OMIE's unit list: a river
+# reservoir with pumps) pumps into the reservoir and uses its water value. The
+# level carries between chunks in uc_state.json. 2024 path only; needs
+# [balancing].enabled.
+pumped_carry = false
+pumped_price_days = 7
+
 # Nuclear availability: the fraction of nameplate actually available on the
 # study day, covering planned refuelling outages and forced outages.  Applied to
 # Pmax, so nuclear_min_gen_frac stays a floor on what is *available* rather than

@@ -476,7 +476,9 @@ def build(rdir, runs_repo, args):
     # exchange, so every stage gets the same imports. The signed flows go in the package so the
     # viewer can show exports too.
     exchange = None
-    if (rdir / "xb_flows.csv").exists() and "CrossBorder" not in {f for f, _ in keys}:
+    # (xb_flows.csv is written only by the 4-zone runs; their CrossBorder units exist in the AC
+    # redispatch only, never in the market stages, so they cannot be used for the imports)
+    if (rdir / "xb_flows.csv").exists():
         xb = pd.read_csv(rdir / "xb_flows.csv")
         xb = xb[xb.date.isin(hours.day_i)]
         fr, pt = np.full(H, np.nan), np.full(H, np.nan)

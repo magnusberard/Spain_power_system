@@ -18,6 +18,7 @@
 #   MARKUP    on: [costs.markup] on as well (generation tax + RSI mark-ups); off (default)
 #   HYDRO     optional hydro_state variant for [bellman] (e.g. aligned_rc_observed)
 #   RES       optional [run].res_input (accepted or offered)
+#   PUMPING   optional: removed = real 2024 pumping out of the load ([run].remove_pumping)
 #
 # Writes <out>/config_markets.toml, <out>/config_redispatch.toml and
 # <out>/chunks.txt (the chunk list step 2 reads). A finished chunk gets a file
@@ -40,6 +41,7 @@ mkdir -p "$OUT"
 RES_ARG=()
 [ -n "${RES:-}" ] && RES_ARG=(--res-input "$RES")
 [ -n "${HYDRO:-}" ] && RES_ARG+=(--hydro "$HYDRO")
+[ -n "${PUMPING:-}" ] && RES_ARG+=(--pumping "$PUMPING")
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 

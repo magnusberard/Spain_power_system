@@ -63,6 +63,7 @@ include("week_sampling.jl")
 include("week_profiles.jl")
 include("foreign_zones.jl")
 include("ntc_capacity.jl")
+include("pumping.jl")
 
 # ── 1. Config ────────────────────────────────────────────────
 # SPAIN_CONFIG lets a run point at an alternative config file (A/B experiments)
@@ -672,6 +673,9 @@ RES_INPUT in ("accepted", "offered") ||
 const RES_OLD_NAME = RES_INPUT == "offered" ? "ES_old_offered" : "ES_old"
 RES_OLD_DIR = joinpath(@__DIR__, "Data", RES_OLD_NAME)
 @printf "Solar/wind     : %s (Data/%s)\n" RES_INPUT RES_OLD_NAME
+# [run].remove_pumping: the 2024 load minus the real 2024 pumping (pumping.jl).
+const PUMPING = load_pumping(cfg, SCEN_ACTIVE)
+PUMPING === nothing || println("Pumping        : real 2024 pumping taken out of the load (Data/OMIE/pumping_2024.csv)")
 
 function es_filename(date_str)
     d = Date(date_str)
@@ -776,6 +780,7 @@ else
     hourly_id3 = DataFrame(hourly_id3_rows); sort!(hourly_id3, [:date, :hour])
     hourly_cid = DataFrame(hourly_cid_rows); sort!(hourly_cid, [:date, :hour])
     hourly_bal = DataFrame(hourly_bal_rows); sort!(hourly_bal, [:date, :hour])
+    PUMPING === nothing || remove_pumping!(PUMPING, hourly_da, hourly_id2, hourly_id3, hourly_cid, hourly_bal)
 end
 
 function print_profile_summary(label, df)

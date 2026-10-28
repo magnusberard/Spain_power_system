@@ -170,7 +170,8 @@ def detect_features(rdir):
     config_used.toml. None if neither exists. The same keys as scripts/make_run_config.jl sets:
     res = [run].res_input (model change §12); xb = [redispatch].crossborder_split = "country_total"
     (§11); gas = [unit_commitment].enabled, i.e. --gas on (§13, §14, §16); markup =
-    [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15)."""
+    [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15);
+    pumping = [run].remove_pumping, the real 2024 pumping taken out of the load."""
     import tomllib
     path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
     if path is None:
@@ -189,6 +190,7 @@ def detect_features(rdir):
         gas=bool(sec("unit_commitment").get("enabled", False)),
         markup=bool(sec("costs", "markup").get("enabled", False)),
         hydro="hydro_state" in str(sec("bellman").get("volume_file", "")),
+        pumping=bool(sec("run").get("remove_pumping", False)),
     )
 
 

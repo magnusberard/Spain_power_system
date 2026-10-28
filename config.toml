@@ -100,6 +100,14 @@ days = ["2024-07-08", "2024-12-02"]
 # Load is the same in both. Days need their Data/ES_old_offered files.
 res_input = "accepted"
 
+# The 2024 load is OMIE's day-ahead production + imports, so it also holds what
+# the real pumps bought (6.2 TWh in 2024, mostly at midday), and the model's own
+# pumped storage pumps on top of it. true takes the real hourly pumping (REE
+# e·sios 25, Data/OMIE/pumping_2024.csv) out of every stage's load; the model's
+# pumps then decide on their own, as in the 2035 runs (pumping.jl). 2024 path
+# only: a scenario run stops with an error.
+remove_pumping = false
+
 [costs]
 # ── Marginal-cost source for the market chain ───────────────────────────────
 # gas_from_midterm = true takes the ES gas marginal cost from

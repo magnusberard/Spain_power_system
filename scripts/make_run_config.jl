@@ -26,6 +26,8 @@
 #                        Data/hydro_state/{Volume,TurbineSchedule,BellmanValuesOUT}_LABEL.csv
 #                        (branch hydro-state, hydro_state/midterm_observed.jl)
 #   --res-input X        [run] res_input = "X"
+#   --pumping P          [run] remove_pumping: kept (as in config.toml) or removed =
+#                        the real 2024 pumping taken out of the load (pumping.jl)
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
 
@@ -60,13 +62,13 @@ function set_key(lines, section, key, value)
 end
 
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--pumping kept|removed] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
-    opt = Dict("--gas" => "off", "--markup" => "off", "--config" => joinpath(REPO, "config.toml"))
+    opt = Dict("--gas" => "off", "--markup" => "off", "--pumping" => "kept", "--config" => joinpath(REPO, "config.toml"))
     i = 2
     while i <= length(args)
-        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--config") && i < length(args) || error(usage)
+        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--pumping", "--config") && i < length(args) || error(usage)
         opt[args[i]] = args[i+1]
         i += 2
     end
@@ -76,6 +78,7 @@ function main(args)
     opt["--markup"] in ("on", "off") || error(usage)
     res = get(opt, "--res-input", "")
     res in ("", "accepted", "offered") || error(usage)
+    opt["--pumping"] in ("kept", "removed") || error(usage)
 
     raw = read(opt["--config"], String)
     crlf = occursin("\r\n", raw)
@@ -99,13 +102,14 @@ function main(args)
         end
     end
     res == "" || set_key(lines, "run", "res_input", "\"$res\"")
+    opt["--pumping"] == "removed" && set_key(lines, "run", "remove_pumping", "true")
     text = join(lines, "\n")
     crlf && (text = replace(text, "\n" => "\r\n"))
     mkpath(dirname(abspath(out)))
     tmp = out * ".tmp"
     write(tmp, text)
     mv(tmp, out; force = true)
-    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res))")
+    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), pumping $(opt["--pumping"]))")
 end
 
 main(ARGS)

@@ -222,6 +222,29 @@ def detect_features(rdir):
     )
 
 
+def detect_trading_features(rdir):
+    """The newer run settings for the viewer's run header (meta.features), from the same saved
+    config as detect_features: participation = [participation] shares (§23; all 1.0 = "active",
+    the default; all 0.0 in ID2/ID3/CID = "passive"; anything else = "measured"); balancing =
+    [balancing].eligible ("qualified" when it lists units, §23); rd = [redispatch.phase1].enabled
+    ("ree" = the redispatch the REE way, branch redispatch-realism §20, else "ac"). {} if no config."""
+    import tomllib
+    path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
+    if path is None:
+        return {}
+    c = tomllib.loads(path.read_text(encoding="utf-8"))
+    part = c.get("participation", {})
+    shares = [float(v) for st in ("id2", "id3", "cid") for v in (part.get(st) or {}).values()]
+    participation = ("active" if all(v == 1.0 for v in shares)
+                     else "passive" if all(v == 0.0 for v in shares) else "measured")
+    phase1 = c.get("redispatch", {}).get("phase1", {})
+    return dict(
+        participation=participation,
+        balancing="qualified" if c.get("balancing", {}).get("eligible") else "all",
+        rd="ree" if phase1.get("enabled", False) else "ac",
+    )
+
+
 def read_run_info(rdir, args, hours, status):
     path = rdir / "run_info.json"
     if path.exists():
@@ -670,6 +693,8 @@ def main():
     # model changes for the viewer's filters: from the run's config, else kept from the package
     # being replaced (runs published before configs were saved were tagged by hand)
     features = detect_features(rdir)
+    if features is not None:
+        features.update(detect_trading_features(rdir))
     if features is None and old_meta.get("features"):
         features = old_meta["features"]
     if features is not None and stage_order(info.get("commit")):

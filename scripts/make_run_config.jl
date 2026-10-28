@@ -36,6 +36,8 @@
 #                        pumped storage, batteries
 #   --pumping P          [run] remove_pumping: kept (as in config.toml) or removed =
 #                        the real 2024 pumping taken out of the load (pumping.jl)
+#   --pump-limits on     [da] pump_limits = true: each pumped-storage plant pumps with
+#                        its own pumping power (Data/pumped_storage_pump_mw.csv)
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
 
@@ -77,14 +79,14 @@ function set_key(lines, section, key, value)
 end
 
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
-    opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept",
+    opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept", "--pump-limits" => "off",
                "--config" => joinpath(REPO, "config.toml"))
     i = 2
     while i <= length(args)
-        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--config") &&
+        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--config") &&
             i < length(args) || error(usage)
         opt[args[i]] = args[i+1]
         i += 2
@@ -98,6 +100,7 @@ function main(args)
     haskey(PARTICIPATION, opt["--participation"]) || error(usage)
     opt["--balancing"] in ("all", "qualified") || error(usage)
     opt["--pumping"] in ("kept", "removed") || error(usage)
+    opt["--pump-limits"] in ("on", "off") || error(usage)
 
     raw = read(opt["--config"], String)
     crlf = occursin("\r\n", raw)
@@ -126,13 +129,14 @@ function main(args)
     end
     opt["--balancing"] == "qualified" && set_key(lines, "balancing", "eligible", BAL_QUALIFIED)
     opt["--pumping"] == "removed" && set_key(lines, "run", "remove_pumping", "true")
+    opt["--pump-limits"] == "on" && set_key(lines, "da", "pump_limits", "true")
     text = join(lines, "\n")
     crlf && (text = replace(text, "\n" => "\r\n"))
     mkpath(dirname(abspath(out)))
     tmp = out * ".tmp"
     write(tmp, text)
     mv(tmp, out; force = true)
-    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]))")
+    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]))")
 end
 
 main(ARGS)

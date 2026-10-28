@@ -49,3 +49,40 @@ cfg(on) = Dict("run" => Dict{String,Any}("remove_pumping" => on))
     @test low > 10_000
     println("lowest 2024 load after removing pumping: $(round(Int, low)) MW over $(length(days)) days")
 end
+
+include(joinpath(@__DIR__, "..", "data_preparation.jl"))
+dacfg(on) = Dict("da" => Dict{String,Any}("pump_limits" => on))
+"(pmin, pmax) in MW of every pumped-storage unit, by unit_id."
+function pumped_limits(net)
+    gen_df = CSV.read(joinpath(@__DIR__, "..", "Data", "generations.csv"), DataFrame)
+    ids = Set(String.(gen_df.unit_id[(gen_df.primary_fuel .== "Hydro") .& (gen_df.technology .== "pumped_storage")]))
+    Dict(g["name"] => (g["pmin"] * BASEMVA, g["pmax"] * BASEMVA)
+         for g in values(net.gens) if get(g, "name", "") in ids)
+end
+
+@testset "pump limits" begin
+    # off (also when the key is missing): no table
+    @test load_pump_limits(dacfg(false), false) === nothing
+    @test load_pump_limits(Dict{String,Any}(), false) === nothing
+    # on: refused in scenario (2035) runs, a non-Bool is an error
+    @test_throws ErrorException load_pump_limits(dacfg(true), true)
+    @test_throws ErrorException load_pump_limits(dacfg(1), false)
+
+    pm = load_pump_limits(dacfg(true), false)
+    @test length(pm) == 15
+    @test 4900 < sum(values(pm)) < 5300                      # 5.1 GW (JRC + ratio)
+
+    # off: every plant pumps down to −capacity (as before); on: down to −pump_mw,
+    # turbining (pmax) unchanged
+    off = pumped_limits(prepare_network(30000.0))
+    on  = pumped_limits(prepare_network(30000.0; pump_mw = pm))
+    @test length(off) == 15 && keys(off) == keys(on)
+    @test all(isapprox(off[u][1], -off[u][2]) for u in keys(off))
+    @test all(isapprox(on[u][1], -min(pm[u], on[u][2])) for u in keys(on))
+    @test all(on[u][2] == off[u][2] for u in keys(on))
+    @test isapprox(on["G0155"][1], -pm["G0155"])               # La Muela II: −808 instead of −1338
+    @test sum(-v[1] for v in values(on)) < 0.65 * sum(-v[1] for v in values(off))
+
+    # a pumped plant missing from the table is an error, not a silent full capacity
+    @test_throws ErrorException prepare_network(30000.0; pump_mw = Dict("G0019" => 225.0))
+end

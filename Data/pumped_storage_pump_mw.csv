@@ -1,0 +1,16 @@
+unit_id,name,turbine_mw_model,pump_mw,source,jrc_name,jrc_turbine_mw,jrc_pump_mw,check
+G0019,Guillena 1,314.0,225.0,JRC,Guillena GUILLENA GR 1 GENERAC,207.0,225.0,OMIE GUIB 225
+G0070,Villarino 4,1229.0,828.0,JRC,Villarino VLLRINO 1G - Almendra (Villarino) Hydroelectric Power Plant Spain,851.0,828.0,Iberdrola 726; OMIE DUEB (Villarino + Aldeadavila II) 1228
+G0095,Valdecanas 3,378.0,168.0,JRC,Valdecanas,247.0,168.0,OMIE TAJB (Valdecanas + Torrejon) 176
+G0104,Tajo de la Encantada 1,572.0,420.0,JRC,Tajo encantada TJE1,360.0,420.0,OMIE TJEB 315
+G0155,La Muela II,1338.0,808.3,JRC,Muela,1516.76,1390.0,Iberdrola 744; OMIE MUEB (La Muela I+II) 1185
+G0162,Aldeadavila II,657.0,411.1,ratio 0.626 x model capacity,,,,Iberdrola 400; OMIE DUEB (Villarino + Aldeadavila II) 1228
+G0281,La Muela,963.0,581.7,JRC,Muela,1516.76,1390.0,Iberdrola 549; OMIE MUEB (La Muela I+II) 1185
+G0302,Bolarque II,334.0,209.0,ratio 0.626 x model capacity,,,,OMIE UFBB 208 (4 reversible units x 52 MW)
+G0323,Torrejon 1,200.0,72.0,JRC,Torrejon,130.0,72.0,OMIE TAJB (Valdecanas + Torrejon) 176
+G0563,Tanes 1,187.0,110.0,JRC,"TANES GR,1 GENERAC,",124.0,110.0,OMIE TANB 53
+G0656,Sallente,667.0,400.0,JRC,Estany gento sallente,446.0,400.0,OMIE SLTB 400
+G0657,Moralets 1,332.0,219.0,JRC,MORALETS GR 1 GENERAC,221.0,219.0,OMIE MLTB 219
+G0705,Montamara,133.0,100.0,JRC,Montamara,92.0,100.0,
+G0740,Soutelo 2,326.0,204.0,ratio 0.626 x model capacity,,,,JRC Soutelo 78 / Conso 216; OMIE SILB (Sil basin) 412
+G0853,Aguayo,546.0,360.0,JRC,Aguayo,360.6,360.0,OMIE AGUB 360

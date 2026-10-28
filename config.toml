@@ -559,6 +559,15 @@ enabled = true
 # gates and redispatch freeze nuclear at that DA value.
 nuclear_min_gen_frac = 0.8
 
+# Pumping power of pumped storage. generations.csv has one capacity per plant and
+# the model lets it pump with that same power (8.2 GW in all), while Spain pumped
+# at most 4.45 GW in any hour of 2024 (REE e·sios 25): only some machines are
+# reversible. true caps each plant's pumping at Data/pumped_storage_pump_mw.csv
+# (5.1 GW: JRC Hydro-power database, or 0.63 × capacity where JRC has none;
+# omie_conversion/build_pump_mw.py); turbining stays at the capacity. 2024 path
+# only: a scenario run stops with an error.
+pump_limits = false
+
 # Nuclear availability: the fraction of nameplate actually available on the
 # study day, covering planned refuelling outages and forced outages.  Applied to
 # Pmax, so nuclear_min_gen_frac stays a floor on what is *available* rather than

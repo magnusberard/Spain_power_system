@@ -21,6 +21,7 @@
 #   PARTICIPATION  optional [participation] (§23): active, measured or passive
 #   BALANCING      optional [balancing].eligible: all or qualified
 #   PUMPING        optional: removed = real 2024 pumping out of the load ([run].remove_pumping)
+#   PUMPLIMIT      optional: on = pumped storage pumps with its own pumping power ([da].pump_limits)
 #
 # Writes <out>/config_markets.toml, <out>/config_redispatch.toml and
 # <out>/chunks.txt (the chunk list step 2 reads). A finished chunk gets a file
@@ -46,6 +47,7 @@ RES_ARG=()
 [ -n "${PARTICIPATION:-}" ] && RES_ARG+=(--participation "$PARTICIPATION")
 [ -n "${BALANCING:-}" ] && RES_ARG+=(--balancing "$BALANCING")
 [ -n "${PUMPING:-}" ] && RES_ARG+=(--pumping "$PUMPING")
+[ -n "${PUMPLIMIT:-}" ] && RES_ARG+=(--pump-limits "$PUMPLIMIT")
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 

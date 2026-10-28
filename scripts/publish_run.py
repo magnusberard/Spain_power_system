@@ -201,7 +201,8 @@ def detect_features(rdir):
     res = [run].res_input (model change §12); xb = [redispatch].crossborder_split = "country_total"
     (§11); gas = [unit_commitment].enabled, i.e. --gas on (§13, §14, §16); markup =
     [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15);
-    pumping = [run].remove_pumping, the real 2024 pumping taken out of the load."""
+    pumping = [run].remove_pumping, the real 2024 pumping taken out of the load; pump_limits =
+    [da].pump_limits, pumped storage pumping with its own pumping power."""
     import tomllib
     path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
     if path is None:
@@ -221,6 +222,7 @@ def detect_features(rdir):
         markup=bool(sec("costs", "markup").get("enabled", False)),
         hydro="hydro_state" in str(sec("bellman").get("volume_file", "")),
         pumping=bool(sec("run").get("remove_pumping", False)),
+        pump_limits=bool(sec("da").get("pump_limits", False)),
     )
 
 

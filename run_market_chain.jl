@@ -689,6 +689,10 @@ RES_OLD_DIR = joinpath(@__DIR__, "Data", RES_OLD_NAME)
 # [run].remove_pumping: the 2024 load minus the real 2024 pumping (pumping.jl).
 const PUMPING = load_pumping(cfg, SCEN_ACTIVE)
 PUMPING === nothing || println("Pumping        : real 2024 pumping taken out of the load (Data/OMIE/pumping_2024.csv)")
+# [da].pump_limits: pumped storage pumps with its own pumping power, not its full capacity (pumping.jl).
+const PUMP_MW = load_pump_limits(cfg, SCEN_ACTIVE)
+PUMP_MW === nothing ||
+    @printf "Pump limits    : %.0f MW of pumping over %d plants (Data/pumped_storage_pump_mw.csv)\n" sum(values(PUMP_MW)) length(PUMP_MW)
 
 function es_filename(date_str)
     d = Date(date_str)
@@ -1501,7 +1505,7 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      ramp_limits = RAMP_LIMITS,
                      island_buses = ISLAND_BUSES,
                      islands_off_market = true,
-                     removed_units = REMOVED_UNITS,
+                     removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                      chp_blocks = chp_blocks_for(date_str),
                      chp_siting_buses = CHP_SITING_BUSES,
                      voltage_band = VOLTAGE_BAND,
@@ -2200,7 +2204,7 @@ if RD_WATER_VALUE == "constant"
                               da_dispatch = sched_hour,
                               frozen_fuels = RD_FROZEN_FUELS,
                               island_buses = ISLAND_BUSES,
-                              removed_units = REMOVED_UNITS,
+                              removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                               nuclear_availability = nuclear_avail_for(date_str),
                               coal_availability = coal_avail_for(date_str),
                               chp_blocks = chp_blocks_for(date_str),
@@ -2277,7 +2281,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 da_dispatch = rd_sched_for(date_str, ts.hour),
                                 frozen_fuels = RD_FROZEN_FUELS,
                                 island_buses = ISLAND_BUSES,
-                                removed_units = REMOVED_UNITS,
+                                removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                                 nuclear_availability = nuclear_avail_for(date_str),
                                 coal_availability = coal_avail_for(date_str),
                                 chp_blocks = chp_blocks_for(date_str),

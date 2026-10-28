@@ -11,6 +11,9 @@
 #
 # 2024 path only: EMPIRE's 2035 demand is consumption, with storage modelled
 # separately (Node_ElectricAnnualDemand.tab vs storPW/storENInstalledCap.tab).
+#
+# [da].pump_limits (load_pump_limits below): each pumped-storage plant pumps with
+# its own pumping power instead of its full capacity.
 using CSV, DataFrames
 
 const PUMPING_FILE = joinpath(@__DIR__, "Data", "OMIE", "pumping_2024.csv")
@@ -36,6 +39,28 @@ function load_pumping(cfg, scen_active::Bool; file = PUMPING_FILE)
         pump[g.date[1]] = Float64.(g.pumping_mw)
     end
     return pump
+end
+
+const PUMP_MW_FILE = joinpath(@__DIR__, "Data", "pumped_storage_pump_mw.csv")
+
+"""
+    load_pump_limits(cfg, scen_active; file) -> Dict(unit_id => pumping MW) or nothing
+
+[da].pump_limits: each pumped-storage plant pumps with its own pumping power
+(Data/pumped_storage_pump_mw.csv, omie_conversion/build_pump_mw.py) instead of
+its full capacity; data_preparation.jl sets pmin = −pump_mw. `nothing` when
+off (the default). Refuses scenario runs.
+"""
+function load_pump_limits(cfg, scen_active::Bool; file = PUMP_MW_FILE)
+    on = get(get(cfg, "da", Dict{String,Any}()), "pump_limits", false)
+    on isa Bool || error("config.toml: [da].pump_limits must be true or false")
+    on || return nothing
+    scen_active && error("config.toml: [da].pump_limits is for the 2024 path only " *
+                         "(EMPIRE sizes pumped storage itself); set it to false")
+    isfile(file) || error("[da].pump_limits: $file not found (python omie_conversion/build_pump_mw.py)")
+    df = CSV.read(file, DataFrame; types = Dict(:unit_id => String))
+    all(x -> !ismissing(x) && x > 0, df.pump_mw) || error("$file: every pump_mw must be > 0")
+    return Dict(String(r.unit_id) => Float64(r.pump_mw) for r in eachrow(df))
 end
 
 """

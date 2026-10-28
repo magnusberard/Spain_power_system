@@ -26,10 +26,25 @@
 #                        Data/hydro_state/{Volume,TurbineSchedule,BellmanValuesOUT}_LABEL.csv
 #                        (branch hydro-state, hydro_state/midterm_observed.jl)
 #   --res-input X        [run] res_input = "X"
+#   --participation P    [participation] (§23): active = 1.0 everywhere (as in
+#                        config.toml), measured = CID shares measured from REE
+#                        e·sios (load 0.07, wind 0.07, solar 0.06; IDA2/IDA3 1.0),
+#                        passive = 0.0 in ID2, ID3 and CID
+#   --balancing B        [balancing].eligible: all (as in config.toml) or
+#                        qualified = the units REE qualifies for balancing
+#                        (P.O. 3.2 §6.2): CCGT, gas turbines, coal, reservoir hydro,
+#                        pumped storage, batteries
 #   --pumping P          [run] remove_pumping: kept (as in config.toml) or removed =
 #                        the real 2024 pumping taken out of the load (pumping.jl)
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
+
+# [participation] per --participation: (stage, value) lines to set
+const PARTICIPATION = Dict(
+    "active"   => [],
+    "measured" => [("cid", "{ load = 0.07, wind = 0.07, solar = 0.06 }")],
+    "passive"  => [(st, "{ load = 0.0, wind = 0.0, solar = 0.0 }") for st in ("id2", "id3", "cid")])
+const BAL_QUALIFIED = "[\"Gas:Combined_cycle\", \"Gas:Gas_turbine\", \"Coal\", \"Hydro:reservoir\", \"Hydro:pumped_storage\", \"Battery\"]"
 
 const GAS_ON = [("costs.gas_unit_efficiency", "enabled", "true"),
                 ("unit_commitment", "enabled", "true"),
@@ -62,13 +77,15 @@ function set_key(lines, section, key, value)
 end
 
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--pumping kept|removed] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
-    opt = Dict("--gas" => "off", "--markup" => "off", "--pumping" => "kept", "--config" => joinpath(REPO, "config.toml"))
+    opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept",
+               "--config" => joinpath(REPO, "config.toml"))
     i = 2
     while i <= length(args)
-        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--pumping", "--config") && i < length(args) || error(usage)
+        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--config") &&
+            i < length(args) || error(usage)
         opt[args[i]] = args[i+1]
         i += 2
     end
@@ -78,6 +95,8 @@ function main(args)
     opt["--markup"] in ("on", "off") || error(usage)
     res = get(opt, "--res-input", "")
     res in ("", "accepted", "offered") || error(usage)
+    haskey(PARTICIPATION, opt["--participation"]) || error(usage)
+    opt["--balancing"] in ("all", "qualified") || error(usage)
     opt["--pumping"] in ("kept", "removed") || error(usage)
 
     raw = read(opt["--config"], String)
@@ -102,6 +121,10 @@ function main(args)
         end
     end
     res == "" || set_key(lines, "run", "res_input", "\"$res\"")
+    for (st, val) in PARTICIPATION[opt["--participation"]]
+        set_key(lines, "participation", st, val)
+    end
+    opt["--balancing"] == "qualified" && set_key(lines, "balancing", "eligible", BAL_QUALIFIED)
     opt["--pumping"] == "removed" && set_key(lines, "run", "remove_pumping", "true")
     text = join(lines, "\n")
     crlf && (text = replace(text, "\n" => "\r\n"))
@@ -109,7 +132,7 @@ function main(args)
     tmp = out * ".tmp"
     write(tmp, text)
     mv(tmp, out; force = true)
-    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), pumping $(opt["--pumping"]))")
+    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]))")
 end
 
 main(ARGS)

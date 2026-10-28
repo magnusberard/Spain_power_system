@@ -8,8 +8,9 @@
 #     GAS=on IPOPT=ma57 scripts/solstorm_start_markets.sh /storage/users/$USER/results/2024_gas
 #
 #   argument : parent folder for the chunk folders (<folder>/<from>_<to>/)
-#   optional : FROM (2024-01-01), TO (2024-12-29), DAYS (7), GAS (off), MARKUP (off), HYDRO, RES
-#              (accepted/offered, default: as in config.toml), PUMPING (removed) and IPOPT (mumps;
+#   optional : FROM (2024-01-01), TO (2024-12-29), DAYS (7), GAS (off), MARKUP (off), HYDRO, RES,
+#              PARTICIPATION (active/measured/passive), BALANCING (all/qualified), PUMPING (removed)
+#              (accepted/offered, default: as in config.toml) and IPOPT (mumps;
 #              ma57 once HSL is set up), as environment variables in front
 #
 # Then start step 2 on other nodes right away (it waits for each chunk):
@@ -27,6 +28,7 @@ mkdir -p "$OUT"
 
 setsid nohup bash -lc "cd '$REPO' && source scripts/solstorm_env.sh '${IPOPT:-mumps}' \
     && FROM='${FROM:-2024-01-01}' TO='${TO:-2024-12-29}' DAYS='${DAYS:-7}' GAS='${GAS:-off}' MARKUP='${MARKUP:-off}' HYDRO='${HYDRO:-}' RES='${RES:-}' \
-       PUMPING='${PUMPING:-}' scripts/run_markets_sequential.sh '$OUT'" \
+       PARTICIPATION='${PARTICIPATION:-}' BALANCING='${BALANCING:-}' PUMPING='${PUMPING:-}' \
+       scripts/run_markets_sequential.sh '$OUT'" \
     >> "$OUT/markets.log" 2>&1 < /dev/null &
 echo "markets chain started on $(hostname) (pid $!); log: $OUT/markets.log"

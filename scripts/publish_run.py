@@ -38,6 +38,36 @@ KX, KY = 111.32 * cos(radians(40.0)), 111.32       # map projection in km; the s
 
 # model (fuel, technology) -> OMIE's day-ahead technology groups
 OMIE_CATS = ["Nuclear", "Coal", "CCGT", "Hydro", "Wind", "Solar", "CHP group", "Imports"]
+# Who set the price (market_prices.csv price_setter, "<fuel> (<technology>)" from da.jl
+# price_setters), grouped for the viewer. Reservoir hydro sets it at its water value.
+SETTER_GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
+                 "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear"]
+
+
+def setter_group(label):
+    """Index into SETTER_GROUPS for a price_setter label."""
+    label = str(label) if isinstance(label, str) else ""
+    fuel, _, rest = label.partition(" (")
+    tech = rest.rstrip(")").lower()
+    if fuel == "Imports":
+        return 8
+    if fuel == "Hydro":
+        return {"reservoir": 0, "pumped_storage": 1, "run_of_river": 6}.get(tech, 7)   # mini_hydro: CHP group
+    if fuel == "Battery":
+        return 1
+    if fuel == "Gas":
+        return 2 if tech == "combined_cycle" else 7 if tech == "chp" else 3
+    if fuel == "Oil":
+        return 3
+    if fuel in ("Coal", "Lignite"):
+        return 4
+    if fuel == "Nuclear":
+        return 5
+    if fuel in ("Wind", "Solar"):
+        return 6
+    if fuel in ("Biomass", "Waste", "Bio"):
+        return 7
+    return 9
 OMIE_OF = {
     ("Nuclear", "Nuclear"): "Nuclear", ("Coal", "Coal"): "Coal",
     ("Gas", "Combined_cycle"): "CCGT", ("Gas", "Gas_turbine"): "CCGT", ("Oil", "Combined_cycle"): "CCGT",
@@ -357,6 +387,24 @@ def build(rdir, runs_repo, args):
         p[hours.of(s)] = s.price_eur_mwh.to_numpy()
         price[st] = r1(p)
 
+    # who set the price, per stage and hour: group index and plant (-1 = no price that hour)
+    setter = None
+    if "price_setter" in prices.columns:
+        sp = prices[prices.date.isin(hours.day_i)]
+        units = sorted({u for u in sp.setter_unit if isinstance(u, str) and u})
+        uix = {u: i for i, u in enumerate(units)}
+        stages = {}
+        for st in STAGES:
+            s = sp[sp.stage == st]
+            if s.empty:
+                continue
+            grp, unit = np.full(H, -1, dtype=int), np.full(H, -1, dtype=int)
+            hi = hours.of(s)
+            grp[hi] = [setter_group(x) for x in s.price_setter]
+            unit[hi] = [uix.get(u, -1) if isinstance(u, str) else -1 for u in s.setter_unit]
+            stages[st] = dict(group=grp.tolist(), unit=unit.tolist())
+        setter = dict(groups=SETTER_GROUPS, units=units, stages=stages)
+
     units = unit_table(rdir)
     to_bus = bus_ids(rdir)
     units["bus_id"] = units.bus_i.map(to_bus)
@@ -482,7 +530,7 @@ def build(rdir, runs_repo, args):
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
-        balancing=balancing, redispatch=redispatch, traded=traded,
+        balancing=balancing, redispatch=redispatch, traded=traded, setter=setter,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}

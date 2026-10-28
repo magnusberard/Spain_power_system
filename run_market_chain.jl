@@ -1796,6 +1796,7 @@ end
 # every earlier hour frozen at its already-committed CID value, then commit this
 # hour.  Earlier hours' reservoir use is locked in, so water cannot be reallocated
 # backwards in time — the causality the 1h-before-delivery rule implies.
+const CID_FALLBACKS = Ref(0)   # CID gates that failed and held the previous plan
 function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                           nuclear_sched = nothing, anchor_base = nothing)
     nets = build_da_nets(date_str, day_ts; nuclear_sched = nuclear_sched)
@@ -1821,8 +1822,19 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
                             hydro_budget_mwh = get(bv, :budget, nothing),
                             uc_bounds = uc_bounds_for(date_str, day_ts))
-        result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
-            error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
+        if !(result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED"))
+            # The previous gate's plan for this hour is feasible by construction (it
+            # solved with the same frozen hours and constraints), so a failed gate is
+            # a solver/numerical failure: hold that plan for this hour, log it, and
+            # go on instead of stopping the whole run. The hour gets no CID price.
+            haskey(prev_full, hgate) ||
+                error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
+            CID_FALLBACKS[] += 1
+            @printf "  CID %s gate h=%d: %s, holds the previous gate's plan (fallback %d)
+" date_str day_ts.hour[hgate] result.status CID_FALLBACKS[]
+            committed[hgate] = prev_full[hgate]
+            continue
+        end
         committed[hgate] = result.sched[hgate]
         # Each rolling gate re-clears the whole remaining horizon but only
         # commits `hgate`; that hour's balance dual is its CID price.

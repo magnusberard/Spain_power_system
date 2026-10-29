@@ -8,10 +8,10 @@
 # solstorm_start_redispatch.sh); step 3 joins the chunks with merge_runs.py.
 #
 #     scripts/run_markets_sequential.sh <out>
-#     GAS=on FROM=2024-01-01 TO=2024-12-29 DAYS=7 scripts/run_markets_sequential.sh <out>
+#     GAS=on FROM=2024-01-01 TO=2024-12-31 DAYS=7 scripts/run_markets_sequential.sh <out>
 #
 #   <out>     parent folder; one folder per chunk, <out>/<from>_<to>/
-#   FROM, TO  first and last study day (default 2024-01-01 .. 2024-12-29)
+#   FROM, TO  first and last study day (default 2024-01-01 .. 2024-12-31)
 #   DAYS      chunk length in days (default 7)
 #   GAS       on: the gas/coal switches on (scripts/make_run_config.jl); off
 #             (default): config.toml as it is
@@ -33,7 +33,7 @@ set -u
 
 [ $# -ge 1 ] || { sed -n '2,30p' "$0"; exit 1; }
 OUT="$1"
-FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-29}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"; MARKUP="${MARKUP:-off}"
+FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-31}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"; MARKUP="${MARKUP:-off}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$OUT"
 

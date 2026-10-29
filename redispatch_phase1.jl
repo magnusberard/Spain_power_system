@@ -138,6 +138,7 @@ function load_rd_phase1(cfg)
     uc = get(cfg, "unit_commitment", Dict())
     return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
             security_limits = Bool(get(c, "security_limits", false)),     # in_chain: ID2–BAL keep phase I's changes
+            ramp_limits  = Bool(get(c, "ramp_limits", false)),            # the markets' [da].ramp_limits in phase I too
             ac_check     = Bool(get(c, "ac_check", false)),               # step C: AC voltage check in phase I
             ac_zones     = Bool(get(c, "ac_check_zones", true)),          # step C: RD5 zone counts also in that check
             hydro_budget = load_rd_hydro_budget(cfg),                     # RD13: no added hydro energy per day
@@ -216,7 +217,7 @@ function phase1_nets(date_str, day_ts)
                      crossborder_exports = WEEKS_ACTIVE || XB_EXPORT_AT_BORDER,
                      crossborder_bus_caps = RD_XB_SPLIT == "country_total" ? XB_BUS_CAPS : nothing,
                      crossborder_same_direction = RD_XB_SPLIT == "country_total",
-                     da_dispatch = phase1_sched_for(date_str, ts.hour),
+                     da_dispatch = phase1_sched_for(date_str, ts.hour), ramp_limits = RAMP_LIMITS,
                      frozen_fuels = RD_FROZEN_FUELS, island_buses = ISLAND_BUSES, removed_units = REMOVED_UNITS,
                      nuclear_availability = nuclear_avail_for(date_str), coal_availability = coal_avail_for(date_str),
                      chp_blocks = chp_blocks_for(date_str), chp_siting_buses = CHP_SITING_BUSES,
@@ -433,6 +434,8 @@ function run_phase1_day!(su, date_str)
     u = Dict{Tuple{String,Int},JuMP.VariableRef}()       # on/off of candidates
     pg_of = Dict{Tuple{String,Int},JuMP.VariableRef}()
     gen_of = Dict{String,Any}()
+    ramp_pg = Dict{Tuple{String,Int},JuMP.VariableRef}()   # ramp_limits: every unit with a ramp rate, by name
+    ramp_r  = Dict{String,Float64}()
     # network id (Int or String, by PowerModels version) → position in the day
     nwk = Dict(parse(Int, string(n)) + 1 => n for n in keys(PowerModels.nws(pm)))
     for k in 1:H
@@ -446,6 +449,10 @@ function run_phase1_day!(su, date_str)
             if startswith(name, "SLACK") || startswith(name, "LS_")
                 JuMP.add_to_expression!(obj, g["cost"][1], pg)
                 continue
+            end
+            if p1.ramp_limits && haskey(g, "ramp_mw_per_h") && g["ramp_mw_per_h"] > 0
+                ramp_pg[(name, k)] = pg
+                ramp_r[name] = g["ramp_mw_per_h"] / BASEMVA
             end
             (rd_is_market_unit(name) || startswith(name, "BESS_")) || continue
             tgt  = get(scheds[k], name, 0.0) / BASEMVA
@@ -493,6 +500,14 @@ function run_phase1_day!(su, date_str)
             JuMP.@constraint(m, sum(starts[(name, j)] for j in max(1, k - p1.min_up + 1):k if haskey(starts, (name, j))) <= u[(name, k)])
             JuMP.@constraint(m, sum(starts[(name, -j)] for j in max(1, k - p1.min_down + 1):k if haskey(starts, (name, -j))) <= 1 - u[(name, k)])
         end
+    end
+    # [redispatch.phase1].ramp_limits: the markets' hour-to-hour ramp limits (da.jl; nameplate × the technology's
+    # %/h, no constraint into hour 0). Without them phase I ran CCGTs 391 → 0 → 362 MW in consecutive hours, a
+    # schedule ID2–BAL cannot follow; with the security limits holding units there, ID2 became infeasible
+    # (11 Dec 2024). Minimum loads (CCGT 0.48/0.25, coal 0.40) are within one hour's ramp, so starts stay possible.
+    for ((name, k), pg) in ramp_pg
+        k > 1 && haskey(ramp_pg, (name, k - 1)) || continue
+        JuMP.@constraint(m, -ramp_r[name] <= pg - ramp_pg[(name, k - 1)] <= ramp_r[name])
     end
     # RD13 water budget ([redispatch.hydro_budget]): phase I may not add hydro energy to a
     # unit's day — Σ_h (pg − schedule) ≤ tolerance; shifting between hours and going down stay free

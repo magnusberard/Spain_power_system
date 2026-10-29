@@ -434,6 +434,16 @@ function phase1_limits_for(date_str, day_ts)
     end
     return isempty(b) ? nothing : b
 end
+# A gate after the DA that phase I's security limits make infeasible is cleared again without them
+# (logged; grep "cleared without"), so one inconsistent limit cannot stop a year run.
+const SEC_LIMITS_DROPPED = Tuple{String,String}[]
+function sec_limits_fallback(solve_limited, solve_free, lims, label, date_str)
+    r = solve_limited()
+    (lims === nothing || r.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")) && return r
+    @printf "    WARNING %s %s: %s with phase I's security limits - cleared without them\n" label date_str r.status
+    push!(SEC_LIMITS_DROPPED, (String(date_str), String(label)))
+    return solve_free()
+end
 function uc_bounds_for(date_str, day_ts)
     UC_CFG === nothing && !RD_PHASE1_IN_CHAIN && return nothing    # in_chain: phase I's units stay on
     b = Dict{Tuple{Int,String},Tuple{Bool,Float64}}()
@@ -1704,13 +1714,15 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
     end
     ucb = (label == "DA" || uc !== nothing) ? nothing : uc_bounds_for(date_str, day_ts)
-    solve_gate(u) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
+    lims = label == "DA" ? nothing : phase1_limits_for(date_str, day_ts)
+    solve_with(u, l) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
                         gurobi_da(log_file = log_file);
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
                         hydro_budget_mwh = get(bv, :budget, nothing),
-                        uc = u, uc_bounds = ucb,
-                        sec_limits = label == "DA" ? nothing : phase1_limits_for(date_str, day_ts))
+                        uc = u, uc_bounds = ucb, sec_limits = l)
+    # phase I's security limits never stop the run: a gate they make infeasible is cleared without them
+    solve_gate(u) = sec_limits_fallback(() -> solve_with(u, lims), () -> solve_with(u, nothing), lims, label, date_str)
     if uc !== nothing && label == "DA" && UC_CFG.mic_check
         # Minimum-income check loop (unit_commitment.jl, mic_clear)
         result, mic_log = mic_clear(solve_gate, uc, UC_CFG.max_rounds)
@@ -1799,11 +1811,13 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
     for hgate in 1:H
         free_set   = Set(hgate:H)
         anchor_map = Dict(h => prev_full[h] for h in hgate:H if haskey(prev_full, h))
-        result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
+        lims = phase1_limits_for(date_str, day_ts)
+        cid_with(l) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
                             hydro_budget_mwh = get(bv, :budget, nothing),
-                            uc_bounds = uc_bounds_for(date_str, day_ts),
-                            sec_limits = phase1_limits_for(date_str, day_ts))
+                            uc_bounds = uc_bounds_for(date_str, day_ts), sec_limits = l)
+        result = sec_limits_fallback(() -> cid_with(lims), () -> cid_with(nothing), lims,
+                                     "CID gate h=$(day_ts.hour[hgate])", date_str)
         result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
             error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
         committed[hgate] = result.sched[hgate]

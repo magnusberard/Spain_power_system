@@ -801,9 +801,14 @@ limit as the gate allows, never infeasible). Next: Dec again (l3_dec).
   run's own DA (run 4: 7 above). By price setter: gas/coal hours 137–142 vs run 4's 179–184, pumped-storage
   hours 59 vs 100, reservoir hours 96 vs 110, wind hours 0.2 vs 20. ID3, CID and BAL are within 6–10 of
   real.
-- Open: run 4's markets ran on Lars Erik's code; the in-chain runs re-run them on this branch (DA already
-  91.7 vs 93.1). Control `l0_dec`: the same settings without `--in-chain` (markets re-run here, phase I
-  after them) separates phase I's effect on ID2 from the code base's.
+- By day the weekly mean misleads, and no control run is needed. From 4 Dec on, the DA equals run 4's,
+  and on 4–6 Dec ID2 equals run 4's too (so the code base reproduces run 4). The gap sits on 2–3 Dec (run
+  4's ID2 10–44 above its DA, l3's at its DA: phase I's committed units remove that intraday scarcity) and
+  7–8 Dec (pumped storage / wind set ID2 at 27 / 0.2, the days with most phase I, 58–59 GWh up).
+  Against the real IDA2 per day (140 144 131 125 108 43 24): run 4 140 181 94 93 90 84 20, l3 98 139 94 93
+  90 27 0; mean absolute error 24.1 (run 4) vs 24.9 (l3). CID: 33.7 vs 29.6. Both models are ~30 low on
+  4–6 Dec (a market-model gap, not phase I). l3's clear misses: 2 Dec (98 vs 140) and 8 Dec (0 vs 24).
+  Level 1 with the limits is as close to real intraday prices as run 4: ready for the year.
 
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 

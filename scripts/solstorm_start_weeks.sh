@@ -14,7 +14,7 @@
 #                  that setting; git ignores it)
 #   2nd argument : parent folder for the week folders (<folder>/<from>_<to>/)
 #   3rd argument : this node's part, k/N (run k = 1 .. N on N different nodes)
-#   optional     : LANES (default 6), FROM (2024-01-01), TO (2024-12-29),
+#   optional     : LANES (default 6), FROM (2024-01-01), TO (2024-12-31),
 #                  DAYS (7) and IPOPT (mumps; ma57 once HSL is set up), as
 #                  environment variables in front of the command
 #
@@ -30,7 +30,7 @@ RES="$1"; OUT="$2"; PART="$3"
 case "$RES" in accepted|offered) ;; *) echo "res_input must be accepted or offered"; exit 1 ;; esac
 K="${PART%%/*}"; N="${PART##*/}"
 [ "$K" -ge 1 ] && [ "$K" -le "$N" ] || { echo "part must be k/N with 1 <= k <= N"; exit 1; }
-LANES="${LANES:-6}"; FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-29}"; DAYS="${DAYS:-7}"
+LANES="${LANES:-6}"; FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-31}"; DAYS="${DAYS:-7}"
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CFG="$REPO/scripts/config_$RES.toml"

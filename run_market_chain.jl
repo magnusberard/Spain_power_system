@@ -615,7 +615,7 @@ RD_ONLY != "" &&
 # config.toml [run] -- `days = [...]`, or `from` / `to` -- and overridable for
 # one run, without editing the config, by SPAIN_DAYS:
 #     "2024-01-01:2024-01-31"     a range          "2024-07-08,2024-12-02"  a list
-# Days with every input: 2024-01-01 .. 2024-12-29 (checked further down).
+# Days with every input: 2024-01-01 .. 2024-12-31, all 366 (checked further down).
 # Results are kept in memory until the end of the run, so run long ranges a
 # month at a time (scripts/run_2024_by_month.ps1).
 function study_days(cfg)

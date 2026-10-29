@@ -31,7 +31,6 @@ mkdir -p "$OUT"
 for m in "$@"; do
     from="2024-$m-01"
     to="$(date -d "$from +1 month -1 day" +%Y-%m-%d)"
-    [ "$m" = "12" ] && to="2024-12-29"
     # bash -l: a login shell, so the `module` command is defined
     screen -dmS "m$m" bash -lc "cd '$REPO' && source scripts/solstorm_env.sh '${IPOPT:-mumps}' \
         && SPAIN_CONFIG='$CFG' OUT_ROOT='$OUT' scripts/run_2024_by_month.sh $from $to; exec bash"

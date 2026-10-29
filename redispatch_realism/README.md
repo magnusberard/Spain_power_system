@@ -785,6 +785,26 @@ below the unit's floor in the market (hydro's market minimum is above what phase
 a committed gas unit's minimum load). Fixed: the unit is held at that floor instead (as close to the
 limit as the gate allows, never infeasible). Next: Dec again (l3_dec).
 
+**Limits held at the floor (l3_apr, l3_dec; `bdef355`, 29 Oct):** April 167/168, December 168/168 hours.
+
+| €/MWh | run 4 | in chain + limits (l2) | held at the floor (l3) | real |
+|---|---|---|---|---|
+| Apr ID2 / ID3 / CID / BAL | 28.7 / 33.6 / 36.6 / 35.8 | 24.9 / 33.7 / 36.0 / 35.5 | 25.2 / 31.0 / 36.6 / 35.7 | (no auctions) |
+| Dec ID2 / ID3 / CID / BAL | 100.4 / 108.1 / 102.4 / 103.8 | 75.3 / 86.6 / 88.0 / 89.0 | 77.3 / 94.5 / 90.0 / 98.1 | 102.0 / 108.4 / 100.1 / — |
+
+- Energy above the upper limit in BAL: hydro 25 → 0 GWh (Dec), 19 → 0 (Apr). Left: gas 15.4 GWh (Dec,
+  84 unit-hours, 13 units) that phase I switched off (limit 0) but the DA had committed; ID2 holds them
+  at minimum load (~48 % of DA output). The floor rule as designed; small against phase I's 266 GWh down.
+- Phase I, its cost and real time unchanged against l2 (phase I/II 314 / 281 GWh; real time up 17.5 / 22.2
+  GWh, REE 162 / 87; reversing phase I 42 % / 41 %, outside the chain 86 / 82 %).
+- **ID2 in December is still 23 €/MWh low**, flat over the hours of the day (−21 to −24), and 14 below the
+  run's own DA (run 4: 7 above). By price setter: gas/coal hours 137–142 vs run 4's 179–184, pumped-storage
+  hours 59 vs 100, reservoir hours 96 vs 110, wind hours 0.2 vs 20. ID3, CID and BAL are within 6–10 of
+  real.
+- Open: run 4's markets ran on Lars Erik's code; the in-chain runs re-run them on this branch (DA already
+  91.7 vs 93.1). Control `l0_dec`: the same settings without `--in-chain` (markets re-run here, phase I
+  after them) separates phase I's effect on ID2 from the code base's.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

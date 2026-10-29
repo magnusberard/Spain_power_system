@@ -97,6 +97,17 @@ a busy node. Estimates with MA57: one month ≈ 30 min on one node (12 lanes); t
 
 Locally the same lanes run with `LANES=2` (memory: ~3 GB per lane on 16 GB).
 
+**In-chain runs over many weeks (level 1, `solstorm_start_inchain_year.sh`):** the markets are re-run,
+so days are not independent; the unit is the source run's weekly chunk (`chunks.txt`), each with its
+own `config_used_market.toml`, run as one process. Chunks are dealt over k/N nodes and LANES lanes
+(default 4; one week ≈ 2–3 h per lane); a finished chunk (`summary.csv`) is skipped on a restart.
+```
+R=/storage/users/larseeid/results/2024_r4_hydro_offered
+FROM=2024-12-02 TO=2024-12-29 redispatch_realism/solstorm_start_inchain_year.sh $R /storage/users/$USER/results/ly_dec 1/1
+tail -n 3 /storage/users/$USER/results/ly_dec/lane-*.log
+```
+Each chunk folder is a complete in-chain run (`compare_ree.py <out>/<chunk>`).
+
 ## Checks: is each component working?
 
 `check.py` prints PASS/FAIL per test and exits non-zero on a failure. Three kinds:

@@ -2355,6 +2355,7 @@ if RD_WATER_VALUE == "constant"
                               extra_lines = EXTRA_LINES)
         rd_islands_to_link!(net)                          # [redispatch].islands_load_to_link
         (; network, gens, branches, dclines, loads) = net
+        apply_phase1_limits_rt!(network, date_str, hour)  # [redispatch.phase1].security_limits_rt
 
         log_file = DIAGNOSTIC_OUTPUT ? nothing :
                    joinpath(IPOPT_LOG_DIR, "$(date_str)_h$(lpad(hour, 2, '0')).log")

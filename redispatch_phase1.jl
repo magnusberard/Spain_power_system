@@ -138,6 +138,7 @@ function load_rd_phase1(cfg)
     uc = get(cfg, "unit_commitment", Dict())
     return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
             security_limits = Bool(get(c, "security_limits", false)),     # in_chain: ID2–BAL keep phase I's changes
+            security_limits_rt = Bool(get(c, "security_limits_rt", false)),  # ... and real time too
             ramp_limits  = Bool(get(c, "ramp_limits", false)),            # the markets' [da].ramp_limits in phase I too
             ac_check     = Bool(get(c, "ac_check", false)),               # step C: AC voltage check in phase I
             ac_zones     = Bool(get(c, "ac_check_zones", true)),          # step C: RD5 zone counts also in that check
@@ -762,6 +763,39 @@ function apply_phase1_commitments!(network, su, date_str, hour)
         (g["name"] in on && su_is_off(g)) || continue
         su_commit!(su, g)
         n += 1
+    end
+    return n
+end
+
+"""
+    apply_phase1_limits_rt!(network, date_str, hour) -> bounds set
+
+[redispatch.phase1].security_limits_rt: REE's limits on phase I/II's changes hold in real time too, as in
+ID2–BAL. Without them real time gave back what phase II had turned down (ly3_dec, Dec 2024: 30.5 of its 31.9 GWh
+of wind up undid phase II's wind down, paid for by turning gas down, at a negative real-time cost); REE's real
+time is mostly upward reserve. A unit phase I turned down stays at or below its post-phase-I output, one it
+raised at or above it, both shifted by the AC check's own change (real time's anchor is BAL plus that change);
+where a limit lies outside the unit's range in this hour, the unit is held at the edge.
+"""
+function apply_phase1_limits_rt!(network, date_str, hour)
+    (RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && RD_STARTUPS.phase1.security_limits_rt) || return 0
+    lims = get(RD_PHASE1_LIMITS, (String(date_str), hour), nothing)
+    (lims === nothing || isempty(lims)) && return 0
+    ac = get(RD_PHASE1_DELTA, (String(date_str), hour), Dict{String,Float64}())   # the AC check's changes
+    n = 0
+    for (_, g) in network["gen"]
+        l = get(lims, g["name"], nothing)
+        l === nothing && continue
+        lo, hi = l
+        a = get(ac, g["name"], 0.0)
+        if !isnan(hi)
+            hp = max((hi + a) / BASEMVA, g["pmin"])
+            hp < g["pmax"] && (g["pmax"] = hp; n += 1)
+        end
+        if !isnan(lo)
+            lp = min((lo + a) / BASEMVA, g["pmax"])
+            lp > g["pmin"] && (g["pmin"] = lp; n += 1)
+        end
     end
     return n
 end

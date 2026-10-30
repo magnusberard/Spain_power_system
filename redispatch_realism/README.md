@@ -840,6 +840,21 @@ no ramp limit (l3 week: 48 unit-hours before). 2–29 Dec against REE: phase I u
 4. *Cartagena:* on 11–13 Dec phase I turned down Escombreras (41 GWh), El Fangal (28) and Besós 5 (26) and started
    84 GWh with no requirement. Phase I now writes `rd_phase1_binding.csv` (branches at ≥ 99 % of rating per hour).
 
+**Fixes 1–4 on December (`ly3_dec`, `d0457b0`, 30 Oct):** 168/168 h every week, 74–86 min. Fallback used on
+11 Dec only (ID3, all CID gates, BAL): 0 MWh shed (with the limits up to 14 GWh; run 4 3.4). Island plants in
+phase I 109 → 16 GWh, in real time 97 → 10. Phase I/II down: wind 709, solar 114, gas 121 (was 286; REE 27),
+nuclear 12, hydro 3 (was 405; REE ~235). Phase I up 1,056 GWh (DC) / 121–205 % of REE per week. ID2 108 vs real
+110 €/MWh (MAE 14), CID 107 vs 108.
+- *Binding branches in phase I* (rd_phase1_binding.csv): 44 branches, 3,057 branch-hours. Most: the French ties
+  TR_65a15878 (Irún, 220/225 kV, 240 MW, 456 h), TR_fa1d5cde (Pyrenees, 384 MW, 442 h), LTGES1027 (Hernani–Argia,
+  387 h), and on 11–13 Dec TR_9af01115: 3,373 MW of CCGTs (Escombreras, El Fangal, Cartagena) sit on the 220 kV
+  bus ES00347 behind one 600 MW 220/400 kV transformer, the 400 kV bus ES00348 has none (data: plants on the wrong
+  voltage level?); Besós (1,671 MW) behind a 393 MW 220 kV line (LTGES1146). REE's base-case overload cause is
+  0.25 % of phase I. Test: `--uprate redispatch_realism/data/uprate_phase1_binding_dec.csv` (all 44 at 3× nominal).
+- *Real time gave phase II back:* 30.5 of its 31.9 GWh of wind up undid phase II's wind down, paid for by gas
+  down (64.5 GWh), at a negative real-time cost. `[redispatch.phase1].security_limits_rt` (on with the limits in
+  make_config; `--no-rt-limits` off): the limits hold in real time too (`apply_phase1_limits_rt!`).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

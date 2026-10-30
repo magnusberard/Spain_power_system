@@ -6,6 +6,7 @@
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
 #                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req]
+#                                             [--uprate <csv of line_id,factor>]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -106,6 +107,8 @@ function main(args)
             set!(cfg, "redispatch.from_saved", "")
             # REE's security limits on phase I's changes in ID2–BAL (off only with --no-security-limits)
             set!(cfg, "redispatch.phase1.security_limits", !("--no-security-limits" in args))
+            # ... and in real time (off with --no-rt-limits)
+            set!(cfg, "redispatch.phase1.security_limits_rt", !("--no-security-limits" in args) && !("--no-rt-limits" in args))
         end
         if "--ac-check" in args                                 # step C
             set!(cfg, "redispatch.phase1.ac_check", true)
@@ -124,6 +127,8 @@ function main(args)
             "--sync-reserve-hours" in args && set!(cfg, "redispatch.reserve.tertiary_ramp15", false)
         end
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
+        up = opt("--uprate")                                    # thermal uprate of listed lines/transformers
+        up === nothing || set!(cfg, "redispatch.extra_line_scale_file", up)   # (absolute fraction of nominal)
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)
         sq === nothing || set!(cfg, "generators.sync_q_frac", parse(Float64, sq))
         r = opt("--res-mvar")                                   # renewables' connection networks

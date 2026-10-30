@@ -855,6 +855,27 @@ nuclear 12, hydro 3 (was 405; REE ~235). Phase I up 1,056 GWh (DC) / 121–205 %
   down (64.5 GWh), at a negative real-time cost. `[redispatch.phase1].security_limits_rt` (on with the limits in
   make_config; `--no-rt-limits` off): the limits hold in real time too (`apply_phase1_limits_rt!`).
 
+**Real-time limits and the congestion test (`ly4_dec`, `ly4u_dec` = + 44 branches at 3×, `af3b790`, 30 Oct):**
+
+| 2–29 Dec | ly3 | ly4 | ly4u | REE |
+|---|---|---|---|---|
+| phase I up | 1,145 GWh (149 %) | 1,145 (149 %) | 1,076 (140 %) | 769 |
+| phase I + II cost | 115 M€ | 115 | 110 | 77 |
+| real time up / cost | 100 GWh / −2.0 M€ | 103 / +2.5 | 64 / +2.0 | 369 / 113 |
+| gas turned down | 121 GWh | 121 | 49 | 27 |
+
+- Real-time limits: real time undoes 13 % of phase I (ly3 53–76 % in three weeks), wind put back 32 → 9 GWh, cost no
+  longer negative. Prices unchanged (Dec DA 108, ID2 108, CID 107–108, BAL 108–109 €/MWh).
+- Congestion explains little: −69 GWh of phase I with all 44 branches relaxed (1,064 branch-hours still bind).
+- **The excess is energy per started unit, not the number of units:** units per hour model / REE 7.4 / 7.9, 4.8 / 5.0,
+  8.5 / 7.1, 8.6 / 9.0, but 205–270 vs 146–170 MWh per unit-hour. In zones with a need, REE's day-ahead had 0.59 units
+  online per zone-hour, the model's 0.55 (the day-ahead is not the cause); REE raised 1.23, the model starts 1.47.
+  REE runs the CCGTs it starts at 0.39 of capacity (< 700 MW) and 0.18 (2x1), I90 median, Jan–Jun 2024 (Jul–Dec
+  0.38 / 0.21); the model at 0.48 / 0.25. `[redispatch.startups].min_load_1x1 = 0.39`, `min_load_2x1 = 0.18`
+  (make_config; overrides [unit_commitment] for the redispatch only, the markets keep theirs).
+- Hydro was turned down 2–3 GWh (REE ~235 incl. pumped): its down mark-ups (0.037–0.047) sat just above wind/PV
+  (0.031). REE's phase II prices do not separate them (0.95–0.97 of p_DA): hydro, pumped, run-of-river 0.031.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

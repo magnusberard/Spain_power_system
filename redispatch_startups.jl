@@ -61,8 +61,11 @@ function load_rd_startups(cfg)
             # REE does not start for voltage; 100 MW = [unit_commitment].min_mw
             candidate_min_mw     = Float64(get(c, "candidate_min_mw", get(uc, "min_mw", 100.0))),
             # gas (CCGT): Intertek-based terms of [unit_commitment]
-            gas_min_load_1x1     = Float64(get(uc, "min_load_1x1", 0.48)),
-            gas_min_load_2x1     = Float64(get(uc, "min_load_2x1", 0.25)),
+            # [redispatch.startups].min_load_1x1/_2x1 override the markets' values for the redispatch only:
+            # REE runs the CCGTs it starts at 0.39 (< 700 MW) and 0.18 (2x1) of capacity (I90, Jan-Jun 2024, median),
+            # against 0.48/0.25; with those, phase I started REE's number of units at ~1.3x REE's MWh each (Dec)
+            gas_min_load_1x1     = Float64(get(c, "min_load_1x1", get(uc, "min_load_1x1", 0.48))),
+            gas_min_load_2x1     = Float64(get(c, "min_load_2x1", get(uc, "min_load_2x1", 0.25))),
             gas_two_by_one_mw    = Float64(get(uc, "two_by_one_min_mw", 700.0)),
             gas_wear_eur_per_mw  = usd(get(uc, "start_wear_usd_per_mw", 52.0)),
             gas_start_fuel       = Float64(get(uc, "start_fuel_mwh_per_mw", 1.5)),

@@ -5,13 +5,13 @@ Coal,Coal,0.5,0.1
 Gas,CHP,0.0,0.072
 Gas,Combined_cycle,0.46,0.1
 Gas,Gas_turbine,0.46,0.047
-Hydro,pumped_storage,0.59,0.047
-Hydro,reservoir,0.59,0.037
-Hydro,run_of_river,0.0,0.038
+Hydro,pumped_storage,0.59,0.031
+Hydro,reservoir,0.59,0.031
+Hydro,run_of_river,0.0,0.031
 Nuclear,Nuclear,0.0,0.06
 Oil,Combined_cycle,0.0,0.047
 Solar,PV,0.0,0.031
 Solar,Solar Thermal,0.0,0.031
 Wind,Onshore,0.0,0.031
 Wind,Offshore,0.0,0.031
-Hydro,mini_hydro,0.0,0.038
+Hydro,mini_hydro,0.0,0.031

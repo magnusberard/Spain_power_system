@@ -97,6 +97,8 @@ function main(args)
         set!(cfg, "redispatch.bids.down_refund", "bid_da")      # RD12: phase II's down bids
         set!(cfg, "redispatch.phase1.ramp_limits", true)        # the markets' ramp limits in phase I too
         set!(cfg, "redispatch.islands_load_to_link", true)      # Balearic load held to the HVDC link
+        set!(cfg, "redispatch.startups.min_load_1x1", 0.39)     # REE's started CCGTs, I90 Jan-Jun 2024 median
+        set!(cfg, "redispatch.startups.min_load_2x1", 0.18)
         set!(cfg, "redispatch.phase1.n1", opt("--n1") == "on")
         if opt("--n1") == "on"
             set!(cfg, "redispatch.phase1.n1_outage", "element")

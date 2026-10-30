@@ -202,6 +202,47 @@ const RD_PHASE1_AC_ROWS = Dict{Tuple{String,Int},Dict{String,Float64}}()
 # sell back above its post-phase-I output, a unit it raised may not sell below it (NaN = no limit)
 const RD_PHASE1_LIMITS = Dict{Tuple{String,Int},Dict{String,Tuple{Float64,Float64}}}()
 const RD_SAVED_DA    = Ref{Any}(nothing)
+const RD_PHASE1_BINDING = NamedTuple[]                  # branches at ≥ 99 % of their rating in phase I (DC)
+
+# [redispatch].islands_load_to_link, with [islands].exclude_from_market: the Balearic plants sell nothing in
+# the markets, and OMIE's load holds only what the HVDC link buys for Mallorca, yet load.csv puts 1.54 % of it
+# on the Mallorca buses (~430 MW, the link ~200 MW). In the redispatch the island plants covered the rest:
+# counted as upward redispatch (109 GWh in Dec 2024, ~10 % of phase I) with the same energy taken off the
+# peninsula. Here the island load is held to what the link can carry and the excess goes back to the
+# peninsular loads pro rata (total load unchanged = the DA's); the island plants stay in the grid (their Q
+# holds Mallorca's voltage behind the DC link) but have no energy left to serve. REE's peninsular redispatch
+# excludes the islands too.
+const RD_ISLANDS_LINK = Ref{Union{Nothing,Bool}}(nothing)
+const RD_ISLAND_LINK_USE = 0.95                       # share of the link's rating used (converter losses)
+function rd_islands_to_link!(net)
+    on = RD_ISLANDS_LINK[] === nothing ?
+        (RD_ISLANDS_LINK[] = ISLAND_BUSES !== nothing &&
+             Bool(get(get(cfg, "redispatch", Dict()), "islands_load_to_link", false))) : RD_ISLANDS_LINK[]
+    on || return net
+    nw = net.network
+    isl = Set(b["index"] for (_, b) in nw["bus"] if String(b["name"]) in ISLAND_BUSES)
+    cap = 0.0
+    for (_, d) in get(nw, "dcline", Dict())
+        (d["f_bus"] in isl) == (d["t_bus"] in isl) && continue          # not a link to the islands
+        cap += max(abs(d["pmaxf"]), abs(d["pmaxt"]))
+    end
+    li = [l for (_, l) in nw["load"] if l["load_bus"] in isl]
+    lm = [l for (_, l) in nw["load"] if !(l["load_bus"] in isl)]
+    tot_i = sum(l["pd"] for l in li; init = 0.0); tot_m = sum(l["pd"] for l in lm; init = 0.0)
+    excess = tot_i - RD_ISLAND_LINK_USE * cap
+    (excess > 1e-6 && tot_m > 0) || return net
+    fi = 1 - excess / tot_i; fm = 1 + excess / tot_m
+    f_bus = Dict{Int,Float64}()
+    for l in li; l["pd"] *= fi; l["qd"] *= fi; f_bus[l["load_bus"]] = fi; end
+    for l in lm; l["pd"] *= fm; l["qd"] *= fm; f_bus[l["load_bus"]] = fm; end
+    for (_, g) in nw["gen"]                                             # load shedding sized on the new load
+        startswith(String(g["name"]), "LS_") || continue
+        f = get(f_bus, g["gen_bus"], 1.0)
+        g["pmax"] *= f; g["qmax"] *= f; g["qmin"] *= f
+        haskey(g, "installed_mw") && (g["installed_mw"] *= f)
+    end
+    return net
+end
 
 phase1_sched_for(date_str, hour) =
     RD_FROM_SAVED_ACTIVE ?
@@ -211,7 +252,7 @@ phase1_sched_for(date_str, hour) =
 
 function phase1_nets(date_str, day_ts)
     bv = day_bellman[date_str]
-    [prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour), ts.solar_mw, ts.wind_mw;
+    [rd_islands_to_link!(prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour), ts.solar_mw, ts.wind_mw;
                      hydro_reservoir_cost = bv.water_value,
                      crossborder_inj = crossborder_inj_for(date_str, ts.hour),
                      crossborder_exports = WEEKS_ACTIVE || XB_EXPORT_AT_BORDER,
@@ -228,7 +269,7 @@ function phase1_nets(date_str, day_ts)
                      unit_scale = UNIT_SCALE, cost_override = cost_override_for(date_str),
                      unit_cost_override = unit_cost_override_for(date_str), bess_units = BESS_UNITS,
                      unit_scale_by_id = UNIT_SCALE_ID, extra_units = EXTRA_UNITS, line_scale = LINE_SCALE,
-                     rating_scale = RATING_SCALE, extra_lines = EXTRA_LINES)
+                     rating_scale = RATING_SCALE, extra_lines = EXTRA_LINES))
      for ts in eachrow(day_ts)]
 end
 
@@ -582,6 +623,25 @@ function run_phase1_day!(su, date_str)
     status = string(JuMP.termination_status(m))
     @printf "  phase I/II %s: %s in %.0f s, %d candidates, objective %.0f EUR\n" date_str status (time() - t0) length(unique(first.(collect(keys(u))))) (JuMP.has_values(m) ? JuMP.objective_value(m) : NaN)
     JuMP.has_values(m) || return
+    # lines and transformers at their limit in phase I's DC solution (rd_phase1_binding.csv): where phase I moves
+    # plants for the base case, which REE hardly does (0.25 % of its 2024 phase I up)
+    for (k, h) in enumerate(hours)
+        nwn = nets[k].network; n = nwk[k]
+        for (_, br) in nwn["branch"]
+            get(br, "br_status", 1) == 1 || continue
+            rate = get(br, "rate_a", 0.0); rate > 0 || continue
+            f = try
+                JuMP.value(PowerModels.var(pm, n, :p, (br["index"], br["f_bus"], br["t_bus"])))
+            catch
+                continue                                   # not in the model (e.g. out of service)
+            end
+            abs(f) >= 0.99 * rate || continue
+            push!(RD_PHASE1_BINDING, (date = date_str, hour = h, branch = String(get(br, "name", string(br["index"]))),
+                                      from_bus = String(nwn["bus"][string(br["f_bus"])]["name"]),
+                                      to_bus = String(nwn["bus"][string(br["t_bus"])]["name"]),
+                                      flow_mw = round(f * BASEMVA; digits = 1), rate_mw = round(rate * BASEMVA; digits = 1)))
+        end
+    end
     for (k, h) in enumerate(hours)
         on = Set{String}()
         delta = Dict{String,Float64}()
@@ -760,6 +820,7 @@ function phase1_ac_check_day!(su, date_str)
                               unit_cost_override = unit_cost_override_for(date_str), bess_units = BESS_UNITS,
                               unit_scale_by_id = UNIT_SCALE_ID, extra_units = EXTRA_UNITS, line_scale = LINE_SCALE,
                               rating_scale = RATING_SCALE, extra_lines = EXTRA_LINES)
+        rd_islands_to_link!(net)
         network, gens = net.network, net.gens
         RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, h))
         RD_CURRENT_RESERVE[] = 0.0                       # no real-time reserve in phase I
@@ -850,5 +911,6 @@ function write_rd_phase1(dir)
                   isempty(rows) ? DataFrame(date = String[], hour = Int[], unit = String[], ac_mw = Float64[]) : DataFrame(rows))
     end
     isempty(RD_N1_LEFT_ROWS) || CSV.write(joinpath(dir, "rd_n1_left.csv"), DataFrame(RD_N1_LEFT_ROWS))
+    isempty(RD_PHASE1_BINDING) || CSV.write(joinpath(dir, "rd_phase1_binding.csv"), DataFrame(RD_PHASE1_BINDING))
     @printf "  rd_phase1*.csv   : %d unit-hours changed, %d hours ([redispatch.phase1])\n" length(RD_PHASE1_ROWS) length(RD_PHASE1_SUM)
 end

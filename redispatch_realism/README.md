@@ -821,6 +821,25 @@ limit as the gate allows, never infeasible). Next: Dec again (l3_dec).
   4–6 Dec (a market-model gap, not phase I). l3's clear misses: 2 Dec (98 vs 140) and 8 Dec (0 vs 24).
   Level 1 with the limits is as close to real intraday prices as run 4: ready for the year.
 
+**Ramp limits in phase I (`f25bda7`) and the December month on Solstorm (`ly2_dec`, 30 Oct):** 4 weeks in
+parallel, 93–103 min each, 166–167/168 h solved, no gate cleared without the limits. Phase I's DC schedule breaks
+no ramp limit (l3 week: 48 unit-hours before). 2–29 Dec against REE: phase I up 1,228 vs 769 GWh (160 %), phase I
++ II cost 121 vs 77 M€, real time 19 vs 113 M€ (17 %), ID2 102 vs real 110 €/MWh (MAE 16).
+
+**Review of the whole redispatch (30 Oct) and fixes 1–4** (explainer: claude.ai artifact "Redispatch Finish Line"):
+1. *Load shed under the limits:* 11 Dec shed 14.7 GWh (run 4 3.4); a gate that sheds load with the security
+   limits is cleared again without them when that sheds less (`sec_limits_fallback`, logged "cleared without").
+2. *Balearic Islands counted as redispatch:* load.csv puts 1.54 % of OMIE's load (~430 MW) on the Mallorca buses,
+   OMIE's load only holds what the HVDC link (~200 MW) buys; phase I ran island plants for the rest (109 GWh in
+   Dec, 28 units) and took the same energy off the peninsula. `[redispatch].islands_load_to_link` (on in
+   make_config): island load held to 95 % of the link's rating, the excess back on the peninsular loads pro rata,
+   in phase I, its AC check and real time.
+3. *Phase II's down order:* the price fit made CCGTs the cheapest to turn down (0.023) and wind among the dearest
+   (0.054); REE's 2024 phase II volumes say the opposite (CCGT 0.13 of 11.1 TWh, coal ~0, renewables about half,
+   nuclear 0.74). bids_fitted.csv: CCGT and coal 0.10, wind = PV = solar thermal 0.031, nuclear 1.0 → 0.06.
+4. *Cartagena:* on 11–13 Dec phase I turned down Escombreras (41 GWh), El Fangal (28) and Besós 5 (26) and started
+   84 GWh with no requirement. Phase I now writes `rd_phase1_binding.csv` (branches at ≥ 99 % of rating per hour).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

@@ -434,15 +434,33 @@ function phase1_limits_for(date_str, day_ts)
     end
     return isempty(b) ? nothing : b
 end
-# A gate after the DA that phase I's security limits make infeasible is cleared again without them
-# (logged; grep "cleared without"), so one inconsistent limit cannot stop a year run.
+# A gate after the DA that phase I's security limits make infeasible, or make shed load, is cleared again
+# without them (logged; grep "cleared without"): one inconsistent limit cannot stop a year run, and REE does
+# not cut demand to keep a phase I/II change (11 Dec 2024: 14.7 GWh shed with the limits, run 4 3.4 GWh).
 const SEC_LIMITS_DROPPED = Tuple{String,String}[]
+gate_ok(r) = r.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")
+function shed_mwh(r)                                    # load shed (SLACK, LS_*) in a gate's schedule
+    s = 0.0
+    for sch in (r.sched isa AbstractDict ? values(r.sched) : r.sched), (name, mw) in sch
+        (startswith(name, "SLACK") || startswith(name, "LS_")) && mw > 0 && (s += mw)
+    end
+    return s
+end
 function sec_limits_fallback(solve_limited, solve_free, lims, label, date_str)
     r = solve_limited()
-    (lims === nothing || r.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")) && return r
-    @printf "    WARNING %s %s: %s with phase I's security limits - cleared without them\n" label date_str r.status
+    lims === nothing && return r
+    if !gate_ok(r)
+        @printf "    WARNING %s %s: %s with phase I's security limits - cleared without them\n" label date_str r.status
+        push!(SEC_LIMITS_DROPPED, (String(date_str), String(label)))
+        return solve_free()
+    end
+    s = shed_mwh(r)
+    s > 1.0 || return r
+    f = solve_free()
+    (gate_ok(f) && shed_mwh(f) < s - 1.0) || return r
+    @printf "    WARNING %s %s: %.0f MWh shed with phase I's security limits, %.0f without - cleared without them\n" label date_str s shed_mwh(f)
     push!(SEC_LIMITS_DROPPED, (String(date_str), String(label)))
-    return solve_free()
+    return f
 end
 function uc_bounds_for(date_str, day_ts)
     UC_CFG === nothing && !RD_PHASE1_IN_CHAIN && return nothing    # in_chain: phase I's units stay on
@@ -2335,6 +2353,7 @@ if RD_WATER_VALUE == "constant"
                               line_scale = LINE_SCALE,
                               rating_scale = RATING_SCALE,
                               extra_lines = EXTRA_LINES)
+        rd_islands_to_link!(net)                          # [redispatch].islands_load_to_link
         (; network, gens, branches, dclines, loads) = net
 
         log_file = DIAGNOSTIC_OUTPUT ? nothing :
@@ -2422,6 +2441,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 rating_scale = RATING_SCALE,
                                 extra_lines = EXTRA_LINES)
                 for ts in eachrow(day_ts)]
+        foreach(rd_islands_to_link!, nets)                # [redispatch].islands_load_to_link
 
         # Generator IDs (Int) for Spanish reservoir hydro — same topology every hour
         reservoir_gen_ids = sort([parse(Int, k) for (k, g) in nets[1].gens

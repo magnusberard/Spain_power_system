@@ -928,6 +928,17 @@ REE 547 / 487, value 0.1 vs 40.2 M€ (one balancing price for both directions i
 in Spain); physical cost of all adjustments after the day-ahead 74 M€; phase I by region model / REE: Cataluña 216 /
 150, Andalucía 152 / 126, C. Valenciana 107 / 73, País Vasco 71 / 74, Galicia 52 / 40, Castilla-La Mancha 31 / 28 GWh.
 
+**Step E: a demand-driven rule for the voltage-zone needs (`build_zone_need_rule.py`, for 2035).** Basis:
+Davi-Arderius & Schittekatte (2023) (low demand → surplus reactive power → REE starts synchronous units); REE's 2024
+data agrees: units raised for voltage per hour (I90 SOT/COT) vs national load r = −0.80 (Jan–Jun), −0.65 (Jul–Dec);
+11.3 units/h in the lowest load fifth vs 2.1 in the highest (Jan–Jun; Jul–Dec 9.9 vs 2.4). Rule per zone and load
+decile (edges in MW from Jan–Jun): need = REE's median units online when P(need) ≥ 0.4 (threshold chosen on Jan–Jun by
+F1). Test on Jul–Dec 2024 (not used in the fit): 7.1 units required per hour vs REE 6.9, hourly r = 0.69, zone-hours
+68 % precision / 72 % recall. `--apply <date,hour,load_mw>` writes a file in voltage_zone_requirement.csv's format;
+a 2035 run points `[redispatch.mustrun].requirement_file` at it. Assumes the 2024 load–voltage relation carries over
+(more solar and new lines in 2035 can shift it; to state). Also usable on 2024 itself, to test phase I without
+REE's own hourly needs (removes the circularity of step 6).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

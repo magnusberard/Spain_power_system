@@ -90,7 +90,8 @@ def phase1_in_chain(rdir):
     return bool(c.get("redispatch", {}).get("phase1", {}).get("in_chain", False))
 
 
-def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=False):
+def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=False, units=False):
+    """units=True: also return the per-unit rows (date, hour, unit_name, type, up, down, ec, ...) as a fifth value."""
     summ = pd.read_csv(rdir / "summary.csv")
     summ = summ[summ.status.isin(SOLVED)]
     keys = summ[["date", "hour"]]
@@ -137,7 +138,7 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
         p_dn = ch.p_da if down_refund == "da" else (ch.p_da * (1 - md) if down_refund == "bid_da" else c * (1 - md))
         ch = ch.assign(up=up, down=dn, ec=up * (p_up - ch.p_da) + dn * (ch.p_da - p_dn), marginal=c * d,
                        type=[rd_type(f, t) for f, t in zip(ch.fuel, ch.technology)])
-        rows.append(ch[["date", "hour", "type", "up", "down", "ec", "marginal", "p_da"]])
+        rows.append(ch[["date", "hour", "unit_name", "type", "up", "down", "ec", "marginal", "p_da"]])
     u = pd.concat(rows, ignore_index=True)
 
     hourly = u.groupby(["date", "hour"]).agg(up_mwh=("up", "sum"), down_mwh=("down", "sum"),
@@ -165,6 +166,8 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
     monthly[["up_gwh", "down_gwh", "losses_gwh"]] /= 1e3
     monthly[["extra_cost_meur", "marginal_meur"]] /= 1e6
     hod = hourly.groupby("hour")[["up_mwh", "down_mwh", "losses_mw"]].mean()
+    if units:
+        return hourly, monthly, by_type, hod, u
     return hourly, monthly, by_type, hod
 
 

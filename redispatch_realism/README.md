@@ -910,6 +910,24 @@ Jan–Jun 2024.
 - Consistency checked before running: CCGT first down is held at minimum load where committed; reservoir hydro down
   meets the markets' hydro budget (an upper limit); no storage balance is touched.
 
+**Run A (`ly6_dec`, `f494156`, 31 Oct):** 168/168 h, fallback only on 11 Dec. Phase I 985 vs 769 GWh (128 %; DC
+schedule 892, 116 %), cost 103 vs 77 M€ (134 %), 193 vs 158 MWh per started unit-hour; down: wind + solar 569, hydro
+109, gas 120, nuclear 12 (REE ~366 / ~235 / 27 / 12); real time 94 GWh / 2.4 M€; ID2 107 vs 110 (MAE 13).
+
+**Step I (diagnostic, ly6):** the AC check adds 185 GWh up / 135 down. 135 GWh is moved both ways in the same hour
+(wind 67 up / 95 down, solar 27 / 32: a swap between locations); P.O. 3.2 §6.1.3 a: among valid solutions REE takes
+the one that moves least energy. Its starts are 169 GWh (gas ~90, mostly Catalonia: Tarragona, Puerto de Barcelona,
+Plana del Vent, Besós 5); 4 GWh of them fall in a zone-hour where REE raised units for voltage (I90 SOT/COT).
+Without the swap phase I would be ~122 % of REE. Not changed yet.
+
+**Step F: `stage_costs.py`** (O7): per hour, the price of each gate and the energy it re-trades, balancing (CID → BAL)
+against REE's aFRR + mFRR + RR energy and prices, phase I + II and real time by P.O. 14.4 against e·sios rt1/rt2/rtr,
+and the resource cost (Σ cost × output) of the day-ahead schedule and of the final dispatch; by NUTS2 region the model's
+phase I and real time against REE's phase I up (I90, mapped units). ly6, 2–29 Dec: balancing 360 up / 363 down GWh vs
+REE 547 / 487, value 0.1 vs 40.2 M€ (one balancing price for both directions in the model, separate up and down prices
+in Spain); physical cost of all adjustments after the day-ahead 74 M€; phase I by region model / REE: Cataluña 216 /
+150, Andalucía 152 / 126, C. Valenciana 107 / 73, País Vasco 71 / 74, Galicia 52 / 40, Castilla-La Mancha 31 / 28 GWh.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

@@ -16,8 +16,9 @@
 #   RD2 loss_share 0.0101 · RD3 q_requires_online · RD4 renewable_power_factor 0.98
 #   (RD 413/2014 art. 7 e) and Annex III: 0.98 inductive to 0.98 capacitive; was 1.0 until 22 Oct)
 #   RD9 startups · RD5 mustrun · RD7 reserve · RD8 phase1 · RD10/11 objective "ree"
-#   with the fitted bids from bids_fitted.csv (up, net of start-ups, RD10b: CCGT 0.46, coal 0.50,
-#   storage 0.59; down: phase II's bids, down_refund = "bid_da", RD12), tie-break 5
+#   with the fitted bids from bids_fitted.csv (up, net of start-ups, RD10b, I90 Jan–Jun 2024: CCGT
+#   0.451, coal 0.403; storage 0.59, full year; down: phase II's accepted prices / p_DA, I90 Jan–Jun,
+#   down_refund = "bid_da", RD12; pumped storage kept out until phase I has a state of charge), tie-break 5
 #   generator-bus voltage band 0.975–1.05 pu, and REE's band per voltage level at generator
 #   buses (P.O. 1.4: 400 kV 0.975–1.05, 220 kV 0.932–1.114)
 # --n1 on adds RD6 (preventive N-1 in phase I) with P.O. 1.1's rules: one circuit or

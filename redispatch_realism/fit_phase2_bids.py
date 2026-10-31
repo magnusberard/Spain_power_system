@@ -44,10 +44,13 @@ def main():
     ap.add_argument("--i90", type=Path, required=True)
     ap.add_argument("--real", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=HERE / "bids_fitted_phase2.csv")
+    # calibration window (O14: fit on Jan-Jun, judge on Jul-Dec); default the whole year
+    ap.add_argument("--days", nargs=2, metavar=("FIRST", "LAST"), default=["2024-01-01", "2024-12-31"])
     a = ap.parse_args()
     tc = pd.read_csv(a.i90 / "i90_tc_phase.csv.gz")
     ucol = [c for c in tc.columns if c.startswith("Unidad")][0]
-    tc = tc[(tc.Redespacho == "ECO") & (tc.Sentido == "Bajar") & tc.eur_mwh.notna()].copy()
+    tc = tc[(tc.Redespacho == "ECO") & (tc.Sentido == "Bajar") & tc.eur_mwh.notna()
+            & (tc.date >= a.days[0]) & (tc.date <= a.days[1])].copy()
     cw = pd.read_csv(HERE / "ree_unit_crosswalk.csv")[["ree_unit", "ree_production_type"]]
     tc = tc.merge(cw, left_on=ucol, right_on="ree_unit", how="left")
     real = pd.read_csv(a.real, usecols=["date", "hour", "price"])

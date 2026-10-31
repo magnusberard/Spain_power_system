@@ -885,6 +885,31 @@ stay at 0.031. Phase I (computed before the markets, so valid): 1,052 vs 769 GWh
 M€; of it the DC schedule 892 GWh (116 %), started units at a median 0.39 of capacity, and the AC check's own moves
 214 GWh up / 157 down (zones already met in the DC step; voltage possibly counted twice [open]).
 
+**Steps B and C of the sourced plan (31 Oct): everything fitted on 2024 refitted on Jan–Jun (O14), phase II by
+REE's rule.** Basis: P.O. 3.2 (BOE-A-2024-6215) §6.2.2: in phase II, with excess generation, REE takes the offers to
+reduce the schedule in decreasing price, ties pro rata (renewables, then high-efficiency CHP, kept longest); I90
+Jan–Jun 2024.
+- *Phase II down* (`fit_phase2_bids.py --days 2024-01-01 2024-06-30`, accepted prices / p_DA, energy-weighted
+  median): CCGT 0.942 (→ down_markup 0.058), reservoir 0.922 (0.078), run-of-river 0.919 (0.081), CHP waste 0.914
+  (0.086), wind 0.893 (0.107), gas CHP 0.875 (0.125), biomass 0.843 (0.157), PV 0.839 (0.161), oil 0.660 (0.34),
+  nuclear 0 (1.0). They replace the 30 Oct values (CCGT/coal 0.10, nuclear 0.06, wind = PV = hydro 0.031), which were
+  judgement, not fits. The fit sees only accepted offers (state as a limitation). Fallbacks by fuel: gas turbine =
+  CCGT, solar thermal = PV, mini hydro = run-of-river. Coal 1.0 (no Jan–Jun down data; REE ~0 in 2024).
+  **Pumped storage 1.0 (kept out), a stated deviation:** its fit (0.896) sits next to wind's, and phase I has no state
+  of charge while the markets balance storage daily — the ly5 failure. Back in once phase I has the balance (step J;
+  P.O. 3.2 §6.1.2, §6.2.1 allow pumping in both phases).
+- *Phase I up, net of start-ups* (`fit_upmarkup_net.py`, Jan–Jun, model costs and start-ups from y24_base Jan–Jun):
+  CCGT 0.451 (was 0.46), coal 0.403 (was 0.50; the script's crosswalk filter missed "coal" before, fixed).
+  Storage up 0.59 (RD11, 1.59 × p_DA) stays a full-year fit: Jan–Jun has 25 GWh of pumped phase I up at a day-ahead
+  price near 0, no usable ratio.
+- *Named units (fix 2)*: chosen on Jan–Jun (`build_unit_requirement.py --select-days 2024-01-01 2024-06-30
+  --min-days 91`): ABO2, ACE4, BAHIAB, BES5, CTGN1, SROQ2 (PGR5 drops out); the hours stay REE's own (input data).
+- *Voltage zones (RD5)* unchanged: they describe where REE had voltage needs in 2024 and go with the hourly needs,
+  which are input data for the whole year (Jan–Jun seeds would drop Arcos, Palos and Soto de Ribera, whose needs
+  are only in Jul–Dec). Stated as a 2024-data input, not a fit.
+- Consistency checked before running: CCGT first down is held at minimum load where committed; reservoir hydro down
+  meets the markets' hydro budget (an upper limit); no storage balance is touched.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

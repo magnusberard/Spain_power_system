@@ -44,6 +44,7 @@ def main():
     m = up.merge(pv, on=["date", "hour", "u"], how="left").fillna({"pdvp": 0.0})
     m["started"] = (m.pdvp - m.mwh) < 1.0
     m = m.merge(cw, left_on="u", right_on="ree_unit", how="inner")
+    m["technology"] = m.technology.replace({"coal": "Coal"})          # the crosswalk writes coal in lower case
     m = m[m.technology.isin(["CCGT", "Coal"])]
     # starts: consecutive started hours of a unit count once
     s = m[m.started].copy()

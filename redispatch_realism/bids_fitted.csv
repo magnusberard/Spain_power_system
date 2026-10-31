@@ -1,17 +1,17 @@
 fuel,technology,up_markup,down_markup
-Biomass,Biomass,0.0,0.047
-Biomass,CHP_Waste,0.0,0.053
-Coal,Coal,0.5,0.1
-Gas,CHP,0.0,0.072
-Gas,Combined_cycle,0.46,0.1
-Gas,Gas_turbine,0.46,0.047
-Hydro,pumped_storage,0.59,0.047
-Hydro,reservoir,0.59,0.031
-Hydro,run_of_river,0.0,0.031
-Nuclear,Nuclear,0.0,0.06
-Oil,Combined_cycle,0.0,0.047
-Solar,PV,0.0,0.031
-Solar,Solar Thermal,0.0,0.031
-Wind,Onshore,0.0,0.031
-Wind,Offshore,0.0,0.031
-Hydro,mini_hydro,0.0,0.031
+Biomass,Biomass,0.0,0.157
+Biomass,CHP_Waste,0.0,0.086
+Coal,Coal,0.403,1.0
+Gas,CHP,0.0,0.125
+Gas,Combined_cycle,0.451,0.058
+Gas,Gas_turbine,0.451,0.058
+Hydro,pumped_storage,0.59,1.0
+Hydro,reservoir,0.59,0.078
+Hydro,run_of_river,0.0,0.081
+Nuclear,Nuclear,0.0,1.0
+Oil,Combined_cycle,0.0,0.34
+Solar,PV,0.0,0.161
+Solar,Solar Thermal,0.0,0.161
+Wind,Onshore,0.0,0.107
+Wind,Offshore,0.0,0.107
+Hydro,mini_hydro,0.0,0.081

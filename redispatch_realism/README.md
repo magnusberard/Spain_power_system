@@ -876,6 +876,15 @@ nuclear 12, hydro 3 (was 405; REE ~235). Phase I up 1,056 GWh (DC) / 121–205 %
 - Hydro was turned down 2–3 GWh (REE ~235 incl. pumped): its down mark-ups (0.037–0.047) sat just above wind/PV
   (0.031). REE's phase II prices do not separate them (0.95–0.97 of p_DA): hydro, pumped, run-of-river 0.031.
 
+**Minimum loads and hydro down (`ly5_dec`, `ly5u_dec`, `1c44293`, 31 Oct):** 168/168 h, 85–95 min a week, but the
+fallback cleared ID2–BAL without the limits on 22 of 28 days. Cause: phase II turned **pumped storage** down 449 GWh
+(ly4: 1), i.e. into pumping, at its new 0.031 mark-up; phase I has no state of charge, the markets require each pumped
+unit's day to balance (`sum(draw) == 0`, SOC window), so held at phase II's pumping the markets had no solution
+(the feasible days are those with ≤ 13 GWh of hydro down). Pumped storage back to 0.047; reservoir and run-of-river
+stay at 0.031. Phase I (computed before the markets, so valid): 1,052 vs 769 GWh (137 %; ly4 149 %), cost 107 vs 77
+M€; of it the DC schedule 892 GWh (116 %), started units at a median 0.39 of capacity, and the AC check's own moves
+214 GWh up / 157 down (zones already met in the DC step; voltage possibly counted twice [open]).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

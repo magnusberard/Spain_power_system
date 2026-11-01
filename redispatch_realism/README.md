@@ -939,6 +939,22 @@ a 2035 run points `[redispatch.mustrun].requirement_file` at it. Assumes the 202
 (more solar and new lines in 2035 can shift it; to state). Also usable on 2024 itself, to test phase I without
 REE's own hourly needs (removes the circularity of step 6).
 
+**Grid data checked against REE (step L, 1 Nov): plants at REE's connection voltage, border junctions.** Source: REE,
+"Capacidad de acceso ocupada por posición de conexión" (1 Jul 2024; existing conventional positions "EvCo_Exist").
+Of 30 large thermal units matched by site and size, 15 (10.1 GW) sat at another voltage than REE's, plus El Fangal
+(Nueva Escombreras 400, NES400-AES1–3; also CNMC report on AES Cartagena, BOE 2001 400 kV line) and Escombreras
+Iberdrola (Fausita 400, FAU400-GR1; mapped to the model's 400 kV bus at its own site, the model has no Fausita bus):
+Almaraz 1–2, Ascó 1–2, Trillo, Cartagena 1–3, El Fangal 1–3, Escombreras Iberdrola, Palos 1–3, Escatrón 3, Soto de
+Ribera 4–5 at 400 kV (model 220), Bahía de Algeciras at 220 (model 400). Every one has a model bus at its own site with
+REE's voltage: `data/unit_bus_override.csv` (19 units), `[redispatch].unit_bus_override`. Besós 3–5 are at Besós Nuevo
+220 kV in REE's list (the model's level is right; its single 393 MW line out of ES01113 is not checked yet [open]);
+Aboño and Soto de Ribera 3 are not in the list [open]. The 220/225 kV "transformers" to France (TR_65a15878,
+TR_fa1d5cde) join two national labels of one level at one site (Arkale–Argia and Biescas–Pragnères are 220 kV lines
+with phase-shifters, REE / CESI); `[redispatch].junction_rating_mw = 2000`: transformers with ≤ 5 % between their
+sides get PyPSA-Eur's junction rating (Hörsch et al. 2018, text companion; PDF check pending). Both only in the
+redispatch networks (`rd_network_fixes!`: phase I, its AC check, real time); the copper-plate markets are untouched.
+Parse-checked; test: one December run after ly7.
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

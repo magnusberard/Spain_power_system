@@ -2353,7 +2353,7 @@ if RD_WATER_VALUE == "constant"
                               line_scale = LINE_SCALE,
                               rating_scale = RATING_SCALE,
                               extra_lines = EXTRA_LINES)
-        rd_islands_to_link!(net)                          # [redispatch].islands_load_to_link
+        rd_network_fixes!(net)                            # islands to the HVDC link; REE connection voltages; junctions
         (; network, gens, branches, dclines, loads) = net
         apply_phase1_limits_rt!(network, date_str, hour)  # [redispatch.phase1].security_limits_rt
 
@@ -2442,7 +2442,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 rating_scale = RATING_SCALE,
                                 extra_lines = EXTRA_LINES)
                 for ts in eachrow(day_ts)]
-        foreach(rd_islands_to_link!, nets)                # [redispatch].islands_load_to_link
+        foreach(rd_network_fixes!, nets)                  # islands to the HVDC link; REE connection voltages; junctions
 
         # Generator IDs (Int) for Spanish reservoir hydro — same topology every hour
         reservoir_gen_ids = sort([parse(Int, k) for (k, g) in nets[1].gens

@@ -213,6 +213,68 @@ const RD_PHASE1_BINDING = NamedTuple[]                  # branches at ≥ 99 % o
 # peninsular loads pro rata (total load unchanged = the DA's); the island plants stay in the grid (their Q
 # holds Mallorca's voltage behind the DC link) but have no energy left to serve. REE's peninsular redispatch
 # excludes the islands too.
+# Grid-data corrections for the redispatch networks only (the markets are copper-plate and never see buses):
+# [redispatch].unit_bus_override: units moved to the bus at their own site with the voltage REE connects them at
+# (REE, "Capacidad de acceso ocupada por posición de conexión", 1 Jul 2024; data/unit_bus_override.csv: 19 units,
+# e.g. Almaraz, Ascó, Trillo, Cartagena, Palos, Soto de Ribera 4-5 at 400 kV, which generations.csv put at 220 kV).
+# [redispatch].junction_rating_mw: a transformer whose two sides differ by <= 5 % in nominal voltage joins two
+# national labels of one level (the 220/225 kV ties to France, really 220 kV lines with phase-shifters); it gets
+# PyPSA-Eur's rating for a junction the map has no data for, "on the high side to avoid introducing constraints
+# where none exist" (Hörsch et al. 2018), instead of the dataset's 100 MVA-unit sizes (240 / 384 MW).
+const RD_GRID_FIX = Ref{Any}(nothing)
+function rd_grid_overrides!(net)
+    if RD_GRID_FIX[] === nothing
+        rc = get(cfg, "redispatch", Dict())
+        f = String(get(rc, "unit_bus_override", ""))
+        moves = Dict{String,String}()
+        if f != ""
+            for r in eachrow(CSV.read(joinpath(@__DIR__, f), DataFrame))
+                moves[String(r.unit_id)] = String(r.to_bus)
+            end
+            @printf "Grid fixes     : %d units moved to REE's connection voltage (%s, redispatch only)\n" length(moves) f
+        end
+        RD_GRID_FIX[] = (moves = moves, junction_mw = Float64(get(rc, "junction_rating_mw", 0.0)))
+    end
+    fx = RD_GRID_FIX[]
+    (isempty(fx.moves) && fx.junction_mw <= 0) && return net
+    nw = net.network
+    idx = Dict(String(b["name"]) => b["index"] for (_, b) in nw["bus"])
+    touched = Set{Int}()
+    for (_, g) in nw["gen"]
+        to = get(fx.moves, String(g["name"]), nothing)
+        (to === nothing || !haskey(idx, to)) && continue
+        push!(touched, g["gen_bus"]); g["gen_bus"] = idx[to]; push!(touched, idx[to])
+    end
+    # the generator voltage band follows the plants (as prepare_network sets it: synchronous = not wind or solar)
+    if !isempty(touched)
+        pseudo = ("LS_", "SLACK", "XB_", "RX_")
+        sync = Set(g["gen_bus"] for (_, g) in nw["gen"]
+                   if !any(p -> startswith(String(g["name"]), p), pseudo) && !(get(g, "fuel", "") in ("Wind", "Solar")))
+        for bi in touched
+            b = nw["bus"][string(bi)]
+            avr = GEN_BUS_VCTRL && (b["bus_type"] == 3 || bi in sync)
+            vmin, vmax = avr ? (GEN_BUS_VMIN, GEN_BUS_VMAX) : (1.0 - VOLTAGE_BAND, 1.0 + VOLTAGE_BAND)
+            if VOLT_LIMITS_KV !== nothing && (avr || VOLT_LIMITS_SCOPE == "all")
+                lv = argmin(k -> abs(k - b["base_kv"]), collect(keys(VOLT_LIMITS_KV)))
+                abs(lv - b["base_kv"]) <= 0.15 * lv && ((vmin, vmax) = VOLT_LIMITS_KV[lv])
+            end
+            b["vmin"], b["vmax"] = vmin, vmax
+            bi in sync && b["bus_type"] == 1 && (b["bus_type"] = 2)
+        end
+    end
+    if fx.junction_mw > 0
+        for (_, br) in nw["branch"]
+            startswith(String(get(br, "name", "")), "TR_") || continue
+            v1 = nw["bus"][string(br["f_bus"])]["base_kv"]; v2 = nw["bus"][string(br["t_bus"])]["base_kv"]
+            abs(v1 - v2) <= 0.05 * max(v1, v2) || continue
+            r = fx.junction_mw / BASEMVA
+            br["rate_a"] = max(br["rate_a"], r); br["rate_b"] = max(get(br, "rate_b", r), r); br["rate_c"] = max(get(br, "rate_c", r), r)
+        end
+    end
+    return net
+end
+rd_network_fixes!(net) = rd_grid_overrides!(rd_islands_to_link!(net))   # every redispatch network, markets untouched
+
 const RD_ISLANDS_LINK = Ref{Union{Nothing,Bool}}(nothing)
 const RD_ISLAND_LINK_USE = 0.95                       # share of the link's rating used (converter losses)
 function rd_islands_to_link!(net)
@@ -253,7 +315,7 @@ phase1_sched_for(date_str, hour) =
 
 function phase1_nets(date_str, day_ts)
     bv = day_bellman[date_str]
-    [rd_islands_to_link!(prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour), ts.solar_mw, ts.wind_mw;
+    [rd_network_fixes!(prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour), ts.solar_mw, ts.wind_mw;
                      hydro_reservoir_cost = bv.water_value,
                      crossborder_inj = crossborder_inj_for(date_str, ts.hour),
                      crossborder_exports = WEEKS_ACTIVE || XB_EXPORT_AT_BORDER,
@@ -854,7 +916,7 @@ function phase1_ac_check_day!(su, date_str)
                               unit_cost_override = unit_cost_override_for(date_str), bess_units = BESS_UNITS,
                               unit_scale_by_id = UNIT_SCALE_ID, extra_units = EXTRA_UNITS, line_scale = LINE_SCALE,
                               rating_scale = RATING_SCALE, extra_lines = EXTRA_LINES)
-        rd_islands_to_link!(net)
+        rd_network_fixes!(net)
         network, gens = net.network, net.gens
         RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, h))
         RD_CURRENT_RESERVE[] = 0.0                       # no real-time reserve in phase I

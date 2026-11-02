@@ -6,7 +6,7 @@
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
 #                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req]
-#                                             [--uprate <csv of line_id,factor>] [--offers <csv>]
+#                                             [--uprate <csv of line_id,factor>] [--offers <csv>] [--sweep-a]
 #
 # The redispatch has to run with the market-side settings of the run whose
 # schedules it reads (e.g. a GAS=on run frees coal and takes the islands out),
@@ -134,6 +134,8 @@ function main(args)
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         up = opt("--uprate")                                    # thermal uprate of listed lines/transformers
         up === nothing || set!(cfg, "redispatch.extra_line_scale_file", up)   # (absolute fraction of nominal)
+        # step 7 (a): the plant-connection sweep's corrections (19 + Sagunto, Arrubal at 400 kV); off by default
+        "--sweep-a" in args && set!(cfg, "redispatch.unit_bus_override", "redispatch_realism/data/unit_bus_override_sweep.csv")
         of = opt("--offers")                                    # step 4: phase II from REE's buy-back offers
         of === nothing || set!(cfg, "redispatch.bids.offers_file", of)        # (build_phase2_offers.py)
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)

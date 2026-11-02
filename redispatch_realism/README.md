@@ -992,6 +992,19 @@ model (flagged only by the generic rating, a uniform limitation); Puerto de Barc
 4 circuits at 220 kV in OSM against the model's 2, not conclusive (short segments) [open]; Besós has no line mapped in
 OSM (underground), so no source either way: kept and stated. No correction from (c).
 
+**Step 7 (a), 2 Nov: every conventional position in REE's access list (`sweep_unit_connections.py`,
+`data/sweep_a_verdicts.csv`).** REE's 162 existing conventional positions (EvCo_Exist, 33.8 GW), whatever their fuel or
+size, starting from REE's side. 43 match by name and size at REE's voltage; 33 more identified by REE's unit codes in
+the position codes or by plant name, all at REE's voltage; **2 plants at the wrong voltage, both with a 400 kV bus at
+their own site on the 400 kV grid: Sagunto CC 1–3 (MORVEDRE 400, REE units SAGU1–3, 1,233 MW) and Arrubal 1–2 (SANTA
+ENGRACIA 400, ARRU1–2, 785 MW), modelled at 220 kV** — missed on 31 Oct because REE names the substation, not the
+plant. Correction in `data/unit_bus_override_sweep.csv` (the 19 + these 5 units), **opt-in** with `make_config.jl
+--sweep-a`, so default runs (s4_dec) are unchanged. 28 small positions (< 100 MW, mostly hydro) not identified, but REE
+and every candidate model unit in the region are at 220 kV, so no conflict is possible; 2 Zierbena rows (484, 483 MW)
+open. Balearic (29 positions): the model has only Mallorca's 220 kV grid, Ibiza and Menorca plants sit on Mallorca
+buses, no 132/66 kV bus exists: stated, not corrected. Canary Islands (23): outside the model. Renewable positions
+(EvRE_Exist, mostly totals per substation) not checked: they need substation coordinates [open, stated].
+
 **REE's offer books (step 2, 2 Nov): `fetch_i90_offers.py`.** I90 holds every offer for technical constraints, not
 only the accepted ones (I90DIA00 index): simple offers per unit, block and hour (I90DIA17; Venta = up, Compra =
 buy-back, energy signed as published, Precedencia Mercado/Prorrata), the same updated for real time (I90DIA32,

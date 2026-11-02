@@ -3465,6 +3465,31 @@ enabled = true
 #    "Hydro:pumped_storage", "Battery"]
 eligible = []
 
+[bess]
+# ── Li-Ion BESS operation in the market stages (2035 runs; EMPIRE's fleet) ───
+# Off: the BESS are lossless, free to cycle and usable 0–100 % (as before).
+# On (run option BESS=on): each day still starts and ends half full, and
+#   round_trip_eff  0.85 — NREL Annual Technology Baseline, utility-scale Li-ion
+#                   (Cole & Frazier 2019: 85 % grid side); the US fleet measured
+#                   82 % (EIA, 2019). Split √η per leg, as for pumped hydro.
+#   wear_eur_mwh    10 — cost per MWh discharged, so the battery only cycles when
+#                   the spread pays its wear (method: Xu et al. 2018, IEEE Trans.
+#                   Power Syst. 33(2), cycle aging cost in market bids). Value =
+#                   replacement cost / lifetime cycles ≈ 60–90 EUR/kWh / ~6,000
+#                   cycles (LFP, vendor figures); DC block ~65 USD/kWh, LFP cell
+#                   material ~35 USD/kWh (Rystad Energy, Renewables and Power
+#                   Outlook 2026, p. 22). Sensitivity 0 / 10 / 25.
+#   soc_min/soc_max 0.0 / 1.0 — EMPIRE's storENInstalledCap taken as usable
+#                   energy (NREL ATB states battery size as usable MWh); a
+#                   narrower window (0.1 / 0.9) would count the margin twice.
+#                   To confirm with Ehsan.
+# The redispatch stage is unchanged (BESS free within ±rated power).
+enabled        = false
+round_trip_eff = 0.85
+wear_eur_mwh   = 10.0
+soc_min        = 0.0
+soc_max        = 1.0
+
 [participation]
 # ── Share of each forecast update traded per intraday stage ─────────────────
 # Each intraday stage clears against a forecast only partly updated from what the

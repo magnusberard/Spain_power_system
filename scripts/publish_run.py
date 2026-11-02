@@ -237,6 +237,11 @@ def detect_features(rdir):
         pump_limits=bool(sec("da").get("pump_limits", False)),
         hydro_topup=bool(sec("bellman").get("hydro_budget_topup", False)),
         intraday_starts=bool(sec("unit_commitment").get("intraday_starts", False)),
+        # [bess] on: the values used, so sensitivity runs can be told apart; False when off
+        bess=(dict(eff=float(sec("bess").get("round_trip_eff", 0.85)),
+                   wear=float(sec("bess").get("wear_eur_mwh", 10.0)),
+                   soc=[float(sec("bess").get("soc_min", 0.0)), float(sec("bess").get("soc_max", 1.0))])
+              if bool(sec("bess").get("enabled", False)) else False),
     )
 
 

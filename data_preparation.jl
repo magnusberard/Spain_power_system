@@ -1012,3 +1012,34 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         loads    = loads,
     )
 end
+
+# ── Battery operating settings ([bess], market stages) ───────────────────────
+# Read [bess]: nothing when off (the BESS stay lossless, free and 0–100 %, as
+# before). Values and sources are in config.toml.
+function load_bess_params(cfg)
+    b = get(cfg, "bess", Dict{String,Any}())
+    Bool(get(b, "enabled", false)) || return nothing
+    p = (eta_rt = Float64(get(b, "round_trip_eff", 0.85)),
+         wear   = Float64(get(b, "wear_eur_mwh", 10.0)),
+         soc_min = Float64(get(b, "soc_min", 0.0)),
+         soc_max = Float64(get(b, "soc_max", 1.0)))
+    0.0 < p.eta_rt <= 1.0 || error("config.toml: [bess].round_trip_eff must be in (0, 1]")
+    p.wear >= 0.0 || error("config.toml: [bess].wear_eur_mwh must be >= 0")
+    0.0 <= p.soc_min < 0.5 < p.soc_max <= 1.0 ||
+        error("config.toml: [bess].soc_min/soc_max must satisfy 0 <= soc_min < 0.5 < soc_max <= 1 (each day starts half full)")
+    return p
+end
+
+# Attach the settings to every Li-Ion BESS unit of a day's networks (fuel
+# "Battery"); da.jl reads eta_rt, wear_eur_mwh, soc_min and soc_max. Returns the
+# number of units changed.
+function set_bess_params!(nets, p)
+    n = 0
+    for net in nets, g in values(net.gens)
+        String(g["fuel"]) == "Battery" || continue
+        g["eta_rt"] = p.eta_rt; g["wear_eur_mwh"] = p.wear
+        g["soc_min"] = p.soc_min; g["soc_max"] = p.soc_max
+        n += 1
+    end
+    return n
+end

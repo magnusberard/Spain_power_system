@@ -25,6 +25,8 @@
 #   BALANCING      optional [balancing].eligible: all or qualified
 #   PUMPING        optional: removed = real 2024 pumping out of the load ([run].remove_pumping)
 #   PUMPLIMIT      optional: on = pumped storage pumps with its own pumping power ([da].pump_limits)
+#   BESS           optional: on = BESS efficiency, wear cost, usable range ([bess]); BESSEFF, BESSWEAR,
+#                  BESSSOC (LO:HI) set a sensitivity value and imply BESS=on
 #   HYDROTOPUP     optional: on = a short stage after the DA gets the slack's MWh as extra hydro ([bellman].hydro_budget_topup)
 #   IDSTARTS       optional: on = CCGT/coal may start in ID2/ID3 ([unit_commitment].intraday_starts)
 #   SCENARIO       optional: trinity or necp = a 2035 run (make_run_config.jl --scenario)
@@ -54,6 +56,10 @@ RES_ARG=()
 [ -n "${BALANCING:-}" ] && RES_ARG+=(--balancing "$BALANCING")
 [ -n "${PUMPING:-}" ] && RES_ARG+=(--pumping "$PUMPING")
 [ -n "${PUMPLIMIT:-}" ] && RES_ARG+=(--pump-limits "$PUMPLIMIT")
+[ -n "${BESS:-}" ] && RES_ARG+=(--bess "$BESS")
+[ -n "${BESSEFF:-}" ] && RES_ARG+=(--bess-eff "$BESSEFF")
+[ -n "${BESSWEAR:-}" ] && RES_ARG+=(--bess-wear "$BESSWEAR")
+[ -n "${BESSSOC:-}" ] && RES_ARG+=(--bess-soc "$BESSSOC")
 [ -n "${HYDROTOPUP:-}" ] && RES_ARG+=(--hydro-topup "$HYDROTOPUP")
 [ -n "${IDSTARTS:-}" ] && RES_ARG+=(--intraday-starts "$IDSTARTS")
 [ -n "${SCENARIO:-}" ] && RES_ARG+=(--scenario "$SCENARIO")

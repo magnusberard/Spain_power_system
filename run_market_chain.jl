@@ -261,6 +261,11 @@ const RATING_SCALE = let
 end
 const BESS_UNITS    = NODAL_ACTIVE ? NODAL.bess :
                       SCEN_ACTIVE  ? empire_bess_units(EMP) : nothing
+# [bess]: round-trip efficiency, wear cost and usable range of the Li-Ion BESS in
+# the market stages (data_preparation.jl, load_bess_params; da.jl). Off = lossless.
+const BESS_PARAMS   = load_bess_params(cfg)
+BESS_PARAMS === nothing ||
+    @printf "BESS settings  : round trip %.2f, wear %.1f EUR/MWh discharged, usable %.0f–%.0f %% (market stages)%s\n" BESS_PARAMS.eta_rt BESS_PARAMS.wear 100 * BESS_PARAMS.soc_min 100 * BESS_PARAMS.soc_max (BESS_UNITS === nothing ? " — no BESS in this run" : "")
 const ES_LOAD_SCALE  = SCEN_ACTIVE ? EMP.load_scale_es                    : 1.0
 const ES_SOLAR_SCALE = SCEN_ACTIVE ? get(EMP.growth, "Solar", 1.0)        : 1.0
 const ES_WIND_SCALE  = SCEN_ACTIVE ? get(EMP.growth, "Wind onshore", 1.0) : 1.0
@@ -1625,6 +1630,7 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
             MARKUP_LOG[(r.date, r.hour)] = r
         end
     end
+    BESS_PARAMS === nothing || set_bess_params!(nets, BESS_PARAMS)
     return nets
 end
 

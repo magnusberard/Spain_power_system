@@ -48,6 +48,10 @@
 #                        day's hydro budget raised by the slack's MWh
 #   --intraday-starts on [unit_commitment] intraday_starts = true: CCGT/coal units
 #                        may start in ID2 and ID3 if the start pays (needs --gas on)
+#   --bess on            [bess] enabled = true: Li-Ion BESS with round-trip
+#                        efficiency, wear cost and usable range (config.toml
+#                        values); sensitivities: --bess-eff 0.82, --bess-wear 25,
+#                        --bess-soc 0.1:0.9 (each implies --bess on)
 #
 #   --scenario S         a 2035 run: trinity or necp sets [scenario] label and
 #                        empire_dir and the 2035 switches (SCENARIO_ON below: gas
@@ -135,15 +139,15 @@ function get_key(lines, section, key)
 end
 
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|measured_all|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--hydro-topup on|off] [--intraday-starts on|off] [--scenario trinity|necp] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|measured_all|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--hydro-topup on|off] [--intraday-starts on|off] [--bess on|off] [--bess-eff X] [--bess-wear X] [--bess-soc LO:HI] [--scenario trinity|necp] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
     opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept", "--pump-limits" => "off",
-               "--hydro-topup" => "off", "--intraday-starts" => "off",
+               "--hydro-topup" => "off", "--intraday-starts" => "off", "--bess" => "off",
                "--config" => joinpath(REPO, "config.toml"))
     i = 2
     while i <= length(args)
-        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--hydro-topup", "--intraday-starts", "--scenario", "--config") &&
+        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--hydro-topup", "--intraday-starts", "--bess", "--bess-eff", "--bess-wear", "--bess-soc", "--scenario", "--config") &&
             i < length(args) || error(usage)
         opt[args[i]] = args[i+1]
         i += 2
@@ -158,9 +162,13 @@ function main(args)
     opt["--balancing"] in ("all", "qualified") || error(usage)
     opt["--pumping"] in ("kept", "removed") || error(usage)
     opt["--pump-limits"] in ("on", "off") || error(usage)
-    for k in ("--hydro-topup", "--intraday-starts")
+    for k in ("--hydro-topup", "--intraday-starts", "--bess")
         opt[k] in ("on", "off") || error(usage)
     end
+    # a BESS sensitivity value switches the BESS settings on
+    any(haskey(opt, k) for k in ("--bess-eff", "--bess-wear", "--bess-soc")) && (opt["--bess"] = "on")
+    bess_soc = haskey(opt, "--bess-soc") ? parse.(Float64, split(opt["--bess-soc"], ":")) : nothing
+    bess_soc === nothing || length(bess_soc) == 2 || error("--bess-soc needs LO:HI, e.g. 0.1:0.9")
     opt["--intraday-starts"] == "on" && opt["--gas"] != "on" && get(opt, "--scenario", "") == "" &&
         error("--intraday-starts on needs --gas on (unit commitment)")
 
@@ -211,13 +219,22 @@ function main(args)
     opt["--pump-limits"] == "on" && set_key(lines, "da", "pump_limits", "true")
     opt["--hydro-topup"] == "on" && set_key(lines, "bellman", "hydro_budget_topup", "true")
     opt["--intraday-starts"] == "on" && set_key(lines, "unit_commitment", "intraday_starts", "true")
+    if opt["--bess"] == "on"
+        set_key(lines, "bess", "enabled", "true")
+        haskey(opt, "--bess-eff")  && set_key(lines, "bess", "round_trip_eff", string(parse(Float64, opt["--bess-eff"])))
+        haskey(opt, "--bess-wear") && set_key(lines, "bess", "wear_eur_mwh", string(parse(Float64, opt["--bess-wear"])))
+        if bess_soc !== nothing
+            set_key(lines, "bess", "soc_min", string(bess_soc[1]))
+            set_key(lines, "bess", "soc_max", string(bess_soc[2]))
+        end
+    end
     text = join(lines, "\n")
     crlf && (text = replace(text, "\n" => "\r\n"))
     mkpath(dirname(abspath(out)))
     tmp = out * ".tmp"
     write(tmp, text)
     mv(tmp, out; force = true)
-    println("wrote $out ($(scen == "" ? "" : "scenario " * scen * ", ")stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]), hydro top-up $(opt["--hydro-topup"]), intraday starts $(opt["--intraday-starts"]))")
+    println("wrote $out ($(scen == "" ? "" : "scenario " * scen * ", ")stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]), hydro top-up $(opt["--hydro-topup"]), intraday starts $(opt["--intraday-starts"]), bess $(opt["--bess"]))")
 end
 
 main(ARGS)

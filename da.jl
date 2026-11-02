@@ -212,6 +212,11 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # never does it and no complementarity constraint is needed.  Lossless units
     # (the EMPIRE BESS) keep the original single-variable form, leaving the 2035
     # scenario LPs unchanged.
+    # [bess] (data_preparation.jl, set_bess_params!) gives the BESS a round-trip
+    # efficiency (the same legs as pumped hydro), a wear cost per MWh discharged
+    # (wear_eur_mwh, on the discharge leg only) and a usable range
+    # soc_min…soc_max of energy_mwh (each day still starts and ends half full).
+    wear_cost = JuMP.AffExpr(0.0)
     for (_, g) in nets[1].gens
         haskey(g, "energy_mwh") || continue
         name   = g["name"]                        # stable across hours (unlike key k)
@@ -219,7 +224,10 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         e_puh > 0 || continue
         soc0   = 0.5 * e_puh
         eta_rt = Float64(get(g, "eta_rt", 1.0))
-        if eta_rt >= 1.0
+        wear   = Float64(get(g, "wear_eur_mwh", 0.0))
+        s_lo   = Float64(get(g, "soc_min", 0.0)) * e_puh
+        s_hi   = Float64(get(g, "soc_max", 1.0)) * e_puh
+        if eta_rt >= 1.0 && wear == 0.0
             draw = [pg_by_name[(j, name)] for j in 1:H]
         else
             eta = sqrt(eta_rt)
@@ -235,10 +243,11 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
                 JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
                 push!(draw, dis / eta - chg * eta)
+                wear > 0 && JuMP.add_to_expression!(wear_cost, wear * BASEMVA, dis)
             end
         end
         for h in 1:H
-            JuMP.@constraint(model, 0.0 <= soc0 - sum(draw[j] for j in 1:h) <= e_puh)
+            JuMP.@constraint(model, s_lo <= soc0 - sum(draw[j] for j in 1:h) <= s_hi)
         end
         JuMP.@constraint(model, sum(draw) == 0.0)
     end
@@ -396,7 +405,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     for h in 1:H, (k, g) in nets[h].gens
         JuMP.add_to_expression!(op, g["cost"][1], pg[(h, k)])
     end
-    cost_expr = op + θ_future + foreign_cost + start_cost_expr
+    cost_expr = op + θ_future + foreign_cost + start_cost_expr + wear_cost
 
     # ── Minimum-movement anchor (intraday gates only) ─────────────────────────
     # For every tradable-hour unit that has a previous-gate set-point, add L1

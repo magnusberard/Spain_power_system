@@ -7,7 +7,7 @@ using Test, JuMP, HiGHS, CSV, DataFrames, Printf
 const BASEMVA = 100.0
 include(joinpath(@__DIR__, "..", "redispatch_objective.jl"))
 
-load_rd_offers!("redispatch_realism/data/phase2_offers_dec.csv", Dict())
+load_rd_offers!(get(ENV, "OFFERS_FILE", "redispatch_realism/data/phase2_offers_dec.csv"), Dict())
 key = ("2024-12-02", 3)
 @testset "phase II offers" begin
     @test !isempty(RD_OFFERS)

@@ -1000,6 +1000,18 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**Step 2 check and step 4 diagnosis (2 Nov).** Step 2 passes: offers for all 366 days; per day REE accepted at most
+6.5 % of the buy-back energy offered (median 1.8 %) and of the sell energy (median 2.1 %), never more than offered;
+99.4 % of REE's 11.9 TWh of 2024 phase II down was on units with a buy-back offer that day, the rest exactly the two
+no-offer codes of P.O. 14.4 §18.13 (ECOBSO 28.5, ECOBCBSO 47.2 GWh). Step 4's two gaps had one cause, my compression of
+the pooled curves into five equal-energy segments: REE works at the top of each curve (1.8 % of offered energy), where
+wind, CHP and hydro all offer ~106–107 €/MWh, but the first fifth averaged the top 20 %, 47 €/MWh for wind (90 % of
+its offers at 0) against 102 for CHP. So CHP looked cheaper to turn down than wind (CHP 186 vs REE 74 GWh), and the
+model's reductions refunded 50 €/MWh on average against the 87 REE received (wind 279 GWh at 19 vs REE 165 GWh at 82),
+half of the 38.8 M€ down cost. Fix (`build_phase2_offers.py` EDGES): segment edges at 1, 2, 5, 10, 20, 50, 100 % of
+offered energy, set by the measured 1.8 % / 6.5 %, not by results; ranking rule and prices unchanged.
+`data/phase2_offers_dec_tail.csv` (169k segments; s4 used `phase2_offers_dec.csv`); 13 tests pass. Test: s4b_dec.
+
 **Step 7 (c), 2 Nov: buses with more generation than branch capacity (`sweep_bus_capacity.py`, result-blind).** 6 of
 278 buses with ≥ 100 MW; each checked the same way against OpenStreetMap, which lines END at the substation
 (`data/sweep_c_osm_check.csv`): Ceclavín, Saetillas, El Monte and Málaga CC have one 220 kV circuit in OSM as in the

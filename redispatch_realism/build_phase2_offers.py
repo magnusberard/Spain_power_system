@@ -11,7 +11,7 @@ from the highest buy-back price (cheapest to turn down) to the lowest:
                 blocks of its REE units in that hour, by their energy shares (the model's schedule differs from REE's,
                 so REE's MWh are used as shares of the unit's own schedule, not as MWh)
   group curves  per model fuel:technology, the pooled blocks of every REE unit of that technology in that hour
-                (data/ree_unit_technology.csv), compressed to --segments equal-energy segments at their
+                (data/ree_unit_technology.csv), compressed to the EDGES segments (finest at the top, where REE works) at their
                 energy-weighted prices; used by model units without their own offers in the hour
   left out      pumped storage (kept out of phase II until phase I has a state of charge, decision of 30 Oct),
                 and REE units with no technology ("unidentified", 12.6 % of Jan-Jun phase II down)
@@ -49,21 +49,29 @@ MODEL_GROUP = {
 }
 
 
+# Where a curve is compressed, the segment edges (cumulative share of offered energy, from the highest price down).
+# REE's phase II uses the very top of each curve: on a typical 2024 day it accepted 1.8 % of the buy-back energy
+# offered (median; at most 6.5 %; step 2 check, I90DIA17 vs I90DIA03). The edges resolve that range. Equal fifths
+# (the first version, s4_dec) averaged the top 20 %, flattening the tail: wind's top 2 % sits at ~106 €/MWh, its top
+# 20 % at 47, so wind looked dearer to turn down than CHP (102) where REE sees both at ~107.
+EDGES = (0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1.0)
+
+
 def curve(blocks, k=None):
     """blocks: DataFrame with e (MWh > 0) and p (€/MWh). Segments (share, price) from the highest price down;
-    with k, compressed to k equal-energy segments at their energy-weighted prices."""
+    with k (any value), compressed to the EDGES segments at their energy-weighted prices when it has more blocks."""
     b = blocks[blocks.e > 0].sort_values("p", ascending=False)
     tot = b.e.sum()
     if tot <= 0:
         return []
-    if k is None or len(b) <= k:
+    if k is None or len(b) <= len(EDGES):
         g = b.groupby("p", sort=False).e.sum()
         return [(e / tot, p) for p, e in g.items()]
-    edges = np.linspace(0, tot, k + 1)
+    edges = np.concatenate([[0.0], np.array(EDGES) * tot])
     cum0 = np.concatenate([[0.0], b.e.cumsum().values[:-1]])
     cum1 = cum0 + b.e.values
     out = []
-    for i in range(k):
+    for i in range(len(EDGES)):
         lo, hi = edges[i], edges[i + 1]
         w = np.clip(np.minimum(cum1, hi) - np.maximum(cum0, lo), 0, None)
         if w.sum() > 0:
@@ -77,8 +85,8 @@ def main():
     ap.add_argument("--to", dest="last", required=True)
     esios = Path(os.environ.get("ESIOS_DIR") or REPO.parent / "esios_download")
     ap.add_argument("--offers", nargs="+", type=Path, default=[esios / "i90_offers", esios / "i90_offers_h2"])
-    ap.add_argument("--segments", type=int, default=5, help="segments of a pooled technology curve (equal energy)")
-    ap.add_argument("--unit-segments", type=int, default=5, help="at most this many segments per unit curve")
+    ap.add_argument("--segments", type=int, default=7, help="compress pooled technology curves (to the EDGES segments)")
+    ap.add_argument("--unit-segments", type=int, default=7, help="compress unit curves with more blocks than EDGES")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
 

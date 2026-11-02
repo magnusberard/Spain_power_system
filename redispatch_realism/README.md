@@ -955,6 +955,28 @@ sides get PyPSA-Eur's junction rating (Hörsch et al. 2018, text companion; PDF 
 redispatch networks (`rd_network_fixes!`: phase I, its AC check, real time); the copper-plate markets are untouched.
 Parse-checked; test: one December run after ly7.
 
+**REE's offer books (step 2, 2 Nov): `fetch_i90_offers.py`.** I90 holds every offer for technical constraints, not
+only the accepted ones (I90DIA00 index): simple offers per unit, block and hour (I90DIA17; Venta = up, Compra =
+buy-back, energy signed as published, Precedencia Mercado/Prorrata), the same updated for real time (I90DIA32,
+quarter-hours: MWh = ΣMW/4 per hour, price MW-weighted), complex offers with cold/hot start-up prices (I90DIA18
+day-ahead, I90DIA33 real time) and declared start-up times (I90DIA29). Check on 14 Mar 2024: I90DIA17 per block equals
+REE's "Total MWh" exactly (3,963 blocks); in I90DIA32, 31 of 2,038 blocks have a "Total MWh" 1–4.5 % above ΣMW/4
+(several exactly 25/24), so the quarter-hour values are kept, not REE's total. Jan–Jun 2024 downloaded to
+`esios_download/i90_offers`.
+
+**Technology of every REE unit (step 3, 2 Nov): `build_ree_unit_technology.py` → `data/ree_unit_technology.csv`.**
+The crosswalk maps REE units to model units, so wind, solar and portfolio units without one model unit were missing
+(64 % of REE's Jan–Jun phase II down covered). Sources, in order: REE's e·sios list of programming units ("Tipo de
+producción", archive 82; e·sios serves only the current list, whatever date is asked), then OMIE's list of 25 Jun
+2024 (Internet Archive snapshot of LISTA_UNIDADES.PDF, parsed with `omie_conversion/parse_unit_list.py`,
+`data/omie_units_20240625.csv`); a unit in neither stays "unidentified", not guessed from its name. Result: 87.4 % of
+REE's Jan–Jun phase II down (7.4 TWh) and 88.6 % of Jul–Dec have a technology; phase I 98.7 %. The 936 GWh left are 43
+units deregistered since 2024 that never bid in OMIE (none in OMIE's June 2024 list; largest RWESZN, TSGNR, TSGNR2,
+EESQUI) [open: a 2024 copy of REE's list]. REE's Jan–Jun phase II down by group: wind 21 %, pumped storage pumping 15 %
+and turbines 6 %, nuclear 12 %, reservoir hydro 9 %, solar PV 9 %, CHP 7 %, biomass and waste 3 %, solar thermal 4 %,
+CCGT 0.7 %, unidentified 13 %. REE's current list also has ABO2G, Aboño 2 after its conversion to fuel gas (ABO2 was
+anthracite in OMIE's June 2024 list).
+
 ### Step E design: REE's upward reserve need (P.O. 1.5, 22 Oct)
 
 REE's real time that week was 96 % "too little upward reserve". P.O. 1.5 (BOE-A-2022-4969, in force

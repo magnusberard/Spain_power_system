@@ -226,6 +226,29 @@ def detect_features(rdir):
     )
 
 
+def detect_trading_features(rdir):
+    """The newer run settings for the viewer's run header (meta.features), from the same saved
+    config as detect_features: participation = [participation] shares (§23; all 1.0 = "active",
+    the default; all 0.0 in ID2/ID3/CID = "passive"; anything else = "measured"); balancing =
+    [balancing].eligible ("qualified" when it lists units, §23); rd = [redispatch.phase1].enabled
+    ("ree" = the redispatch the REE way, branch redispatch-realism §20, else "ac"). {} if no config."""
+    import tomllib
+    path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
+    if path is None:
+        return {}
+    c = tomllib.loads(path.read_text(encoding="utf-8"))
+    part = c.get("participation", {})
+    shares = [float(v) for st in ("id2", "id3", "cid") for v in (part.get(st) or {}).values()]
+    participation = ("active" if all(v == 1.0 for v in shares)
+                     else "passive" if all(v == 0.0 for v in shares) else "measured")
+    phase1 = c.get("redispatch", {}).get("phase1", {})
+    return dict(
+        participation=participation,
+        balancing="qualified" if c.get("balancing", {}).get("eligible") else "all",
+        rd="ree" if phase1.get("enabled", False) else "ac",
+    )
+
+
 def read_run_info(rdir, args, hours, status):
     path = rdir / "run_info.json"
     if path.exists():
@@ -361,6 +384,27 @@ def line_loading(rdir, hours, corr_of, n):
     return np.where(load >= 0, np.clip(np.rint(load), 0, 254), 255).astype(np.uint8)
 
 
+def scenario_of(rdir, info):
+    """Scenario runs (run_info label other than "2024", e.g. Trinity): their study days carry 2024
+    calendar dates, but the system is the scenario year's, so no real data may be set next to them.
+    Returns None for the 2024 path, else label, EMPIRE period and weather years from the run's own
+    config_used.toml and week key file."""
+    label = str(info.get("label") or "2024")
+    if label == "2024":
+        return None
+    sc = dict(label=label, period=None, weather_years=[])
+    try:
+        import tomllib
+        cfg = tomllib.loads((rdir / "config_used.toml").read_text(encoding="utf-8"))
+        sc["period"] = cfg.get("scenario", {}).get("period")
+        key = MODEL_REPO / cfg.get("weeks", {}).get("key_file", "")
+        if cfg.get("weeks", {}).get("enabled") and key.is_file():
+            sc["weather_years"] = sorted(int(y) for y in pd.read_csv(key).climate_year.unique())
+    except Exception as e:                       # the package is still fine without these details
+        print(f"  scenario details not read ({e})")
+    return sc
+
+
 def real_reference(runs_repo, hours):
     ref = runs_repo / "reference"
     idx = pd.MultiIndex.from_tuples([(d, h) for d in hours.days for h in range(24)], names=["date", "hour"])
@@ -430,6 +474,28 @@ def build(rdir, runs_repo, args):
                 v = out[rows].sum(axis=0) if rows else np.zeros(H)
                 dest[st][c] = r1(np.where(seen, v, np.nan))
 
+    # 4-zone runs (2035 weeks mode): the joint day-ahead clears the France/Portugal exchange and the
+    # network takes it as fixed border injections, not as CrossBorder units, so the loop above finds
+    # no imports. Take it from xb_flows.csv (+ = import to Spain); later stages keep the day-ahead
+    # exchange, so every stage gets the same imports. The signed flows go in the package so the
+    # viewer can show exports too.
+    exchange = None
+    # (xb_flows.csv is written only by the 4-zone runs; their CrossBorder units exist in the AC
+    # redispatch only, never in the market stages, so they cannot be used for the imports)
+    if (rdir / "xb_flows.csv").exists():
+        xb = pd.read_csv(rdir / "xb_flows.csv")
+        xb = xb[xb.date.isin(hours.day_i)]
+        fr, pt = np.full(H, np.nan), np.full(H, np.nan)
+        fr[hours.of(xb)] = xb.fr_mw.to_numpy()
+        pt[hours.of(xb)] = xb.pt_mw.to_numpy()
+        imp = np.clip(fr, 0, None) + np.clip(pt, 0, None)
+        for st, (_, _, seen) in per_unit.items():
+            for dest in (mix, phys):
+                dest[st]["Imports"] = r1(np.where(seen, imp, np.nan))
+        exchange = dict(FR=r1(fr), PT=r1(pt))
+        print(f"  4-zone exchange (xb_flows.csv): imports {np.nansum(imp) / 1e6:.2f} TWh, exports "
+              f"{np.nansum(np.clip(-fr, 0, None) + np.clip(-pt, 0, None)) / 1e6:.2f} TWh")
+
     # balancing stage: what BAL moved relative to CID, summed up and down over the responding units
     # (wind, solar and the fixed cross-border injections left out), and the forecast change it had
     # to cover (CID -> BAL
@@ -494,6 +560,10 @@ def build(rdir, runs_repo, args):
     units["group"] = [PLANT_OF.get(k) for k in keys]
     groups, group_rows = [], []
     for (b, g), u in units.dropna(subset=["group", "bus_id"]).groupby(["bus_id", "group"], sort=False):
+        # scenario runs scale retired units to 0 MW (a technology EMPIRE no longer has, CCGTs
+        # closed oldest first): such a group has nothing to show and no capacity to divide by
+        if round(float(u.capacity_mw.sum()), 1) <= 0:      # the map divides by the rounded value
+            continue
         techs = u.technology.map(TECH_NAME).value_counts()
         x, y = proj(bus.loc[b, "x"], bus.loc[b, "y"])
         groups.append(dict(bus=b, f=g, x=x, y=y, cap=round(float(u.capacity_mw.sum()), 1), n=len(u),
@@ -517,8 +587,14 @@ def build(rdir, runs_repo, args):
     corr, corr_of, frame = corridors(rdir)
     grid_load = line_loading(rdir, hours, corr_of, len(corr))
 
-    # real data and the ENTSO-E sites
+    # real data and the ENTSO-E sites (left empty for scenario runs: their dates are 2024's)
     real, real_sites, ref_sites = real_reference(runs_repo, hours)
+    scenario = scenario_of(rdir, info)
+    if scenario is not None:
+        real.loc[:, :] = np.nan
+        real_sites.loc[:, :] = np.nan
+        print(f"  scenario run ({scenario['label']}, period {scenario['period']}, weather {scenario['weather_years']}): "
+              "no real data in the package")
     site_rows = [[uidx[u] for u in s["model_units"] if u in uidx] for s in ref_sites["sites"]]
     site_model = np.array([rd_out[r].sum(axis=0) if r else np.zeros(H) for r in site_rows])
     NA = 65535
@@ -527,14 +603,14 @@ def build(rdir, runs_repo, args):
     site_real16 = np.where(np.isfinite(rs), np.clip(np.rint(np.nan_to_num(rs)), 0, NA - 1), NA).astype("<u2")
 
     data = dict(
-        schema=SCHEMA, days=hours.days, price=price,
+        schema=SCHEMA, days=hours.days, price=price, scenario=scenario,
         real_price=r1(real["price"].to_numpy()),
         status=status.tolist(), shed=r1(shed), fail_info=fail_info(rdir, summ, hours),
         categories=OMIE_CATS, categories_phys=PHYS_CATS,
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
-        balancing=balancing, redispatch=redispatch, traded=traded, setter=setter,
+        balancing=balancing, redispatch=redispatch, traded=traded, exchange=exchange, setter=setter,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}
@@ -618,9 +694,13 @@ def main():
                 info={k: info.get(k) for k in ("ran_by", "branch", "commit", "commit_message", "uncommitted_files",
                                                "started", "finished", "runtime_min", "power_flow", "linear_solver",
                                                "label", "reconstructed")})
+    if data.get("scenario"):
+        meta["scenario"] = data["scenario"]
     # model changes for the viewer's filters: from the run's config, else kept from the package
     # being replaced (runs published before configs were saved were tagged by hand)
     features = detect_features(rdir)
+    if features is not None:
+        features.update(detect_trading_features(rdir))
     if features is None and old_meta.get("features"):
         features = old_meta["features"]
     if features is not None and stage_order(info.get("commit")):

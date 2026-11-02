@@ -38,6 +38,18 @@
 #                        the real 2024 pumping taken out of the load (pumping.jl)
 #   --pump-limits on     [da] pump_limits = true: each pumped-storage plant pumps with
 #                        its own pumping power (Data/pumped_storage_pump_mw.csv)
+#
+#   --scenario S         a 2035 run: trinity or necp sets [scenario] label and
+#                        empire_dir and the 2035 switches (SCENARIO_ON below: gas
+#                        efficiency, mark-ups, unit commitment, 52 weeks of weather
+#                        year 2015, islands out, cross-border off, coal
+#                        redispatchable, SDDP rule curves). config.toml itself keeps
+#                        the 2024 defaults. Train the water values with the same
+#                        copy: SPAIN_CONFIG=<out.toml> julia midterm_sddp4.jl
+#
+# Scenario configs ([scenario].label other than "2024", e.g. the 2035 runs) set
+# their own switches, so --gas, --markup and --hydro (2024 options: 2024 closed
+# plants and coal price, 2024 hydro state) stop the script there.
 
 const REPO = normpath(joinpath(@__DIR__, ".."))
 
@@ -48,6 +60,21 @@ const PARTICIPATION = Dict(
     "passive"  => [(st, "{ load = 0.0, wind = 0.0, solar = 0.0 }") for st in ("id2", "id3", "cid")])
 const BAL_QUALIFIED = "[\"Gas:Combined_cycle\", \"Gas:Gas_turbine\", \"Coal\", \"Hydro:reservoir\", \"Hydro:pumped_storage\", \"Battery\"]"
 
+# --scenario: label, EMPIRE run folder
+const SCENARIOS = Dict("trinity" => ("Trinity", "Data/2035/Trinity"),
+                       "necp"    => ("NECPEssentials", "Data/2035/NECPEssentials"))
+# the 2035 switches (what config.toml held on branch 2035-improvements before the merge)
+const SCENARIO_ON = [("costs.gas_unit_efficiency", "enabled", "true"),
+                     ("costs.markup", "enabled", "true"),
+                     ("unit_commitment", "enabled", "true"),
+                     ("weeks", "enabled", "true"),
+                     ("weeks", "n_weeks", "52"),
+                     ("weeks", "key_file", "\"Data/sample_weeks_2015_year.csv\""),
+                     ("islands", "exclude_from_market", "true"),
+                     ("islands", "remove_isolated", "true"),
+                     ("crossborder", "enabled", "false"),
+                     ("redispatch", "frozen_fuels", "[\"Nuclear\", \"Biomass\"]"),
+                     ("midterm4", "es_rule_curve_file", "\"Data/hydro_state/es_rule_curves_2014_2023.csv\"")]
 const GAS_ON = [("costs.gas_unit_efficiency", "enabled", "true"),
                 ("unit_commitment", "enabled", "true"),
                 ("costs.coal_srmc", "enabled", "true"),
@@ -78,15 +105,31 @@ function set_key(lines, section, key, value)
     error("config.toml: no '$key' in [$section]")
 end
 
+"The value text of `key` in [section] (comment removed), or nothing."
+function get_key(lines, section, key)
+    inside = false
+    for line in lines
+        m = match(r"^\s*\[([^\[\]]+)\]\s*(#.*)?$", line)
+        if m !== nothing
+            inside = strip(m.captures[1]) == section
+            continue
+        end
+        inside || continue
+        k = match(Regex("^\\s*" * key * "\\s*=\\s*(\"[^\"]*\"|[^#\\s]+)"), line)
+        k === nothing || return k.captures[1]
+    end
+    return nothing
+end
+
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--scenario trinity|necp] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
     opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept", "--pump-limits" => "off",
                "--config" => joinpath(REPO, "config.toml"))
     i = 2
     while i <= length(args)
-        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--config") &&
+        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--scenario", "--config") &&
             i < length(args) || error(usage)
         opt[args[i]] = args[i+1]
         i += 2
@@ -105,6 +148,23 @@ function main(args)
     raw = read(opt["--config"], String)
     crlf = occursin("\r\n", raw)
     lines = split(replace(raw, "\r\n" => "\n"), "\n"; keepempty = true) .|> String
+    scen = get(opt, "--scenario", "")
+    if scen != ""
+        haskey(SCENARIOS, scen) || error(usage)
+        lab, dir = SCENARIOS[scen]
+        set_key(lines, "scenario", "label", "\"$lab\"")
+        set_key(lines, "scenario", "empire_dir", "\"$dir\"")
+        for (sec, key, val) in SCENARIO_ON
+            set_key(lines, sec, key, val)
+        end
+    end
+    label = strip(something(get_key(lines, "scenario", "label"), "2024"), '"')
+    if label != "2024"
+        used = [o for (o, set) in (("GAS=on", opt["--gas"] == "on"), ("MARKUP=on", opt["--markup"] == "on"),
+                                   ("HYDRO", get(opt, "--hydro", "") != "")) if set]
+        isempty(used) || error("[scenario] label = \"$label\": $(join(used, ", ")) only for 2024 runs; " *
+                               "this config sets its own switches. Start again without them.")
+    end
     if stage == "markets"
         set_key(lines, "redispatch", "enabled", "false")
     else
@@ -136,7 +196,7 @@ function main(args)
     tmp = out * ".tmp"
     write(tmp, text)
     mv(tmp, out; force = true)
-    println("wrote $out (stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]))")
+    println("wrote $out ($(scen == "" ? "" : "scenario " * scen * ", ")stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]))")
 end
 
 main(ARGS)

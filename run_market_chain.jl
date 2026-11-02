@@ -101,19 +101,45 @@ end
 COAL_SRMC !== nothing && println("Coal marginal cost: quarterly coal price + EUA (per study day, [costs.coal_srmc])")
 # [costs.markup]: generation tax on all taxed fuels + RSI-based mark-ups on gas
 # and coal bids in the market stages (markup.jl).  2024 path only.
-const MARKUP = load_markup(cfg)
+const MARKUP = load_markup(cfg; scenario = SCEN_ACTIVE)
 const MARKUP_LOG = Dict{Tuple{String,Int},NamedTuple}()   # (date, hour) ⇒ tax, RSI, L
-MARKUP !== nothing && @printf("Mark-ups       : tax %s (default %.1f %%) on %s; gas/coal L from RSI (%d table points, RSI %.2f–%.2f, cap %.2f)
-",
-    join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),
-    length(MARKUP.x), MARKUP.x[1], MARKUP.x[end], MARKUP.cap)
-# [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
-# CCGT is priced from its own gas burn (gas_srmc_eta).  Builds on gas_srmc, so
-# 2024 path only.
-const GAS_UNIT_ETA = GAS_SRMC_ON ? load_gas_unit_eta(cfg) : nothing
-if !GAS_SRMC_ON && get(get(get(cfg, "costs", Dict()), "gas_unit_efficiency", Dict()), "enabled", false)
-    println("WARNING: [costs.gas_unit_efficiency] ignored — needs [costs.gas_srmc] on and the 2024 path")
+rsi_text(mk) = mk.rsi_source == "model" ?
+    @sprintf("gas L from the model's own RSI = %.3f + %.3f × (1 − %.3f) × offered MW / load", mk.rsi_offset, mk.rsi_scale, mk.largest_share) :
+    mk.rsi_source == "file" ? "gas L from the RSI file" : "no gas mark-up (no RSI)"
+if MARKUP !== nothing && SCEN_ACTIVE
+    @printf("Mark-ups       : scenario run — tax %.1f %% ([costs.markup].scenario_tax), coal L %.3f, %s\n",
+            100MARKUP.tax_default, MARKUP.l_coal, rsi_text(MARKUP))
+elseif MARKUP !== nothing && MARKUP.rsi_source != "file"
+    @printf("Mark-ups       : tax %s (default %.1f %%), coal L %.3f, %s\n",
+            join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, MARKUP.l_coal, rsi_text(MARKUP))
+elseif MARKUP !== nothing
+    @printf("Mark-ups       : tax %s (default %.1f %%) on %s; gas/coal L from RSI (%d table points, RSI %.2f–%.2f, cap %.2f)\n",
+        join(sort(collect(keys(MARKUP.tax))), "/"), 100MARKUP.tax_default, join(sort(collect(MARKUP.tax_fuels)), ", "),
+        length(MARKUP.x), MARKUP.x[1], MARKUP.x[end], MARKUP.cap)
 end
+# [costs.gas_unit_efficiency]: one efficiency per combined-cycle unit, so each
+# CCGT is priced from its own gas burn.  2024 path: gas_srmc_eta from the daily
+# MIBGAS + EUA, so it needs [costs.gas_srmc].  Scenario runs: EMPIRE's CCGT
+# cost rescaled per unit (GAS_UNIT_COST_SCEN below).
+const GAS_UNIT_EFF_ON = get(get(get(cfg, "costs", Dict()), "gas_unit_efficiency", Dict()), "enabled", false)
+const GAS_UNIT_ETA = (GAS_SRMC_ON || SCEN_ACTIVE) ? load_gas_unit_eta(cfg) : nothing
+if !GAS_SRMC_ON && !SCEN_ACTIVE && GAS_UNIT_EFF_ON
+    println("WARNING: [costs.gas_unit_efficiency] ignored — the 2024 path needs [costs.gas_srmc] on")
+end
+# Scenario runs: EMPIRE prices every CCGT at one efficiency, eta_ref =
+# [scenario.efficiency].GasCCGT.  Fuel and CO2 scale with 1/eta, the variable
+# O&M ([costs.gas_srmc].vom.ccgt, EMPIRE's) does not — the same split as
+# gas_srmc_eta on the 2024 path:
+#   cost_u = vom + (cost_EMPIRE - vom) * eta_ref / eta_u
+# Fixed for the whole run (EMPIRE has one cost per period).
+const GAS_UNIT_COST_SCEN = (SCEN_ACTIVE && GAS_UNIT_ETA !== nothing) ? let
+        haskey(get(cfg["scenario"], "efficiency", Dict()), "GasCCGT") ||
+            error("config.toml: [costs.gas_unit_efficiency] in a scenario run needs [scenario.efficiency].GasCCGT")
+        c   = EMP.costs["Gas CCGT"]
+        ref = Float64(cfg["scenario"]["efficiency"]["GasCCGT"])
+        vom = Float64(get(get(get(cfg["costs"], "gas_srmc", Dict()), "vom", Dict()), "ccgt", 0.0))
+        Dict(u => vom + (c - vom) * ref / eta for (u, eta) in GAS_UNIT_ETA)
+    end : nothing
 const COST_OVERRIDE = let
     ov = SCEN_ACTIVE ? empire_cost_override(EMP) : Dict{Tuple{String,String},Float64}()
     # [costs].gas_from_midterm: take the ES gas marginal cost from
@@ -145,6 +171,9 @@ end
 const NODAL_ACTIVE  = SCEN_ACTIVE &&
     lowercase(String(get(cfg["scenario"], "disaggregation", "nodal"))) == "nodal"
 const NODAL         = NODAL_ACTIVE ? build_nodal_disaggregation(cfg, EMP) : nothing
+SCEN_ACTIVE && !NODAL_ACTIVE &&
+    lowercase(String(get(get(cfg["scenario"], "retirement", Dict()), "ccgt", "even"))) != "even" &&
+    error("config.toml: [scenario.retirement].ccgt = \"oldest_first\" needs [scenario].disaggregation = \"nodal\"")
 const UNIT_SCALE_ID = NODAL_ACTIVE ? NODAL.unit_scale : nothing
 const EXTRA_UNITS   = NODAL_ACTIVE ? NODAL.new_units  : nothing
 const EXTRA_LINES   = NODAL_ACTIVE ? NODAL.new_lines  : nothing
@@ -278,6 +307,10 @@ if SCEN_ACTIVE
     @printf "                 load ×%.3f | solar ×%.3f | wind ×%.3f | BESS %.0f MW / %.0f MWh\n" ES_LOAD_SCALE ES_SOLAR_SCALE ES_WIND_SCALE EMP.storage["ES"].bess_mw EMP.storage["ES"].bess_mwh
     if NODAL_ACTIVE
         @printf "                 NUTS3 nodal disaggregation: %d unit factors | %d new units (%.0f MW) | %d reinforced lines | %d new corridors | %d BESS sites\n" length(NODAL.unit_scale) nrow(NODAL.new_units) sum(NODAL.new_units.capacity_mw; init = 0.0) length(NODAL.line_scale) nrow(NODAL.new_lines) length(NODAL.bess)
+        if NODAL.ccgt_fleet !== nothing
+            cf = NODAL.ccgt_fleet
+            @printf "                 CCGT oldest first: %.0f → %.0f MW | %d closed (%.0f MW), %d shrunk, %d kept, %d outside the rule\n" sum(cf.mw_2024) sum(cf.mw_scen) count(==("closed"), cf.status) sum(cf.mw_2024[cf.status .== "closed"]; init = 0.0) count(==("shrunk"), cf.status) count(==("kept"), cf.status) count(==("outside rule"), cf.status)
+        end
     else
         println("                 zonal disaggregation (national per-tech scaling)")
     end
@@ -328,7 +361,11 @@ const NUCLEAR_AVAIL = Float64(get(get(cfg, "da", Dict()), "nuclear_availability"
 const NUCLEAR_AVAIL_BY_DATE = Dict{String,Float64}(
     String(k) => Float64(v) for (k, v) in
         get(get(cfg, "da", Dict()), "nuclear_availability_by_date", Dict{String,Any}()))
-nuclear_avail_for(date_str) = get(NUCLEAR_AVAIL_BY_DATE, String(date_str), NUCLEAR_AVAIL)
+# Scenario runs study 2024 calendar dates, so the per-day values would carry
+# 2024's outages and its price-driven cuts (spring 2024: 0.51–0.64) into the
+# scenario year; they use the annual [da].nuclear_availability instead.
+nuclear_avail_for(date_str) = SCEN_ACTIVE ? NUCLEAR_AVAIL :
+    get(NUCLEAR_AVAIL_BY_DATE, String(date_str), NUCLEAR_AVAIL)
 # Coal availability — same treatment as nuclear, and needed for the same
 # reason: generations.csv carries the full 2 900 MW nameplate of a fleet that
 # had largely closed by 2024.  See [da].coal_availability in config.toml.
@@ -364,22 +401,37 @@ end
 # unit_id ⇒ EUR/MWh for every unit in the efficiency file.  prepare_network uses
 # them ahead of the shared (Gas, Combined_cycle) cost from cost_override_for.
 function unit_cost_override_for(date_str)
+    GAS_UNIT_COST_SCEN === nothing || return GAS_UNIT_COST_SCEN
     GAS_UNIT_ETA === nothing && return nothing
     d = Date(String(date_str))
     return Dict(u => gas_srmc_eta(FUEL_PRICES, eta, d) for (u, eta) in GAS_UNIT_ETA)
 end
-if GAS_UNIT_ETA !== nothing
+if GAS_UNIT_COST_SCEN !== nothing
+    @printf "Gas per unit   : %d CCGT units priced from their own efficiency ([costs.gas_unit_efficiency]), %.1f–%.1f EUR/MWh (EMPIRE CCGT %.1f)\n" length(GAS_UNIT_COST_SCEN) minimum(values(GAS_UNIT_COST_SCEN)) maximum(values(GAS_UNIT_COST_SCEN)) EMP.costs["Gas CCGT"]
+elseif GAS_UNIT_ETA !== nothing
     @printf "Gas per unit   : %d CCGT units priced from their own efficiency ([costs.gas_unit_efficiency])\n" length(GAS_UNIT_ETA)
 end
 # [unit_commitment]: CCGTs of at least min_mw are committed in the DA (on/off,
 # minimum load, start-up cost, minimum up/down time; unit_commitment.jl, da.jl).
 # Start-up fuel is priced from the day's gas + CO2, so 2024 path only for now.
-const UC_CFG = GAS_SRMC_ON ? load_uc_config(cfg) : nothing
-if !GAS_SRMC_ON && get(get(cfg, "unit_commitment", Dict()), "enabled", false)
-    println("WARNING: [unit_commitment] ignored — needs [costs.gas_srmc] on and the 2024 path")
+const UC_CFG = (GAS_SRMC_ON || SCEN_ACTIVE) ? load_uc_config(cfg) : nothing
+if !GAS_SRMC_ON && !SCEN_ACTIVE && get(get(cfg, "unit_commitment", Dict()), "enabled", false)
+    println("WARNING: [unit_commitment] ignored — the 2024 path needs [costs.gas_srmc] on")
 end
+# Start fuel price in scenario runs: EMPIRE gives no gas price, only the CCGT
+# cost per MWh of electricity (fuel + O&M, plus our CO2 adder, all at
+# eta_ref = [scenario.efficiency].GasCCGT).  Gas + its CO2 per MWh of gas is
+# then (cost - vom) * eta_ref — the coal units' start fuel is priced the same way
+# from their own cost.  One value for the run (EMPIRE has one cost per period);
+# the 2024 path keeps the day's MIBGAS + EUA (gas_fuel_cost_th).
+const UC_GAS_FUEL_TH = (SCEN_ACTIVE && UC_CFG !== nothing) ?
+    (EMP.costs["Gas CCGT"] -
+     Float64(get(get(get(cfg["costs"], "gas_srmc", Dict()), "vom", Dict()), "ccgt", 0.0))) *
+    Float64(get(get(cfg["scenario"], "efficiency", Dict()), "GasCCGT", 0.56)) : nothing
 if UC_CFG !== nothing
     @printf "Unit commit.   : CCGT >= %.0f MW in the DA; min up %d h, down %d h; min load %.0f %% (1x1) / %.0f %% (>= %.0f MW, 2x1); start %.1f EUR/MW wear + %.1f MWh gas/MW\n" UC_CFG.min_mw UC_CFG.min_up UC_CFG.min_down 100UC_CFG.min_load_1x1 100UC_CFG.min_load_2x1 UC_CFG.two_by_one_min_mw UC_CFG.wear_eur_per_mw UC_CFG.start_fuel_mwh_per_mw
+    UC_GAS_FUEL_TH === nothing ||
+        @printf "                 start gas (scenario): %.1f EUR/MWh of gas incl. CO2, from EMPIRE's CCGT cost → %.0f EUR/MW per start\n" UC_GAS_FUEL_TH UC_CFG.wear_eur_per_mw + UC_CFG.start_fuel_mwh_per_mw * UC_GAS_FUEL_TH
 end
 const COAL_UNIT_FLEET = UC_CFG !== nothing && UC_CFG.coal !== nothing &&
                         !UC_CFG.coal.use_availability_factor
@@ -434,6 +486,15 @@ const CHP_CFG     = get(cfg, "chp", Dict())
 const CHP_ENABLED = get(CHP_CFG, "enabled", false)
 const CHP_SITING_BUSES = Int(get(CHP_CFG, "siting_buses", 100))
 const CHP_BY_DATE = get(CHP_CFG, "by_date", Dict{String,Any}())
+# Scenario runs study 2024 calendar dates; instead of 2024's value for that
+# date, each block takes the mean of its 2024 days in the same month (CHP
+# follows industry, mini-hydro the rain): (month, "gas_mw") => MW.
+const CHP_BY_MONTH = let acc = Dict{Tuple{Int,String},Vector{Float64}}()
+    for (dt, day) in CHP_BY_DATE, (k, v) in day
+        v isa Real && push!(get!(acc, (month(Date(String(dt))), String(k)), Float64[]), Float64(v))
+    end
+    Dict(k => mean(v) for (k, v) in acc)
+end
 # (config key prefix, fuel, technology) for each block.  The gas block keeps
 # fuel = "Gas" so emissions accounting sees it, despite its low offer price.
 const CHP_SPEC = (("gas",       "Gas",     "CHP"),
@@ -444,7 +505,10 @@ function chp_blocks_for(date_str)
     day = get(CHP_BY_DATE, String(date_str), Dict{String,Any}())
     blocks = NamedTuple[]
     for (key, fuel, tech) in CHP_SPEC
-        mw = Float64(get(day, key * "_mw", get(CHP_CFG, key * "_mw", 0.0)))
+        mw = SCEN_ACTIVE ?
+            get(CHP_BY_MONTH, (month(Date(String(date_str))), key * "_mw"),
+                Float64(get(CHP_CFG, key * "_mw", 0.0))) :
+            Float64(get(day, key * "_mw", get(CHP_CFG, key * "_mw", 0.0)))
         mw > 1e-6 || continue
         push!(blocks, (tag          = uppercase(key),
                        fuel         = fuel,
@@ -483,7 +547,7 @@ const REMOVED_UNITS = let s = get(ISLANDS_CFG, "remove_isolated", false) ?
     isempty(s) ? nothing : s
 end
 isempty(FLEET_CLOSED) || @printf "Closed plants  : %d unit(s) left out of every stage ([fleet])\n" length(FLEET_CLOSED)
-COAL_UNIT_FLEET && isempty(FLEET_CLOSED) &&
+COAL_UNIT_FLEET && isempty(FLEET_CLOSED) && !SCEN_ACTIVE &&
     println("WARNING: coal runs without the availability factor but [fleet] closes no unit — closed coal plants (e.g. As Pontes) are back at full size")
 if REMOVED_UNITS !== nothing
     @printf "Isolated plants: %d unit(s) left out of every stage ([islands])\n" length(REMOVED_UNITS)
@@ -664,6 +728,20 @@ if WEEKS_ACTIVE
     CROSSBORDER && error("[weeks]: [crossborder] fixed injections exist only for " *
                          "the 2024 study days — the sampled horizon clears its own " *
                          "exchange in the 4-zone DA; disable [crossborder]")
+    # SPAIN_DAYS keeps only some days of the sampled horizon, so a long horizon
+    # (e.g. 52 weeks) can run as chunks, joined with scripts/merge_runs.py:
+    # in parallel (scripts/run_day_ranges.sh, solstorm_start_weeks.sh) when no
+    # state passes between days, or in order (scripts/run_markets_sequential.sh,
+    # solstorm_start_markets.sh) when [unit_commitment] is on, so each chunk
+    # starts from the previous chunk's uc_state.json (SPAIN_UC_STATE_IN).
+    if haskey(ENV, "SPAIN_DAYS")
+        wanted  = study_days(cfg)
+        outside = setdiff(wanted, TARGET_DAYS)
+        isempty(outside) || error("SPAIN_DAYS: $(length(outside)) day(s) outside the week sample " *
+                                  "($(first(TARGET_DAYS)) .. $(last(TARGET_DAYS))), e.g. $(first(outside))")
+        TARGET_DAYS = filter(in(Set(wanted)), TARGET_DAYS)
+        @printf "Study days     : %s .. %s (%d of the sampled days, SPAIN_DAYS)\n" first(TARGET_DAYS) last(TARGET_DAYS) length(TARGET_DAYS)
+    end
 end
 # [redispatch].only may pin the whole run to a single day so the market stages,
 # Bellman pre-compute and load flow all skip the other TARGET_DAY.
@@ -828,6 +906,9 @@ RESULTS = get(ENV, "SPAIN_RESULTS",
               SCEN_ACTIVE ? joinpath(@__DIR__, "results", SCEN_LABEL) :
                             joinpath(@__DIR__, "results"))
 mkpath(RESULTS)
+# [scenario.retirement] ccgt = "oldest_first": which CCGT units close or shrink.
+NODAL !== nothing && NODAL.ccgt_fleet !== nothing &&
+    CSV.write(joinpath(RESULTS, "ccgt_fleet.csv"), NODAL.ccgt_fleet)
 
 # Per-solve Ipopt logs, written here so infeasible hours can be diagnosed.
 # Each file records the full iteration history and Ipopt's final verdict
@@ -855,7 +936,9 @@ const RUN_INFO = write_run_info_start(RESULTS; days = TARGET_DAYS, config_path =
                              "power_flow" => RD_PF_MODEL, "linear_solver" => IPOPT_LINEAR_SOLVER,
                              "crossborder_split" => RD_XB_SPLIT, "res_input" => RES_INPUT,
                              "gas_unit_efficiency" => GAS_UNIT_ETA !== nothing,
-                             "unit_commitment" => UC_CFG !== nothing))
+                             "unit_commitment" => UC_CFG !== nothing,
+                             "ccgt_retirement" => NODAL !== nothing && NODAL.ccgt_fleet !== nothing ?
+                                                  "oldest_first" : "even"))
 
 # Single-period solver (one hour at a time).  `log_file`, when given, makes Ipopt
 # mirror its iteration log to that file at file_print_level 5 so infeasible hours
@@ -1504,6 +1587,7 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      coal_availability = coal_avail_for(date_str),
                      ramp_limits = RAMP_LIMITS,
                      island_buses = ISLAND_BUSES,
+                     inputs_peninsular = !SCEN_ACTIVE,
                      islands_off_market = true,
                      removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                      chp_blocks = chp_blocks_for(date_str),
@@ -1529,7 +1613,9 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      rating_scale = RATING_SCALE,
                      extra_lines = EXTRA_LINES)
      for ts in eachrow(day_ts)]
-    if MARKUP !== nothing && !WEEKS_ACTIVE
+    # Weeks mode is always a scenario run: load_markup(; scenario = true) then
+    # reads no 2024-dated tax or RSI, so the same call is safe there.
+    if MARKUP !== nothing
         for r in apply_markup!(nets, MARKUP, date_str, day_ts)
             MARKUP_LOG[(r.date, r.hour)] = r
         end
@@ -1633,14 +1719,14 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     uc = nothing
     if label == "DA" && UC_CFG !== nothing
         prev_day = string(Date(String(date_str)) - Day(1))
-        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES; fuel_th = UC_GAS_FUEL_TH),
               init = UC_STATE_DATE[] == prev_day ? copy(UC_STATE) : nothing,
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
         UC_INIT_FOR_DAY[String(date_str)] = uc.init
     elseif label in ("ID2", "ID3") && UC_CFG !== nothing && UC_CFG.intraday_starts
         # Intraday starts: units on in the previous gate stay on, units off may
         # start (da.jl, prev_on); new starts must pay their way (intraday_clear).
-        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES),
+        uc = (units = uc_units_for(nets, date_str, UC_CFG, FUEL_PRICES; fuel_th = UC_GAS_FUEL_TH),
               init = get(UC_INIT_FOR_DAY, String(date_str), nothing),
               prev_on = uc_prev_on_for(date_str, day_ts),
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
@@ -1719,6 +1805,7 @@ end
 # every earlier hour frozen at its already-committed CID value, then commit this
 # hour.  Earlier hours' reservoir use is locked in, so water cannot be reallocated
 # backwards in time — the causality the 1h-before-delivery rule implies.
+const CID_FALLBACKS = Ref(0)   # CID gates that failed and held the previous plan
 function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                           nuclear_sched = nothing, anchor_base = nothing)
     nets = build_da_nets(date_str, day_ts; nuclear_sched = nuclear_sched)
@@ -1744,8 +1831,19 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
                             hydro_budget_mwh = get(bv, :budget, nothing),
                             uc_bounds = uc_bounds_for(date_str, day_ts))
-        result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
-            error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
+        if !(result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED"))
+            # The previous gate's plan for this hour is feasible by construction (it
+            # solved with the same frozen hours and constraints), so a failed gate is
+            # a solver/numerical failure: hold that plan for this hour, log it, and
+            # go on instead of stopping the whole run. The hour gets no CID price.
+            haskey(prev_full, hgate) ||
+                error("CID gate h=$(day_ts.hour[hgate]) failed for $date_str: $(result.status)")
+            CID_FALLBACKS[] += 1
+            @printf "  CID %s gate h=%d: %s, holds the previous gate's plan (fallback %d)
+" date_str day_ts.hour[hgate] result.status CID_FALLBACKS[]
+            committed[hgate] = prev_full[hgate]
+            continue
+        end
         committed[hgate] = result.sched[hgate]
         # Each rolling gate re-clears the whole remaining horizon but only
         # commits `hgate`; that hour's balance dual is its CID price.
@@ -2204,6 +2302,7 @@ if RD_WATER_VALUE == "constant"
                               da_dispatch = sched_hour,
                               frozen_fuels = RD_FROZEN_FUELS,
                               island_buses = ISLAND_BUSES,
+                              inputs_peninsular = !SCEN_ACTIVE,
                               removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                               nuclear_availability = nuclear_avail_for(date_str),
                               coal_availability = coal_avail_for(date_str),
@@ -2281,6 +2380,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 da_dispatch = rd_sched_for(date_str, ts.hour),
                                 frozen_fuels = RD_FROZEN_FUELS,
                                 island_buses = ISLAND_BUSES,
+                                inputs_peninsular = !SCEN_ACTIVE,
                                 removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                                 nuclear_availability = nuclear_avail_for(date_str),
                                 coal_availability = coal_avail_for(date_str),

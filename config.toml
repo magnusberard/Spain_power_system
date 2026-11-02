@@ -3477,6 +3477,11 @@ eligible = []
 # IDA3 / continuous trading and actual output, per technology; slope of the CID
 # change on the error left after the last auction): wind 0.07, solar (PV +
 # thermal) 0.06, load 0.07 (by volume 0.16 / 0.13 / 0.17).
+# Measured the same way for the auctions (esios_download/measure_auction_share.py;
+# change over the auction on the final error, a low estimate since part of the
+# error is not known at gate time): ID2 = IDA1+IDA2 (PHF2 - PDVP) load 0.32,
+# wind 0.22, solar 0.13; ID3 = IDA3 (PHF3 - PHF2, hours 12-23) load 0.07, wind
+# 0.15, solar 0.10. Run option PARTICIPATION=measured_all sets all three stages.
 id2 = { load = 1.0, wind = 1.0, solar = 1.0 }
 id3 = { load = 1.0, wind = 1.0, solar = 1.0 }
 cid = { load = 1.0, wind = 1.0, solar = 1.0 }

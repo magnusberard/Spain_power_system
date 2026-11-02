@@ -9,7 +9,7 @@
 #
 #   argument : parent folder for the chunk folders (<folder>/<from>_<to>/)
 #   optional : FROM (2024-01-01), TO (2024-12-31), DAYS (7), GAS (off), MARKUP (off), HYDRO, RES,
-#              PARTICIPATION (active/measured/passive), BALANCING (all/qualified), PUMPING (removed), PUMPLIMIT (on),
+#              PARTICIPATION (active/measured/measured_all/passive), BALANCING (all/qualified), PUMPING (removed), PUMPLIMIT (on),
 #              HYDROTOPUP (on), IDSTARTS (on),
 #              SCENARIO (trinity/necp: a 2035 run)
 #              (accepted/offered, default: as in config.toml) and IPOPT (mumps;

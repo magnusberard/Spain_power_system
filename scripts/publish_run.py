@@ -233,7 +233,8 @@ def detect_features(rdir):
 def detect_trading_features(rdir):
     """The newer run settings for the viewer's run header (meta.features), from the same saved
     config as detect_features: participation = [participation] shares (§23; all 1.0 = "active",
-    the default; all 0.0 in ID2/ID3/CID = "passive"; anything else = "measured"); balancing =
+    the default; all 0.0 in ID2/ID3/CID = "passive"; only CID below 1.0 = "measured"; ID2 or ID3
+    below 1.0 as well = "measured_all"); balancing =
     [balancing].eligible ("qualified" when it lists units, §23); rd = [redispatch.phase1].enabled
     ("ree" = the redispatch the REE way, branch redispatch-realism §20, else "ac"). {} if no config."""
     import tomllib
@@ -243,8 +244,10 @@ def detect_trading_features(rdir):
     c = tomllib.loads(path.read_text(encoding="utf-8"))
     part = c.get("participation", {})
     shares = [float(v) for st in ("id2", "id3", "cid") for v in (part.get(st) or {}).values()]
+    auctions = [float(v) for st in ("id2", "id3") for v in (part.get(st) or {}).values()]
     participation = ("active" if all(v == 1.0 for v in shares)
-                     else "passive" if all(v == 0.0 for v in shares) else "measured")
+                     else "passive" if all(v == 0.0 for v in shares)
+                     else "measured_all" if any(v != 1.0 for v in auctions) else "measured")
     phase1 = c.get("redispatch", {}).get("phase1", {})
     return dict(
         participation=participation,

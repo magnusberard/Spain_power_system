@@ -635,6 +635,14 @@ volume_file  = "Data/Volume_Scen0_OUT_sddp4.csv"
 turbine_file = "Data/TurbineSchedule_sddp4.csv"
 hydro_budget = true
 hydro_budget_basis = "week"
+# hydro_budget_topup: in the stages after the day-ahead (ID2, ID3, CID gates,
+# balancing), if the slack (1000 EUR/MWh) is needed, the day's budget is raised
+# by exactly the slack's MWh and the stage solved once more, so reservoir hydro
+# covers the shortfall. Without it a short hour (e.g. 648 MWh on 20 May 2024)
+# priced the day's water at 1000 EUR/MWh and lifted every hydro-set hour. Real
+# reservoirs hold weeks of water; REE calls hydro beyond plan when short. The
+# extra water is not taken back later (~10 GWh/year). Run option HYDROTOPUP=on.
+hydro_budget_topup = false
 
 [da]
 # ── Stage 1: Day-Ahead market ────────────────────────────────────────────────

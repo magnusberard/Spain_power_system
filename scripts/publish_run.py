@@ -202,7 +202,9 @@ def detect_features(rdir):
     (§11); gas = [unit_commitment].enabled, i.e. --gas on (§13, §14, §16); markup =
     [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15);
     pumping = [run].remove_pumping, the real 2024 pumping taken out of the load; pump_limits =
-    [da].pump_limits, pumped storage pumping with its own pumping power."""
+    [da].pump_limits, pumped storage pumping with its own pumping power; hydro_topup =
+    [bellman].hydro_budget_topup, a short stage after the DA gets extra hydro; intraday_starts =
+    [unit_commitment].intraday_starts, CCGT/coal starts in ID2/ID3."""
     import tomllib
     path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
     if path is None:
@@ -223,6 +225,8 @@ def detect_features(rdir):
         hydro="hydro_state" in str(sec("bellman").get("volume_file", "")),
         pumping=bool(sec("run").get("remove_pumping", False)),
         pump_limits=bool(sec("da").get("pump_limits", False)),
+        hydro_topup=bool(sec("bellman").get("hydro_budget_topup", False)),
+        intraday_starts=bool(sec("unit_commitment").get("intraday_starts", False)),
     )
 
 

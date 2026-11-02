@@ -579,3 +579,38 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
     end
     return out
 end
+
+# ── Hydro top-up ([bellman].hydro_budget_topup, run_market_chain.jl) ──────────
+# MWh the slack covered in a solved gate's tradable hours (net indices; nothing = all).
+slack_mwh(sched, hours) = sum((get(sched[h], "SLACK", 0.0)
+                               for h in (hours === nothing ? keys(sched) : hours) if haskey(sched, h)); init = 0.0)
+# The day's reservoir budget raised by `extra` MWh (nothing stays nothing).
+topped_budget(bv, extra) = (b = get(bv, :budget, nothing); b === nothing ? nothing : b + extra)
+# An hour priced at the slack (1000 EUR/MWh): the next MW there would be short,
+# even when the slack itself produces nothing (the system exactly at its edge).
+const SHORT_PRICE = 999.0
+
+# The top-up loop. `resolve(extra)` re-solves the stage with the day's budget
+# raised by `extra` MWh. While the slack runs, or an hour is priced at the slack,
+# add the slack's MWh + 1 MWh per tradable hour and re-solve; at most `max_rounds`,
+# and stop once a round no longer helps (e.g. hydro already at full power in the
+# short hour). Returns the last result and what it took.
+function hydro_topup(result, resolve, hours, n_hours; max_rounds = 5)
+    ok(r)     = r.status in ("OPTIMAL", "LOCALLY_SOLVED")
+    at_cap(r) = count(p -> p >= SHORT_PRICE,
+                      (p for (h, p) in r.es_price if hours === nothing || h in hours))
+    extra = 0.0; rounds = 0
+    ok(result) || return (result = result, rounds = 0, extra = 0.0, slack_left = 0.0, at_cap = 0)
+    s = slack_mwh(result.sched, hours); c = at_cap(result)
+    while (s > 0.5 || c > 0) && rounds < max_rounds
+        extra += s + n_hours
+        r = resolve(extra); rounds += 1
+        ok(r) || break
+        s2 = slack_mwh(r.sched, hours); c2 = at_cap(r)
+        result = r
+        helped = s2 < s - 0.5 || c2 < c
+        s, c = s2, c2
+        helped || break
+    end
+    return (result = result, rounds = rounds, extra = extra, slack_left = s, at_cap = c)
+end

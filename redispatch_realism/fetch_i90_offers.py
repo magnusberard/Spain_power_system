@@ -9,6 +9,13 @@ technical-constraints process (P.O. 3.2) next to the results fetch_i90.py keeps.
   i90_offers_tc_rt.csv.gz    I90DIA32 simple offers updated for real-time constraints, quarter-hours to the hour:
                              mwh = sum of MW over the hour's quarter-hours / 4, eur_mwh = MW-weighted mean
                              (plain mean where all quarter-hours are 0 MW, which are then dropped anyway).
+  i90_offers_rr.csv.gz       I90DIA14 balancing energy offers of type RR (replacement reserve; Sentido Subir/Bajar,
+                             Divisibilidad kept) and
+  i90_offers_mfrr.csv.gz     I90DIA15 offers in the tertiary-regulation market (mFRR), both per hour as value_mean =
+                             mean of the published quarter-hour values, eur_mwh weighted by them. Their unit is NOT
+                             settled: the headers say MW (14) and MWh (15), and REE's "Total MWh" equals the plain sum
+                             of the 96 values (14 Mar 2024: ratio 1.0 in 1,701 of 1,851 and most of 1,096 blocks),
+                             unlike I90DIA32 (sum / 4). Check P.O. 7.3 / 3.3 (product length) before using them.
   i90_offers_complex.csv.gz  I90DIA18 (stage day-ahead) and I90DIA33 (stage real-time) complex offers: cold and
                              hot start-up price (€), minimum income per hour (€/h), unit price (€/MWh).
   i90_startup_times.csv.gz   I90DIA29 declared start-up times (minutes, hot/cold/turbine) per unit, market, mode.
@@ -35,7 +42,8 @@ from fetch_i90 import fetch, REPO, UNIT  # noqa: E402  (same download, same arch
 
 import xlrd  # noqa: E402
 
-TABLES = ("offers_tc", "offers_tc_rt", "offers_complex", "startup_times")
+DONE = "v2.done"                                    # bump when sheets are added: older days are fetched again
+TABLES = ("offers_tc", "offers_tc_rt", "offers_rr", "offers_mfrr", "offers_complex", "startup_times")
 
 
 def _rows(book, name):
@@ -81,8 +89,12 @@ def offer_sheet(book, name, quarter=False):
         df["pw"] = df.eur_mwh * df.w
         g = df.groupby(ids + ["hour"], dropna=False)
         out = g.agg(v=("v", "sum"), w=("w", "sum"), pw=("pw", "sum"), pm=("eur_mwh", "mean"), k=("v", "size")).reset_index()
-        out["mwh"] = out.v * 24 / n                                   # MW summed over quarter-hours → MWh
         out["eur_mwh"] = (out.pw / out.w).where(out.w > 0, out.pm)
+        if quarter == "as_published":                                 # unit not settled: mean of the published values
+            out["value_mean"] = out.v / out.k
+            df = out[ids + ["hour", "value_mean", "eur_mwh"]]
+            return df[df.value_mean != 0].reset_index(drop=True)
+        out["mwh"] = out.v * 24 / n                                   # MW summed over quarter-hours → MWh
         df = out[ids + ["hour", "mwh", "eur_mwh"]]
     else:
         df = df.rename(columns={"v": "mwh"})
@@ -104,7 +116,9 @@ def flat_sheet(book, name):
 def parse_day(xls_bytes, d):
     book = xlrd.open_workbook(file_contents=xls_bytes, on_demand=True)
     out = {"offers_tc": offer_sheet(book, "I90DIA17"),
-           "offers_tc_rt": offer_sheet(book, "I90DIA32", quarter=True)}
+           "offers_tc_rt": offer_sheet(book, "I90DIA32", quarter=True),
+           "offers_rr": offer_sheet(book, "I90DIA14", quarter="as_published"),
+           "offers_mfrr": offer_sheet(book, "I90DIA15", quarter="as_published")}
     cx = [flat_sheet(book, s).assign(stage=st) for s, st in (("I90DIA18", "day-ahead"), ("I90DIA33", "real-time"))]
     cx = [x for x in cx if not x.empty]
     if cx:
@@ -130,7 +144,7 @@ def main():
     ddir.mkdir(parents=True, exist_ok=True); zdir.mkdir(parents=True, exist_ok=True)
     failed = []
     for i, d in enumerate(days, 1):
-        if (ddir / f"{d}.done").exists():
+        if (ddir / f"{d}.{DONE}").exists():
             continue
         t = time.time()
         try:
@@ -142,7 +156,7 @@ def main():
             continue
         for k, v in parts.items():
             v.to_csv(ddir / f"{d}_{k}.csv", index=False)
-        (ddir / f"{d}.done").touch()
+        (ddir / f"{d}.{DONE}").touch()
         if not a.keep_zips and a.zips is None:
             z.unlink()
         print(f"[{i}/{len(days)}] {d}: " + ", ".join(f"{k} {len(v)}" for k, v in parts.items())

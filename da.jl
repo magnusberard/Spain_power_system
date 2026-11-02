@@ -517,7 +517,8 @@ end
 #      price, the closest one   → "cost"        (gas, coal, wind at 0, CHP, …)
 #   2. part-loaded reservoir hydro (cost 0 here; its value comes from the
 #      Bellman cuts or the daily budget)                → "water_value"
-#   3. a part-loaded storage unit (pumped hydro, BESS)  → "storage"
+#   3. a part-loaded storage unit (pumped hydro, BESS)  → "storage"; its label gets
+#      ", charging" when it pumps / charges (negative output)
 #   4. a running unit AT a limit whose cost equals the price within 0.05 €/MWh
 #      (degenerate LP: the same price either way)       → "cost_at_limit"
 #   5. an interconnector flow inside its NTC limits: the price is set abroad
@@ -533,7 +534,7 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
     out = Dict{Int,NamedTuple}()
     for (h, price) in es_price
         best = nothing; best_gap = Inf
-        hydro = nothing; store = nothing
+        hydro = nothing; store = nothing; store_v = 0.0
         edge = nothing; edge_gap = Inf               # running AT a limit with cost = price
         for (k, g) in nets[h].gens
             v  = JuMP.value(pg[(h, k)])
@@ -557,7 +558,7 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
             if k in resv
                 hydro === nothing && (hydro = g)
             elseif haskey(g, "energy_mwh")
-                store === nothing && (store = g)
+                store === nothing && (store = g; store_v = v)
             else
                 gap = abs(g["cost"][1] / BASEMVA - price)
                 if gap <= max(0.5, 0.01 * abs(price)) && gap < best_gap
@@ -567,7 +568,8 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
         end
         out[h] = best  !== nothing ? (setter = label(best),  unit = string(best["name"]),  rule = "cost") :
                  hydro !== nothing ? (setter = label(hydro), unit = string(hydro["name"]), rule = "water_value") :
-                 store !== nothing ? (setter = label(store), unit = string(store["name"]), rule = "storage") :
+                 store !== nothing ? (setter = store_v < 0 ? replace(label(store), r"\)$" => ", charging)") : label(store),
+                                      unit = string(store["name"]), rule = "storage") :
                  edge  !== nothing ? (setter = label(edge),  unit = string(edge["name"]),  rule = "cost_at_limit") :
                  begin
                      inside(f) = f !== nothing && JuMP.value(f[h]) > JuMP.lower_bound(f[h]) + tol_mw &&

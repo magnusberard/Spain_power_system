@@ -968,6 +968,30 @@ check]; the Cartagena 220/400 kV transformer 61 → 0, Ascó's 220 kV line LTGES
 Diagnostic only: gas turned down in phase II 270 → 202 GWh (REE 27), so the grid explains a quarter of B's gas
 excess; the rest is B's prices (step 4).
 
+**Step 4 (2 Nov): phase II from REE's own buy-back offers, replaces B.** P.O. 3.2 §6.2.2: phase II takes the offers to
+reduce the schedule in decreasing price; I90DIA17 holds every such offer (step 2). `build_phase2_offers.py` writes a
+curve per model unit and hour (its REE units' blocks, crosswalk; 115 model units in December) and per fuel:technology
+and hour (all REE units of that technology pooled, `data/ree_unit_technology.csv`, 5 equal-energy segments), as
+(share of the unit's own schedule, price), highest buy-back price first. Agreed 2 Nov: 2024 runs use each day's own
+offers (input, not a fit to REE's results); 2035 will use an offer rule. `redispatch_objective.jl`
+(`rd_add_down_cost!`, `rd_down_cost_eur`) prices turned-down energy on that curve in phase I's DC day problem and its
+AC check; real time keeps `[redispatch.bids]` (REE's real-time offers, I90DIA32, not used yet). Stated rules: the
+refund is capped at p_DA (phase II only restores the balance, REE never redispatches for profit); units with no
+curve keep the bids; pumped storage stays out (decision of 30 Oct); REE units without a technology (12.6 % of
+Jan–Jun phase II down) are not pooled. What the December curves say (energy-weighted buy-back price): solar thermal
+69, pumping 54, biomass 29, CHP 25, hydro 15, PV 8, wind 3.4, CCGT 1.5, nuclear −0.7 €/MWh; 95 % of CCGT's offered
+energy is at 0 €/MWh, so turning CCGT down costs the full p_DA and comes last (B ranked it first). Switch:
+`make_config.jl --offers redispatch_realism/data/phase2_offers_dec.csv` (`[redispatch.bids].offers_file`).
+`test_phase2_offers.jl`: 13 tests pass (curves, fallbacks, cost by hand, REE's order in an LP). First run: December
+against the baseline the step-7 sweeps leave (ly8 if they correct nothing).
+
+**Step 7 (c), 2 Nov: buses with more generation than branch capacity (`sweep_bus_capacity.py`, result-blind).** 6 of
+278 buses with ≥ 100 MW; each checked the same way against OpenStreetMap, which lines END at the substation
+(`data/sweep_c_osm_check.csv`): Ceclavín, Saetillas, El Monte and Málaga CC have one 220 kV circuit in OSM as in the
+model (flagged only by the generic rating, a uniform limitation); Puerto de Barcelona (Feixa Llarga) may have up to
+4 circuits at 220 kV in OSM against the model's 2, not conclusive (short segments) [open]; Besós has no line mapped in
+OSM (underground), so no source either way: kept and stated. No correction from (c).
+
 **REE's offer books (step 2, 2 Nov): `fetch_i90_offers.py`.** I90 holds every offer for technical constraints, not
 only the accepted ones (I90DIA00 index): simple offers per unit, block and hour (I90DIA17; Venta = up, Compra =
 buy-back, energy signed as published, Precedencia Mercado/Prorrata), the same updated for real time (I90DIA32,

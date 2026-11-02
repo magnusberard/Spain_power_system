@@ -33,11 +33,102 @@ function load_rd_bids(cfg)
     for row in get(b, "by_type", Any[])
         table[lowercase(String(row["type"]))] = (Float64(get(row, "up_markup", 0.0)), Float64(get(row, "down_markup", 0.0)))
     end
+    load_rd_offers!(String(get(b, "offers_file", "")), cfg)
     return (up_markup     = Float64(get(b, "up_markup", 0.0)),
             down_markup   = Float64(get(b, "down_markup", 0.0)),
             down_refund   = lowercase(String(get(b, "down_refund", "da"))),
             tie_break     = Float64(get(b, "tie_break_eur_mwh", 0.5)),
             by_type       = table)
+end
+
+# ------------------------------------------------------------
+# Step 4 (plan of 1 Nov 2026): phase II's down offers from REE's own buy-back offers.
+# P.O. 3.2 §6.2.2: phase II takes the offers to reduce the schedule in decreasing price. REE's I90DIA17 holds every
+# such offer; build_phase2_offers.py turns them into a curve per model unit and hour (its REE units' blocks) and per
+# fuel:technology and hour (all REE units of that technology, pooled), as segments (share of the unit's own
+# schedule, price), highest buy-back price first. [redispatch.bids].offers_file names the file; without it, or for a
+# unit and hour with no curve, the [redispatch.bids] values (B) stay. Two stated rules:
+#   - the refund is capped at the day-ahead price: phase II only restores the balance after phase I, and REE never
+#     redispatches for profit (P.O. 3.2 §6.2), so an offer above p_DA comes first but earns nothing;
+#   - used in phase I (DC day problem and its AC check) only, where phase II happens; real time keeps the
+#     [redispatch.bids] values (REE's real-time offers, I90DIA32, are not used yet).
+# Pumped storage has no curve (kept out of phase II, decision of 30 Oct): its [redispatch.bids] value stays.
+const RD_OFFERS = Dict{Tuple{String,Int,String},Vector{Tuple{Float64,Float64}}}()   # (date, hour, key) ⇒ [(share, €/MWh)]
+const RD_OFFERS_LOADED = Ref(false)
+const RD_OFFER_KEY = Ref{Union{Nothing,Tuple{String,Int}}}(nothing)   # (date, hour) while phase I's AC check solves
+
+function load_rd_offers!(f, cfg)
+    (RD_OFFERS_LOADED[] || isempty(f)) && return
+    RD_OFFERS_LOADED[] = true
+    f = isabspath(f) ? f : joinpath(@__DIR__, f)
+    run = get(cfg, "run", Dict())
+    lo, hi = String(get(run, "from", "0000")), String(get(run, "to", "9999"))
+    n = 0
+    for r in CSV.File(f; types = Dict(:date => String, :key => String))
+        (lo <= r.date <= hi) || continue
+        push!(get!(RD_OFFERS, (r.date, Int(r.hour), lowercase(r.key)), Tuple{Float64,Float64}[]),
+              (Float64(r.share), Float64(r.price)))
+        n += 1
+    end
+    for v in values(RD_OFFERS)                       # highest buy-back price first (cheapest to turn down)
+        sort!(v; by = last, rev = true)
+    end
+    @printf "Phase II offers : %d curves (%d segments) from %s (REE I90DIA17, step 4)\n" length(RD_OFFERS) n f
+end
+
+"""
+    rd_down_curve(g, key) -> [(share, €/MWh)] or nothing
+
+The unit's own buy-back curve for (date, hour), else its fuel:technology's pooled curve, else nothing.
+"""
+function rd_down_curve(g, key)
+    (key === nothing || isempty(RD_OFFERS)) && return nothing
+    (g["fuel"] == "Hydro" && lowercase(g["technology"]) == "pumped_storage") && return nothing
+    c = get(RD_OFFERS, (key[1], key[2], lowercase(String(g["name"]))), nothing)
+    c === nothing || return c
+    return get(RD_OFFERS, (key[1], key[2], lowercase("tech:$(g["fuel"]):$(g["technology"])")), nothing)
+end
+
+"""
+    rd_add_down_cost!(model, obj, dn, g, tgt_pu, p_da, p_dn, tie, key)
+
+Add the cost of turning unit g down by `dn` (pu) to `obj`: on its offer curve if it has one in this hour (segment i
+at most share_i × its schedule, at p_DA − min(price_i, p_DA) + tie), otherwise at the [redispatch.bids] refund p_dn.
+A last segment at the full p_DA keeps the problem feasible if the shares round below 1.
+"""
+function rd_add_down_cost!(model, obj, dn, g, tgt_pu, p_da, p_dn, tie, key)
+    c = rd_down_curve(g, key)
+    if c === nothing || tgt_pu <= 1e-9
+        JuMP.add_to_expression!(obj, (p_da - p_dn + tie) * BASEMVA, dn)
+        return
+    end
+    segs = JuMP.@variable(model, [1:length(c)], lower_bound = 0.0)
+    rest = JuMP.@variable(model, lower_bound = 0.0)
+    for (i, (s, pr)) in enumerate(c)
+        JuMP.set_upper_bound(segs[i], s * tgt_pu)
+        JuMP.add_to_expression!(obj, (p_da - min(pr, p_da) + tie) * BASEMVA, segs[i])
+    end
+    JuMP.add_to_expression!(obj, (p_da + tie) * BASEMVA, rest)
+    JuMP.@constraint(model, dn == sum(segs) + rest)
+    return
+end
+
+"""
+    rd_down_cost_eur(g, down_mw, sched_mw, p_da, p_dn, key) -> EUR
+
+The cost of turning g down by `down_mw` from `sched_mw`, as rd_add_down_cost! prices it (for the reports).
+"""
+function rd_down_cost_eur(g, down_mw, sched_mw, p_da, p_dn, key)
+    c = rd_down_curve(g, key)
+    (c === nothing || sched_mw <= 1e-6) && return down_mw * (p_da - p_dn)
+    left, cost = down_mw, 0.0
+    for (s, pr) in c
+        take = min(left, s * sched_mw)
+        cost += take * (p_da - min(pr, p_da))
+        left -= take
+        left <= 1e-9 && break
+    end
+    return cost + max(left, 0.0) * p_da
 end
 
 # Day-ahead price of the hour being solved: set by the hourly loop.
@@ -120,7 +211,8 @@ function rd_ree_objective!(pm, gens, sched, bids, p_da, xb_ct_cost)
         JuMP.@constraint(pm.model, pg == tgt + up - down)
         p_up, p_dn = rd_bid_prices(bids, g, p_da)
         JuMP.add_to_expression!(obj, (p_up - p_da + bids.tie_break) * BASEMVA, up)
-        JuMP.add_to_expression!(obj, (p_da - p_dn + bids.tie_break) * BASEMVA, down)
+        # step 4: REE's buy-back offers in phase I's AC check (RD_OFFER_KEY set); real time keeps the bids
+        rd_add_down_cost!(pm.model, obj, down, g, tgt, p_da, p_dn, bids.tie_break, RD_OFFER_KEY[])
     end
     JuMP.@objective(pm.model, Min, obj + xb_ct_cost)
     return

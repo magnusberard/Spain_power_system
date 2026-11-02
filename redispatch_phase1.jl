@@ -580,7 +580,8 @@ function run_phase1_day!(su, date_str)
                 up = JuMP.@variable(m, lower_bound = 0.0); dn = JuMP.@variable(m, lower_bound = 0.0)
                 JuMP.@constraint(m, pg == tgt + up - dn)
                 JuMP.add_to_expression!(obj, (p_up - p_da[k] + p1.bids.tie_break) * BASEMVA, up)
-                JuMP.add_to_expression!(obj, (p_da[k] - p_dn + p1.bids.tie_break) * BASEMVA, dn)
+                # phase II's down side: REE's buy-back offers (step 4) or the [redispatch.bids] refund
+                rd_add_down_cost!(m, obj, dn, g, tgt, p_da[k], p_dn, p1.bids.tie_break, (date_str, hours[k]))
             end
         end
     end
@@ -720,7 +721,8 @@ function run_phase1_day!(su, date_str)
             d = mw - da
             abs(d) > 1e-3 && (delta[name] = d)
             p_up, p_dn = rd_bid_prices(p1.bids, g, p_da[k])
-            d > 0 ? (up_mwh += d; cost += d * (p_up - p_da[k])) : (dn_mwh -= d; cost += -d * (p_da[k] - p_dn))
+            d > 0 ? (up_mwh += d; cost += d * (p_up - p_da[k])) :
+                    (dn_mwh -= d; cost += rd_down_cost_eur(g, -d, da, p_da[k], p_dn, (date_str, h)))
             if abs(d) > 0.5 || com
                 push!(RD_PHASE1_ROWS, (date = date_str, hour = h, unit = name, fuel = g["fuel"], technology = g["technology"],
                                        da_mw = round(da; digits = 1), phase1_mw = round(mw; digits = 1), committed = com))
@@ -919,6 +921,7 @@ function phase1_ac_check_day!(su, date_str)
         rd_network_fixes!(net)
         network, gens = net.network, net.gens
         RD_BIDS === nothing || (RD_CURRENT_PDA[] = rd_da_price(date_str, h))
+        RD_OFFER_KEY[] = (date_str, h)                   # step 4: REE's buy-back offers in this check (not in real time)
         RD_CURRENT_RESERVE[] = 0.0                       # no real-time reserve in phase I
         hydro_budget_cap!(network, pdvp, p1.hydro_budget, "phase1_ac", date_str)     # RD13
         n_rows = length(RD_STARTUP_ROWS)
@@ -975,7 +978,8 @@ function phase1_ac_check_day!(su, date_str)
             p1mw = get(base, name, 0.0) + get(delta, name, 0.0)
             d = p1mw - get(orig, name, 0.0)
             p_up, p_dn = rd_bid_prices(p1.bids, g, p_da)
-            d > 0 ? (up_mwh += d; cost += d * (p_up - p_da)) : (dn_mwh -= d; cost += -d * (p_da - p_dn))
+            d > 0 ? (up_mwh += d; cost += d * (p_up - p_da)) :
+                    (dn_mwh -= d; cost += rd_down_cost_eur(g, -d, get(orig, name, 0.0), p_da, p_dn, key))
             if abs(d) > 0.5 || name in on
                 push!(RD_PHASE1_ROWS, (date = date_str, hour = h, unit = name, fuel = g["fuel"], technology = g["technology"],
                                        da_mw = round(get(orig, name, 0.0); digits = 1),
@@ -993,6 +997,7 @@ function phase1_ac_check_day!(su, date_str)
         i_sum === nothing ? push!(RD_PHASE1_SUM, row) : (RD_PHASE1_SUM[i_sum] = row)
         prev_on = on
     end
+    RD_OFFER_KEY[] = nothing                             # real time keeps the [redispatch.bids] values
     @printf "  phase I AC check %s: %d of %d hours solved, %d unit-hours started for voltage\n" date_str n_ok nrow(day_ts) n_new
 end
 

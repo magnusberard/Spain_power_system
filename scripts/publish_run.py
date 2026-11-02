@@ -42,10 +42,12 @@ OMIE_CATS = ["Nuclear", "Coal", "CCGT", "Hydro", "Wind", "Solar", "CHP group", "
 # price_setters), grouped for the viewer. Reservoir hydro sets it at its water value.
 # indices are shared with the website and omie_conversion/build_price_setter.py; 6 (wind, solar and
 # run-of-river together) stays for packages published before 2 Nov 2026, and for real hours where they tie;
-# 10 ("Demand bid"), 13 ("Other renewables") and 14 ("Generator buy-back") occur on the real side only
+# 10 ("Demand bid"), 13 ("Other renewables") and 14 ("Generator buy-back") occur on the real side only;
+# 1 ("Storage", both directions together) stays for packages published before 2 Nov 2026
 SETTER_GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
                  "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear", "Demand bid",
-                 "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back"]
+                 "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back",
+                 "Pumped storage, generating", "Pumped storage, pumping", "Battery, discharging", "Battery, charging"]
 
 
 def setter_group(label):
@@ -56,9 +58,11 @@ def setter_group(label):
     if fuel == "Imports":
         return 8
     if fuel == "Hydro":
-        return {"reservoir": 0, "pumped_storage": 1, "run_of_river": 12}.get(tech, 7)   # mini_hydro: CHP group
+        if tech.startswith("pumped_storage"):   # da.jl adds ", charging" when the unit pumps
+            return 16 if "charging" in tech else 15
+        return {"reservoir": 0, "run_of_river": 12}.get(tech, 7)   # mini_hydro: CHP group
     if fuel == "Battery":
-        return 1
+        return 18 if "charging" in tech else 17
     if fuel == "Gas":
         return 2 if tech == "combined_cycle" else 7 if tech == "chp" else 3
     if fuel == "Oil":

@@ -53,10 +53,11 @@ OMIE_DEFAULT = os.environ.get("OMIE_DATA_DIR") or os.path.join(HERE, "..", "..",
 # the model's groups (scripts/publish_run.py SETTER_GROUPS) + demand
 GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
           "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear", "Demand bid",
-          "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back"]
+          "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back",
+          "Pumped storage, generating", "Pumped storage, pumping", "Battery, discharging", "Battery, charging"]
 SELL_TECH = {
     "Hidráulica Generación": 0,
-    "Hidráulica de Bombeo Puro": 1, "Almacenamiento Venta": 1, "Híbrida Renov.-Almacenamiento": 1,
+    "Hidráulica de Bombeo Puro": 15, "Almacenamiento Venta": 17, "Híbrida Renov.-Almacenamiento": 17,
     "Ciclo Combinado": 2,
     "Gas": 3,
     "Hulla Antracita": 4, "Carbón de Importación": 4, "Lignito Negro": 4, "Lignito Pardo": 4,
@@ -73,7 +74,7 @@ SELL_TECH = {
 # buyers: storage charging counts as storage; a generator buying back part of its schedule (common in
 # the intraday auctions, e.g. wind after a lower forecast) is "Generator buy-back", with its own type in
 # the column buyback_of; every other buyer (retailers, consumers, exports) is "Demand bid"
-STORAGE_BUY = {"Consumo de bombeo", "Consumo Bombeo Mixto", "Consumo Bombeo Puro", "Almacenamiento Compra"}
+STORAGE_BUY = {"Consumo de bombeo": 16, "Consumo Bombeo Mixto": 16, "Consumo Bombeo Puro": 16, "Almacenamiento Compra": 18}
 
 
 def num(x):
@@ -145,9 +146,9 @@ def setter_for_hour(rows, p_es, split, units):
     def grp(unit, side):
         tech = units.get(unit, ("", ""))[1]
         if side == "C":   # a buyer: storage charging, a generator buying back, or demand
-            if tech in STORAGE_BUY or SELL_TECH.get(tech) == 1:
-                return 1
-            return 14 if tech in SELL_TECH else 10
+            if tech in STORAGE_BUY:          # a pumping / charging unit buying energy
+                return STORAGE_BUY[tech]
+            return 14 if tech in SELL_TECH else 10   # e.g. a pumped-storage plant buying back its generation
         return SELL_TECH.get(tech, 9)
     by_group = defaultdict(float)
     for rem, _, (unit, side) in partly:

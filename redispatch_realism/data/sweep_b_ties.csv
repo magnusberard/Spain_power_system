@@ -1,0 +1,16 @@
+border,tie,kv,circuits_osm,model_branch,verdict,sources
+FR,Hernani - Argia,400,1,LTGES1027,in model,REE 2012 p.8; OSM way 47924213 'Liaison 400 kV n°1 Argia - Hernani' (RTE)
+FR,Arkale - Argia,220/225,1,LTGES0177,in model,REE 2012 p.8; OSM way 111559331 'Liaison 225 kV n°1 Argia - Arkale' (RTE)
+FR,Biescas - Pragnères,220/225,1,LTGES1219 (+ junction TR_fa1d5cde),in model,REE 2012 p.8; OSM way 604408280 'Liaison 225 kV n°1 Biescas - Pragnères' (RTE)
+FR,Vic - Baixas,400,1,none,"MISSING: Spanish end exists (ES00012 Vic 400 kV), no French bus at Baixas",REE 2012 p.8 ('400 kV que conecta Vic con Baixas'); OSM way 169729517 'Liaison 400 kV n°1 Vich - Baixas' (RTE)
+FR,Santa Llogaia - Baixas (INELFE HVDC 2x1000 MW),320 DC,2,LTGES1173a / LTGES1174b (+ LTGES1099/1100),in model (as 320 kV lines),REE 2012 p.17; OSM way 340426030 'HVDC Interconnexion électrique France-Espagne' (INELFE)
+PT,Cartelle - Alto Lindoso,400,2,LTGES0257a/b,in model,"REE 2012 map p.10; OSM way 135457224 'Alto Lindoso - Cartelle', 2 circuits"
+PT,Aldeadávila - Lagoaça,400,1,"LTGES0355 (ES00246 - ES00814, 5.5 km)","IN THE MODEL BUT CUT OFF: ES00814 lies at Lagoaça (41.221, -6.737) but is labelled ES and has no other branch, so no border share reaches it; fix = ES00814 country ES -> PT",REE 2012 map p.10; OSM way 144327162 'Lagoaça - Aldeadávila' (REN)
+PT,Cedillo - Falagueira,400,1,LTGES0363,in model,REE 2012 map p.10; OSM way 144599064
+PT,Brovales - Alqueva,400,1,LTGES0364,in model,REE 2012 map p.10; OSM way 144640006
+PT,Puebla de Guzmán - Tavira,400,1,LTGES1029,in model,OSM way 215856860 (REN); in service after the 2012 document
+PT,Saucelle - Pocinho,220,1,LTGES1225,in model,REE 2012 map p.10; OSM way 661761039 (REN)
+PT,Aldeadávila - Pocinho 1,220,1,none,"MISSING: both ends exist (ES00245 Aldeadávila 220 kV, ES00813 Pocinho PT)",REE 2012 map p.10; OSM way 1432621809 'Pocinho - Aldeadávila 1' (REE)
+PT,Aldeadávila - Pocinho 2,220,1,none,"MISSING: both ends exist (ES00245 Aldeadávila 220 kV, ES00813 Pocinho PT)",REE 2012 map p.10; OSM way 1432621810 'Pocinho - Aldeadávila 2' (REE)
+PT,(model only) ES00777 - Lindoso 1.37 km,400,-,LTGES1380a/b,dead end: ES00777 has no other branch,carries no flow; harmless
+all,ratings per tie,-,-,generic per voltage level,"no per-line source: kept generic for every tie, stated","REE and ENTSO-E publish exchange capacity per border only (REE interconnections page: Nov 2026 forecast FR->ES 1,600-3,000 MW); ENTSO-E's 2016 static grid model had ratings but needs registration and is outdated"

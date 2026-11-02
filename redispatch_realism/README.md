@@ -985,6 +985,21 @@ energy is at 0 €/MWh, so turning CCGT down costs the full p_DA and comes last 
 `test_phase2_offers.jl`: 13 tests pass (curves, fallbacks, cost by hand, REE's order in an LP). First run: December
 against the baseline the step-7 sweeps leave (ly8 if they correct nothing).
 
+**s4_dec and ly9a_dec results (2–29 Dec 2024, Solstorm, 2 Nov), each one change against ly8.** Both solved all 672
+hours; the markets' fallback only on 11 Dec (21 gates, as ly8).
+*ly9a (sweep a: Sagunto, Arrubal at 400 kV): passes, small effect.* Prices identical to ly8 (≤ 0.1 €/MWh), load shed
+31 → 21 MWh, phase I up 906 → 905 GWh, binding 2,550 → 2,541 branch-hours. Kept (sourced correction).
+*s4 (step 4, phase II from REE's buy-back offers): the down mix moves to REE's, the cost moves away.* Turned down,
+GWh (model phase I + II against REE's all down, I90DIA03 2–29 Dec): gas 202 → 59 (REE 27), reservoir + run-of-river
+hydro 415 → 114 (REE 132), wind + solar 213 → 431 (REE 379), nuclear 0 → 14 (REE 12.5), CHP + biomass 8 → 186 (REE
+74, now too high), pumped storage 0 → 24 (REE 103; kept out of the offers, it is turned down at its old value once
+other technologies cost more); total 838 → 827 (REE 783). Phase I up 906 → 889 GWh, starts 529 → 474, binding
+unchanged. Phase I + II cost 102.5 → 131.8 M€ (REE 77.0): 133 → 171 % of REE, the rise is on the down side (up volume
+barely moved): most offered energy is at 0 €/MWh, so a model reduction refunds less than B's fitted values assumed;
+REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why the model's reductions refund less than
+REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
+unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
+
 **Step 7 (c), 2 Nov: buses with more generation than branch capacity (`sweep_bus_capacity.py`, result-blind).** 6 of
 278 buses with ≥ 100 MW; each checked the same way against OpenStreetMap, which lines END at the substation
 (`data/sweep_c_osm_check.csv`): Ceclavín, Saetillas, El Monte and Málaga CC have one 220 kV circuit in OSM as in the

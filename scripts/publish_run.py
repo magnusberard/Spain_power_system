@@ -40,8 +40,12 @@ KX, KY = 111.32 * cos(radians(40.0)), 111.32       # map projection in km; the s
 OMIE_CATS = ["Nuclear", "Coal", "CCGT", "Hydro", "Wind", "Solar", "CHP group", "Imports"]
 # Who set the price (market_prices.csv price_setter, "<fuel> (<technology>)" from da.jl
 # price_setters), grouped for the viewer. Reservoir hydro sets it at its water value.
+# indices are shared with the website and omie_conversion/build_price_setter.py; 6 (wind, solar and
+# run-of-river together) stays for packages published before 2 Nov 2026, and for real hours where they tie;
+# 10 ("Demand bid") and 13 ("Other renewables") occur on the real side only
 SETTER_GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
-                 "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear"]
+                 "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear", "Demand bid",
+                 "Wind", "Solar, run-of-river", "Other renewables"]
 
 
 def setter_group(label):
@@ -52,7 +56,7 @@ def setter_group(label):
     if fuel == "Imports":
         return 8
     if fuel == "Hydro":
-        return {"reservoir": 0, "pumped_storage": 1, "run_of_river": 6}.get(tech, 7)   # mini_hydro: CHP group
+        return {"reservoir": 0, "pumped_storage": 1, "run_of_river": 12}.get(tech, 7)   # mini_hydro: CHP group
     if fuel == "Battery":
         return 1
     if fuel == "Gas":
@@ -63,8 +67,10 @@ def setter_group(label):
         return 4
     if fuel == "Nuclear":
         return 5
-    if fuel in ("Wind", "Solar"):
-        return 6
+    if fuel == "Wind":   # wind bids 0.18 EUR/MWh, solar and run-of-river 0.0036 (tied with each other)
+        return 11
+    if fuel == "Solar":
+        return 12
     if fuel in ("Biomass", "Waste", "Bio"):
         return 7
     return 9

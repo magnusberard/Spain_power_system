@@ -35,7 +35,7 @@ group "Wind, solar, run-of-river" keeps its index for packages published before.
 
 Writes <out> (default Data/OMIE/price_setter_<year>.csv, --market ida: price_setter_ida_<year>.csv):
 date, hour (0-23, local clock), [session,] price_es, unit, technology, zone, side (sell/buy),
-group, n_candidates, tie, clear.
+group, buyback_of (the plant type, for "Generator buy-back"), n_candidates, tie, clear.
 """
 import argparse
 import csv
@@ -53,7 +53,7 @@ OMIE_DEFAULT = os.environ.get("OMIE_DATA_DIR") or os.path.join(HERE, "..", "..",
 # the model's groups (scripts/publish_run.py SETTER_GROUPS) + demand
 GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
           "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear", "Demand bid",
-          "Wind", "Solar, run-of-river", "Other renewables"]
+          "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back"]
 SELL_TECH = {
     "Hidráulica Generación": 0,
     "Hidráulica de Bombeo Puro": 1, "Almacenamiento Venta": 1, "Híbrida Renov.-Almacenamiento": 1,
@@ -70,8 +70,9 @@ SELL_TECH = {
     "RE Tarifa CUR (uof)": 13,   # Portugal's regulated renewables (mostly wind; technology not given)
     "Import. de agentes externos": 8, "Import. de comercializadoras": 8,
 }
-# buyers that are storage charging count as storage; a generator buying back counts as its own type;
-# every other buyer (retailers, consumers, exports) is "Demand bid"
+# buyers: storage charging counts as storage; a generator buying back part of its schedule (common in
+# the intraday auctions, e.g. wind after a lower forecast) is "Generator buy-back", with its own type in
+# the column buyback_of; every other buyer (retailers, consumers, exports) is "Demand bid"
 STORAGE_BUY = {"Consumo de bombeo", "Consumo Bombeo Mixto", "Consumo Bombeo Puro", "Almacenamiento Compra"}
 
 
@@ -138,13 +139,15 @@ def setter_for_hour(rows, p_es, split, units):
             cands.append((eo - em, em > 0.05, key))
     if not cands:
         # no Iberian bid at the price: set in the coupled European market
-        return dict(unit="", technology="", zone="coupling", side="", group=8, n=0, tie=False, clear=True)
+        return dict(unit="", technology="", zone="coupling", side="", of="", group=8, n=0, tie=False, clear=True)
     # partly matched steps first (the marginal ones); if none, steps at the price left wholly unmatched
     partly = [c for c in cands if c[1]] or cands
     def grp(unit, side):
         tech = units.get(unit, ("", ""))[1]
-        if side == "C":   # a buyer: storage charging, a generator buying back (common in the intraday auctions), or demand
-            return 1 if tech in STORAGE_BUY else SELL_TECH.get(tech, 10)
+        if side == "C":   # a buyer: storage charging, a generator buying back, or demand
+            if tech in STORAGE_BUY or SELL_TECH.get(tech) == 1:
+                return 1
+            return 14 if tech in SELL_TECH else 10
         return SELL_TECH.get(tech, 9)
     by_group = defaultdict(float)
     for rem, _, (unit, side) in partly:
@@ -159,7 +162,8 @@ def setter_for_hour(rows, p_es, split, units):
         g, clear = 6, True
         rem, _, (unit, side) = max((c for c in partly if grp(*c[2]) in (11, 12, 13)), key=lambda c: c[0])
         zone, tech = units.get(unit, ("", ""))
-    return dict(unit=unit, technology=tech, zone=zone, side="buy" if side == "C" else "sell",
+    of = GROUPS[SELL_TECH[tech]] if clear and g == 14 and tech in SELL_TECH else ""
+    return dict(unit=unit, technology=tech, zone=zone, side="buy" if side == "C" else "sell", of=of,
                 group=g if clear else 9, n=len(partly), tie=len(partly) > 1, clear=clear)
 
 def read_hours(fh):
@@ -183,7 +187,7 @@ def setters_for_day(by_hour, prices, n, units, extra):
         st = setter_for_hour(by_hour[k], p_es, abs(p_es - p_pt) > 0.005, units)
         rows.append(dict(date=extra["date"], hour=h, **{k2: v for k2, v in extra.items() if k2 != "date"},
                          price_es=p_es, unit=st["unit"], technology=st["technology"], zone=st["zone"],
-                         side=st["side"], group=GROUPS[st["group"]], n_candidates=st["n"], tie=int(st["tie"]),
+                         side=st["side"], group=GROUPS[st["group"]], buyback_of=st["of"], n_candidates=st["n"], tie=int(st["tie"]),
                          clear=int(st["clear"])))
     return rows
 

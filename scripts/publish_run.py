@@ -42,10 +42,10 @@ OMIE_CATS = ["Nuclear", "Coal", "CCGT", "Hydro", "Wind", "Solar", "CHP group", "
 # price_setters), grouped for the viewer. Reservoir hydro sets it at its water value.
 # indices are shared with the website and omie_conversion/build_price_setter.py; 6 (wind, solar and
 # run-of-river together) stays for packages published before 2 Nov 2026, and for real hours where they tie;
-# 10 ("Demand bid") and 13 ("Other renewables") occur on the real side only
+# 10 ("Demand bid"), 13 ("Other renewables") and 14 ("Generator buy-back") occur on the real side only
 SETTER_GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
                  "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear", "Demand bid",
-                 "Wind", "Solar, run-of-river", "Other renewables"]
+                 "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back"]
 
 
 def setter_group(label):

@@ -20,6 +20,30 @@ resv_ids(nets) = sort([parse(Int, k) for (k, g) in nets[1].gens
     @test topped_budget((cuts = [],), 250.0) === nothing     # no budget: stays without one
 end
 
+@testset "top-up loop" begin
+    # fake stage results: 4 tradable hours, the slack in hour 1, price 1000 there
+    fake(slack, p1) = (status = "OPTIMAL", sched = Dict(h => Dict("SLACK" => (h == 1 ? slack : 0.0)) for h in 1:4),
+                       es_price = Dict(1 => p1, 2 => 60.0, 3 => 60.0, 4 => 60.0))
+    # nothing short: no re-solve
+    t = hydro_topup(fake(0.0, 60.0), x -> error("must not re-solve"), nothing, 4)
+    @test t.rounds == 0 && t.extra == 0.0
+    # priced at the slack but nothing produced (the edge): one round, 1 MWh/hour
+    t = hydro_topup(fake(0.0, 1000.0), x -> fake(0.0, x > 0 ? 60.0 : 1000.0), nothing, 4)
+    @test t.rounds == 1 && t.extra == 4.0 && t.at_cap == 0
+    # one top-up not enough (water spreads to other hours): repeats until covered
+    t = hydro_topup(fake(1000.0, 1000.0), x -> (s = max(0.0, 1000.0 - 0.9x); fake(s, s > 0.5 ? 1000.0 : 60.0)), nothing, 4)
+    @test t.rounds > 1 && t.slack_left < 0.5 && t.at_cap == 0
+    # hydro at full power in the short hour: more water does not help, it stops
+    t = hydro_topup(fake(140.0, 1000.0), x -> fake(140.0, 1000.0), nothing, 4)
+    @test t.rounds == 1 && t.slack_left == 140.0
+    # never more than max_rounds
+    t = hydro_topup(fake(1000.0, 1000.0), x -> fake(max(0.0, 1000.0 - 0.01x), 1000.0), nothing, 4)
+    @test t.rounds == 5
+    # only the tradable hours count (the CID's frozen hours do not)
+    t = hydro_topup(fake(500.0, 1000.0), x -> error("must not re-solve"), Set([2, 3]), 2)
+    @test t.rounds == 0
+end
+
 @testset "hydro top-up" begin
     # a load the fleet without reservoir hydro cannot meet (no sun, no wind), so
     # hydro must cover the rest; water dearer than every other offer, so hydro
@@ -60,4 +84,8 @@ end
     @test count(p -> p > 999.0, values(a.es_price)) == 24
     b = solve2(23 * 500.0 + 1500.0 + s2)
     @test slack_mwh(b.sched, nothing) < 1.0 && all(p < 999.0 for p in values(b.es_price))
+    # the same through the loop the chain uses
+    t = hydro_topup(a, x -> solve2(23 * 500.0 + 1500.0 + x), nothing, 24)
+    @test t.rounds >= 1 && t.slack_left < 0.5 && t.at_cap == 0
+    @test isapprox(t.extra, s2 + 24.0; atol = 1.0)
 end

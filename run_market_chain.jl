@@ -1762,15 +1762,16 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     else
         result = solve_gate(uc)
     end
-    # Hydro top-up: a stage after the day-ahead that needed the slack is solved once
-    # more with the day's reservoir budget raised by exactly the slack's MWh.
-    if HYDRO_BUDGET_TOPUP && label != "DA" && get(bv, :budget, nothing) !== nothing &&
-       result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")
-        short = slack_mwh(result.sched, free_set)
-        if short > 0.5
-            extra_water[] = short
-            result = uc === nothing ? solve_gate(uc) : first(intraday_clear(solve_gate, uc, UC_CFG.max_rounds))
-            @printf "    %s short %.0f MWh: hydro budget raised by it, %.0f MWh slack left\n" label short (result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ? slack_mwh(result.sched, free_set) : NaN)
+    # Hydro top-up: a stage after the day-ahead that is short (slack running, or an
+    # hour priced at the slack) is solved again with the day's reservoir budget
+    # raised by the slack's MWh + 1 MWh per hour, up to 5 rounds (da.jl, hydro_topup).
+    if HYDRO_BUDGET_TOPUP && label != "DA" && get(bv, :budget, nothing) !== nothing
+        resolve(x) = (extra_water[] = x;
+                      uc === nothing ? solve_gate(uc) : first(intraday_clear(solve_gate, uc, UC_CFG.max_rounds)))
+        t = hydro_topup(result, resolve, free_set, free_set === nothing ? length(nets) : length(free_set))
+        if t.rounds > 0
+            result = t.result
+            @printf "    %s short: hydro budget raised by %.0f MWh in %d round(s); left: %.0f MWh slack, %d hour(s) at the slack price\n" label t.extra t.rounds t.slack_left t.at_cap
         end
     end
     @printf "  %s %s : status=%s  cost=%.0f EUR  (%.1f s)\n" label date_str result.status result.objective (time() - t_start)
@@ -1830,7 +1831,9 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
     H         = length(nets)
     committed = Dict{Int,Dict{String,Float64}}()
     t_start   = time()
-    n_topup   = 0                   # gates re-solved by the hydro top-up
+    n_topup   = 0                   # gates re-solved by the hydro top-up,
+    topup_mwh = 0.0                 # the extra water they got,
+    cid_left  = 0                   # and how many stayed short after it
     # prev_full holds the most recent market view of every hour, seeded from the
     # predecessor stage (anchor_base, a (date,hour)⇒sched lookup).  Each gate
     # anchors its tradable hours to it with minimum movement, then refreshes it
@@ -1850,14 +1853,13 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                             hydro_budget_mwh = topped_budget(bv, extra),
                             uc_bounds = uc_bounds_for(date_str, day_ts))
         result   = gate(0.0)
-        # Hydro top-up ([bellman].hydro_budget_topup): a gate that needed the slack
-        # is solved once more with the budget raised by the slack's MWh.
-        if HYDRO_BUDGET_TOPUP && get(bv, :budget, nothing) !== nothing &&
-           result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")
-            short = slack_mwh(result.sched, free_set)
-            if short > 0.5
-                r2 = gate(short)
-                r2.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") && (result = r2; n_topup += 1)
+        # Hydro top-up ([bellman].hydro_budget_topup): a short gate is solved again
+        # with the budget raised (da.jl, hydro_topup).
+        if HYDRO_BUDGET_TOPUP && get(bv, :budget, nothing) !== nothing
+            t = hydro_topup(result, gate, free_set, length(free_set))
+            if t.rounds > 0
+                result = t.result; n_topup += 1; topup_mwh += t.extra
+                cid_left += t.at_cap > 0 || t.slack_left > 0.5
             end
         end
         if !(result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED"))
@@ -1881,7 +1883,7 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
             prev_full[h] = result.sched[h]
         end
     end
-    @printf "  CID %s : %d rolling gates solved%s  (%.1f s)\n" date_str H (n_topup > 0 ? ", $n_topup short: hydro budget raised" : "") (time() - t_start)
+    @printf "  CID %s : %d rolling gates solved%s  (%.1f s)\n" date_str H (n_topup > 0 ? @sprintf(", %d short: hydro budget raised by %.0f MWh in all, %d still short", n_topup, topup_mwh, cid_left) : "") (time() - t_start)
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, committed)
 end
 

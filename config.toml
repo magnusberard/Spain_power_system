@@ -3456,6 +3456,14 @@ enabled = true
 #   ["Gas:Combined_cycle", "Gas:Gas_turbine", "Coal", "Hydro:reservoir",
 #    "Hydro:pumped_storage", "Battery"]
 eligible = []
+# Soft daily hydro budget in balancing: reservoir hydro may use more water than
+# the day's budget ([bellman].hydro_budget) at hydro_budget_penalty EUR/MWh on top
+# of its water value, instead of the stage running short (slack, 1000 EUR/MWh) and
+# the budget's shadow price lifting every hour of the day. Real reservoirs hold
+# weeks of water and the budget is a plan; in real time REE calls hydro beyond it.
+# Balancing only: the market stages keep the hard budget. Run option HYDROSOFT=on.
+hydro_budget_soft    = false
+hydro_budget_penalty = 20.0
 
 [participation]
 # ── Share of each forecast update traded per intraday stage ─────────────────
@@ -3472,6 +3480,13 @@ eligible = []
 id2 = { load = 1.0, wind = 1.0, solar = 1.0 }
 id3 = { load = 1.0, wind = 1.0, solar = 1.0 }
 cid = { load = 1.0, wind = 1.0, solar = 1.0 }
+# Left for balancing: in ID2, ID3 and CID the slack unit stands for the part of a
+# forecast update no real offer can cover. Intraday trading is voluntary, so such
+# an order just does not trade and is left for balancing (which clears the full
+# final forecast anyway); the slack is priced 1 EUR/MWh above the hour's dearest
+# real offer instead of 1000 EUR/MWh (price setter "Slack (Left_for_balancing)").
+# Run option LEFTOPEN=on.
+left_for_balancing = false
 
 [crossborder]
 # Fix the market-cleared FR/PT import/export schedule at the border buses.

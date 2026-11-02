@@ -569,6 +569,15 @@ const BAL_ELIGIBLE = [String(x) for x in get(get(cfg, "balancing", Dict()), "eli
 @printf "Balancing units: %s
 " (isempty(BAL_ELIGIBLE) ? "all" :
     join(BAL_ELIGIBLE, ", ") * " (+ wind/solar curtailment; the rest hold their CID MW)")
+# [participation].left_for_balancing: intraday shortfalls are left for balancing at
+# the top of the real supply curve, not priced at the slack's 1000 EUR/MWh.
+# [balancing].hydro_budget_soft: in balancing the daily hydro budget may be
+# exceeded at hydro_budget_penalty EUR/MWh (da.jl). Both off by default.
+const LEFT_FOR_BALANCING = Bool(get(get(cfg, "participation", Dict()), "left_for_balancing", false))
+const BAL_HYDRO_PENALTY = Bool(get(get(cfg, "balancing", Dict()), "hydro_budget_soft", false)) ?
+    Float64(get(get(cfg, "balancing", Dict()), "hydro_budget_penalty", 20.0)) : nothing
+@printf "Shortages      : intraday %s; balancing hydro budget %s
+" (LEFT_FOR_BALANCING ? "left for balancing" : "slack at 1000 EUR/MWh") (BAL_HYDRO_PENALTY === nothing ? "hard" : @sprintf("soft, +%.0f EUR/MWh above it", BAL_HYDRO_PENALTY))
 const RD_ENABLED  = get(get(cfg, "redispatch", Dict()), "enabled", true)
 const RD_WATER_VALUE = lowercase(get(get(cfg, "redispatch", Dict()), "water_value", "constant"))
 const RD_OBJECTIVE   = lowercase(get(get(cfg, "redispatch", Dict()), "objective", "quadratic"))
@@ -1689,6 +1698,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     reservoir_gen_ids = reservoir_ids_of(nets)
     # [balancing].eligible: units that may not move hold their previous-gate MW
     hold_sched === nothing || hold_units!(nets, day_ts, date_str, hold_sched, BAL_ELIGIBLE, BASEMVA)
+    LEFT_FOR_BALANCING && label in ("ID2", "ID3") && left_for_balancing!(nets, BASEMVA)
 
     # Map tradable delivery hours → net indices.  Hours NOT tradable at this gate
     # are frozen at prev_schedule (prev_map); tradable hours are anchored to it
@@ -1737,6 +1747,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
                         hydro_budget_mwh = get(bv, :budget, nothing),
+                        hydro_budget_penalty = label == "BAL" ? BAL_HYDRO_PENALTY : nothing,
                         uc = u, uc_bounds = ucb)
     if uc !== nothing && label == "DA" && UC_CFG.mic_check
         # Minimum-income check loop (unit_commitment.jl, mic_clear)
@@ -1759,6 +1770,8 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     @printf "  %s %s : status=%s  cost=%.0f EUR  (%.1f s)\n" label date_str result.status result.objective (time() - t_start)
     result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
         error("$label dispatch failed for $date_str: $(result.status)")
+    result.hydro_over_mwh > 0.05 &&
+        @printf "    hydro above the day's budget: %.1f MWh (+%.0f EUR/MWh)\n" result.hydro_over_mwh BAL_HYDRO_PENALTY
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, result.sched;
                         nuclear_schedule = nuclear_schedule_acc)
     record_prices!(label, date_str, day_ts, result.es_price; setter = result.setter)
@@ -1809,6 +1822,7 @@ const CID_FALLBACKS = Ref(0)   # CID gates that failed and held the previous pla
 function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                           nuclear_sched = nothing, anchor_base = nothing)
     nets = build_da_nets(date_str, day_ts; nuclear_sched = nuclear_sched)
+    LEFT_FOR_BALANCING && left_for_balancing!(nets, BASEMVA)
     reservoir_gen_ids = reservoir_ids_of(nets)
     H         = length(nets)
     committed = Dict{Int,Dict{String,Float64}}()

@@ -1000,6 +1000,18 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**ly9b_dec results (sweep b: the border ties, 2–29 Dec, 2 Nov).** ly8 + Lagoaça relabelled PT, Aldeadávila–Pocinho
+220 kV ×2, Vic–Baixas continued to a French bus (data/sweep_b/, run from a copy of the repo). All 672 hours solved;
+the markets' fallback no longer needed (ly8: 21 gates on 11 Dec → 0); load shed 31 → 0 MWh. Day-ahead identical; ID2,
+ID3, BAL within 0.5 €/MWh; CID within 0.2 €/MWh on 27 of 28 days, but **11 Dec CID at 1,000 €/MWh for hours 06–13**
+(reservoir hydro setting; real CID that day 110): with the ties, 11 Dec clears with phase I's limits instead of
+falling back, at a scarcity price. Both runs get 11 Dec wrong for the same pre-existing reason, phase I's limits that
+day (choice 2 on the plan page) [stated limitation; December CID reported with and without 11 Dec]. At the borders
+the new ties carry flow: Baixas 488 MW on average (INELFE 788 → 458, Hernani 966 → 872), Lagoaça 324 MW (Lindoso 532
+→ 340). Saucelle–Pocinho binding 142 → 39 h; the Basque and Aragon ties barely change (Arkale–Argia 432 → 405 h,
+Biescas feeder 401 → 404), so the missing Vic–Baixas was not the cause of their binding. New binding: Vic–ES00737
+(34 h) and LTGES0779 (400 kV near Vic, 70 h). Phase I up 906 → 878 GWh, phase I+II cost 102.5 → 99.5 M€.
+
 **Step 2 check and step 4 diagnosis (2 Nov).** Step 2 passes: offers for all 366 days; per day REE accepted at most
 6.5 % of the buy-back energy offered (median 1.8 %) and of the sell energy (median 2.1 %), never more than offered;
 99.4 % of REE's 11.9 TWh of 2024 phase II down was on units with a buy-back offer that day, the rest exactly the two

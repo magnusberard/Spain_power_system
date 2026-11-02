@@ -955,6 +955,19 @@ sides get PyPSA-Eur's junction rating (Hörsch et al. 2018, text companion; PDF 
 redispatch networks (`rd_network_fixes!`: phase I, its AC check, real time); the copper-plate markets are untouched.
 Parse-checked; test: one December run after ly7.
 
+**ly8 results (2–29 Dec 2024, Solstorm, 2 Nov): the grid fix passes.** ly8 = ly7 + the grid fix above, nothing else
+(phase II still B). Pass marks set before the run: fewer phase I branch-hours at their limit 2,941 → 2,550 (38 → 33
+branches); no new infeasible hours (all 672 phase I hours solved in both; final AC 1 → 0 unsolved hours, load shed
+245 → 31 MWh; the markets' fallback still only on 11 Dec, 24 → 21 gates); intraday prices within 2.6 €/MWh (DA
+unchanged, ID2 −0.9, ID3 +1.5, CID +2.6, BAL +0.8). Against REE (compare_ree.py): phase I up 1,010 → 906 GWh (131 →
+118 % of REE's 769), phase I + II cost 110.3 → 102.5 M€ (143 → 133 % of REE's 77.0), real time up 168 → 107 GWh (REE
+369, of which 341 reserve, a stated gap). Where the binding went: the false 220/225 kV junctions to France 915 → 0
+hours, but the real 220/225 kV ties now bind instead, LTGES0177 (Arkale–Argia, 432 h) and LTGES1002 (the line into
+Biescas, 401 h), at PyPSA-Eur's generic 220 kV rating (1.29 kA) [open: the ties' ratings from REE/RTE, a step-7 data
+check]; the Cartagena 220/400 kV transformer 61 → 0, Ascó's 220 kV line LTGES0441 133 → 7, LTGES1029/1201 79 → 12.
+Diagnostic only: gas turned down in phase II 270 → 202 GWh (REE 27), so the grid explains a quarter of B's gas
+excess; the rest is B's prices (step 4).
+
 **REE's offer books (step 2, 2 Nov): `fetch_i90_offers.py`.** I90 holds every offer for technical constraints, not
 only the accepted ones (I90DIA00 index): simple offers per unit, block and hour (I90DIA17; Venta = up, Compra =
 buy-back, energy signed as published, Precedencia Mercado/Prorrata), the same updated for real time (I90DIA32,

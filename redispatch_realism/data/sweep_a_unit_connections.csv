@@ -1,0 +1,163 @@
+ree_sub,ree_kv,region,ree_code,ree_mw,status,model_units,model_names,model_kv,model_mw,moved_by_override
+ACECA,220,Castilla-La Mancha,ACE220-CAI,386.0,same voltage,G0385 G0386,Aceca 3 power station; Aceca 4 power station,220,759.0,False
+ACECA,220,Castilla-La Mancha,ACE220-CAU,366.0,same voltage,G0385 G0386,Aceca 3 power station; Aceca 4 power station,220,759.0,False
+ALBARELLOS,220,Galicia,ALB220-GR1,59.0,no match,,,,,
+ALDEADAVILA,400,Castilla y León,ALD400-GR1,218.0,no match,,,,,
+ALDEADAVILA,400,Castilla y León,ALD400-GR2,211.0,no match,,,,,
+ALGECIRAS,220,Andalucía,ALG220-GR1,821.0,same voltage,G0113,Bahia de Algeciras power station,220,821.0,True
+ALMARAZ CN,400,Extremadura,ALZ400-GR1,974.0,same voltage,G0092 G0093,Almaraz nuclear power plant,400,2093.0,True
+ALMARAZ E.T.,220,Extremadura,EAM220-VCN1,83.0,no match,,Almaraz nuclear power plant,,,
+ALMARAZ E.T.,220,Extremadura,EAM220-VCN2,82.0,no match,,Almaraz nuclear power plant,,,
+ALMARAZ E.T.,220,Extremadura,EAM220-VCN3,82.0,no match,,Almaraz nuclear power plant,,,
+AMOREBIETA,400,País Vasco,AMO400-GR1,786.0,same voltage,G0745,Amorebieta power station,400,786.0,False
+ARAGON,400,Aragón,ARG400-CNU1,791.0,no match,,,,,
+ARCOS DE LA FRONTERA,400,Andalucía,ARF400-GR1,389.0,same voltage,G0004 G0005,Arcos de la Frontera power station,400,762.0,False
+ARCOS DE LA FRONTERA,400,Andalucía,ARF400-GR2,373.0,same voltage,G0004 G0005,Arcos de la Frontera power station,400,762.0,False
+ARCOS DE LA FRONTERA,400,Andalucía,ARF400-GR4,823.0,same voltage,G0006,Arcos de la Frontera power station,400,823.0,False
+ASCÓ,400,Cataluña,ASC400-GR1,992.0,same voltage,G0138 G0139,Ascó nuclear power plant,400,2060.0,True
+ASCÓ,400,Cataluña,ASC400-GR2,930.0,same voltage,G0138 G0139,Ascó nuclear power plant,400,2060.0,True
+ASTILLERO,220,Cantabria,AST220-RQU1,76.0,no match,,,,,
+BARRANCO TIRAJANA,220,Canarias,TJN220-GR1,154.0,no match,,,,,
+BARRANCO TIRAJANA,220,Canarias,TJN220-GR2,154.0,no match,,,,,
+BARRANCO TIRAJANA,220,Canarias,TJN220-GR3/G,146.0,no match,,,,,
+BARRANCO TIRAJANA,66,Canarias,TJN66-GR2,38.0,no match,,,,,
+BELESAR,220,Galicia,BEL220-GR1,103.0,no match,,,,,
+BELESAR,220,Galicia,BEL220-GR2,105.0,no match,,,,,
+BELESAR,220,Galicia,BEL220-GR3,103.0,no match,,,,,
+BESOS NUEVO,220,Cataluña,BSN220-TG1,859.0,same voltage,G0790,Besós 5 power station,220,859.0,False
+BESOS NUEVO,220,Cataluña,BSN220-GR3,412.0,same voltage,G0788 G0789,Besós 3 power station; Besós 4 power station,220,812.0,False
+BESOS NUEVO,220,Cataluña,BSN220-GR4,377.0,same voltage,G0788 G0789,Besós 3 power station; Besós 4 power station,220,812.0,False
+BIESCAS,220,Aragón,BIE220-GR1,31.0,no match,,,,,
+BIESCAS,220,Aragón,BIE220-GR2,31.0,no match,,,,,
+CA'S TRESORER,220,Islas Baleares,TSR220-TG1,74.0,same voltage,G0586 G0587,Ca's Tresorer power station,220,460.0,False
+CA'S TRESORER,220,Islas Baleares,TSR220-TG2,74.0,same voltage,G0586 G0587,Ca's Tresorer power station,220,460.0,False
+CA'S TRESORER,220,Islas Baleares,TSR220-TG4,74.0,same voltage,G0586 G0587,Ca's Tresorer power station,220,460.0,False
+CA'S TRESORER,220,Islas Baleares,TSR220-TG5,74.0,same voltage,G0586 G0587,Ca's Tresorer power station,220,460.0,False
+CA'S TRESORER,220,Islas Baleares,TSR220-TV3,70.0,same voltage,G0586 G0587,Ca's Tresorer power station,220,460.0,False
+CA'S TRESORER,220,Islas Baleares,TSR220-TV6,70.0,same voltage,G0586 G0587,Ca's Tresorer power station,220,460.0,False
+CASTEJON,400,Comunidad Foral de Navarra,CJN400-ELR2,418.0,same voltage,G0085 G0086 G0088,Castejón power station,400,1222.0,False
+CASTEJON,400,Comunidad Foral de Navarra,CJN400-ELR1,393.0,same voltage,G0085 G0086 G0088,Castejón power station,400,1222.0,False
+CASTEJON,400,Comunidad Foral de Navarra,CJN400-GR2,379.0,same voltage,G0085 G0086 G0088,Castejón power station,400,1222.0,False
+CASTRELO,220,Galicia,CTL220-GR1,56.0,no match,,"Castrelo de Miño, Castrelo Fenosa, Castrelo Grupo I",,,
+CASTRELO,220,Galicia,CTL220-GR2,56.0,no match,,"Castrelo de Miño, Castrelo Fenosa, Castrelo Grupo I",,,
+CORNATEL,220,Galicia,CRN220-GR2,217.0,same voltage,G0094,Cornatel Group 1,220,200.0,False
+CRISTOBAL COLON,220,Andalucía,CBC220-GR4,379.0,same voltage,G0373,Cristobal Colón power station,220,391.0,False
+ERISTE,220,Aragón,ERI220-GR1,40.0,no match,,,,,
+ERISTE,220,Aragón,ERI220-GR2,40.0,no match,,,,,
+ESCATRON,400,Aragón,ECT400-CCE,804.0,same voltage,G0171,Escatrón 3 power station,400,804.0,True
+FAUSITA,400,Región de Murcia,FAU400-GR1,816.0,no match,,,,,
+GRADO,220,Aragón,GRD220-ATP1,9.0,no match,,,,,
+GRADO,220,Aragón,GRD220-ATP2,9.0,no match,,,,,
+GRANADILLA,220,Canarias,GRIL220-GR4/V,312.0,no match,,,,,
+GRANADILLA,220,Canarias,GRIL220-GR5,233.0,no match,,,,,
+GRANADILLA,220,Canarias,GRIL220-GR6,76.0,no match,,,,,
+GRANADILLA,66,Canarias,GRIL66-GR1/D,24.0,no match,,,,,
+GRANADILLA,66,Canarias,GRIL66-GR2/D,24.0,no match,,,,,
+GRANADILLA,66,Canarias,GRIL66-GR1/G,38.0,no match,,,,,
+GUARDO,220,Castilla y León,GUA220-GR1,85.0,no match,,,,,
+GUIA DE ISORA,66,Canarias,GSR66-GR0,50.0,no match,,,,,
+GUINCHOS,66,Canarias,GNC66-TRP3,23.0,no match,,,,,
+IBIZA,132,Islas Baleares,IBZ132-TG5,22.0,other voltage,G0523 G0528 G0530 G0526 G0527 G0531,Vila Ibiza power station,250,150.0,False
+IBIZA,132,Islas Baleares,IBZ132-TG6,25.0,other voltage,G0523 G0528 G0530 G0526 G0527 G0531,Vila Ibiza power station,250,150.0,False
+IBIZA,132,Islas Baleares,IBZ132-TG7,75.0,other voltage,G0529,Vila Ibiza power station,250,74.0,False
+IBIZA 23,66,Islas Baleares,I23B66-TG1,25.0,other voltage,G0523 G0528 G0530 G0526 G0527 G0531,Vila Ibiza power station,250,150.0,False
+IBIZA,66,Islas Baleares,IBZ66-BW8,16.0,no match,,Vila Ibiza power station,,,
+IBIZA,66,Islas Baleares,IBZ66-BW9,16.0,no match,,Vila Ibiza power station,,,
+IBIZA,66,Islas Baleares,IBZ66-MAN1,18.0,no match,,Vila Ibiza power station,,,
+IBIZA,66,Islas Baleares,IBZ66-MAN2,32.0,other voltage,G0524,Vila Ibiza power station,250,31.0,False
+IBIZA,66,Islas Baleares,IBZ66-MAN3,43.0,no match,,Vila Ibiza power station,,,
+IBIZA,66,Islas Baleares,IBZ66-MAN4,18.0,no match,,Vila Ibiza power station,,,
+IBIZA,66,Islas Baleares,IBZ66-TG4,24.0,other voltage,G0523 G0528 G0530 G0526 G0527 G0531,Vila Ibiza power station,250,150.0,False
+JINAMAR,66,Canarias,JMR66-GR1/D,12.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR2/D,12.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR3/D,12.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR4/D,24.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR5/D,24.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR4/V,60.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR1/G,23.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR2/G,38.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR3/G,38.0,no match,,,,,
+JINAMAR,66,Canarias,JMR66-GR5/V,60.0,no match,,,,,
+LA PLANA,400,Comunidad Valenciana,PLA400-CTN1,839.0,same voltage,G0284 G0286,Plana del Vent power station,400,834.0,False
+LA PLANA,400,Comunidad Valenciana,PLA400-CTN3,782.0,same voltage,G0284 G0286,Plana del Vent power station,400,834.0,False
+LOS RAMOS,220,Andalucía,RAM220-CCMA,416.0,no match,,,,,
+MAHON,132,Islas Baleares,MHN132-BW1,50.0,other voltage,G0195 G0197 G0201 G0199,Mahon power station,220,197.0,False
+MAHON,132,Islas Baleares,MHN132-BW2,39.0,other voltage,G0198 G0200,Mahon power station,220,77.0,False
+MAHON,132,Islas Baleares,MHN132-BW3,33.0,other voltage,G0195 G0197 G0198 G0200 G0201 G0199,Mahon power station,220,274.0,False
+MAHON,132,Islas Baleares,MHN132-TG1,34.0,other voltage,G0198 G0200,Mahon power station,220,77.0,False
+MAHON,132,Islas Baleares,MHN132-TG2,14.0,other voltage,G0195 G0197 G0198 G0200 G0201 G0199,Mahon power station,220,274.0,False
+MAHON,132,Islas Baleares,MHN132-TG3,14.0,other voltage,G0195 G0197 G0198 G0200 G0201 G0199,Mahon power station,220,274.0,False
+MAHON,132,Islas Baleares,MHN132-TG4,14.0,other voltage,G0195 G0197 G0198 G0200 G0201 G0199,Mahon power station,220,274.0,False
+MAHON,132,Islas Baleares,MHN132-TG5,50.0,other voltage,G0195 G0197 G0201 G0199,Mahon power station,220,197.0,False
+MEDIANO,220,Aragón,MDN220-GR1,33.0,no match,,,,,
+MEDIANO,220,Aragón,MDN220-GR2,33.0,no match,,,,,
+MEIRAMA,220,Galicia,MEI220-GR1,212.0,no match,,,,,
+MORVEDRE,400,Comunidad Valenciana,MRV400-GR1,390.0,no match,,,,,
+MORVEDRE,400,Comunidad Valenciana,MRV400-GR2,381.0,no match,,,,,
+MORVEDRE,400,Comunidad Valenciana,MRV400-GR3,397.0,no match,,,,,
+MUELA,400,Comunidad Valenciana,MUE400-GR1,219.0,no match,,La Muela; La Muela II,,,
+MUELA,400,Comunidad Valenciana,MUE400-GR2,221.0,no match,,La Muela; La Muela II,,,
+MUELA,400,Comunidad Valenciana,MUE400-GR3,219.0,no match,,La Muela; La Muela II,,,
+MURTERAR,220,Islas Baleares,MTE220-TG12,75.0,no match,,,,,
+MURTERAR,220,Islas Baleares,MTE220-G1,50.0,no match,,,,,
+NUEVA ESCOMBRERAS,400,Región de Murcia,NES400-AES1,383.0,same voltage,G0255 G0259 G0262,Cartagena (Escombreras) power station,400,1249.0,True
+NUEVA ESCOMBRERAS,400,Región de Murcia,NES400-AES2,387.0,same voltage,G0255 G0259 G0262,Cartagena (Escombreras) power station,400,1249.0,True
+NUEVA ESCOMBRERAS,400,Región de Murcia,NES400-AES3,388.0,same voltage,G0255 G0259 G0262,Cartagena (Escombreras) power station,400,1249.0,True
+NUEVA ESCOMBRERAS,400,Región de Murcia,NES400-REP1,418.0,same voltage,G0255 G0259 G0262,Cartagena (Escombreras) power station,400,1249.0,True
+NUEVA ESCOMBRERAS,400,Región de Murcia,NES400-REP2,418.0,same voltage,G0255 G0259 G0262,Cartagena (Escombreras) power station,400,1249.0,True
+NUEVA ESCOMBRERAS,400,Región de Murcia,NES400-REP3,413.0,same voltage,G0255 G0259 G0262,Cartagena (Escombreras) power station,400,1249.0,True
+ONDINAS,220,Castilla y León,PEN220-GR1,40.0,no match,,"Las Ondinas Gr, Las Ondinas, Ondinas",,,
+ONDINAS,220,Castilla y León,PEN220-GR2,40.0,no match,,"Las Ondinas Gr, Las Ondinas, Ondinas",,,
+ONDINAS,220,Castilla y León,OND220-GR2,119.0,same voltage,G0743,"Las Ondinas Gr, Las Ondinas, Ondinas",220,123.0,False
+PALOS,220,Andalucía,AOS220-CRAB,85.0,no match,,Palos power station,,,
+PALOS,400,Andalucía,AOS400-GR1,387.0,same voltage,G0377 G0378 G0379,Palos power station,400,1167.0,True
+PALOS,400,Andalucía,AOS400-GR2,389.0,same voltage,G0377 G0378 G0379,Palos power station,400,1167.0,True
+PALOS,400,Andalucía,AOS400-GR3,387.0,same voltage,G0377 G0378 G0379,Palos power station,400,1167.0,True
+PEÑADRADA,220,Castilla y León,PEN220-GR1,19.0,no match,,,,,
+PEÑADRADA,220,Castilla y León,PEN220-GR2,19.0,no match,,,,,
+PINAR DE REY,220,Andalucía,PIN220-ROQ1,368.0,no match,,,,,
+PINAR DE REY,220,Andalucía,PIN220-ROQ2,402.0,no match,,,,,
+PINAR DE REY,400,Andalucía,PIN400-GBR1,393.0,no match,,,,,
+PINAR DE REY,400,Andalucía,PIN400-GBR2,388.0,no match,,,,,
+PORTODEMOUROS,220,Galicia,PDM220-GR1,48.0,no match,,"Portodemouros Grupo, Portodemouros Grupo 2",,,
+PORTODEMOUROS,220,Galicia,PDM220-GR2,48.0,no match,,"Portodemouros Grupo, Portodemouros Grupo 2",,,
+PRADA,220,Galicia,PRD220-GR1,33.0,no match,,,,,
+PRADA,220,Galicia,PRD220-GR2,33.0,no match,,,,,
+PUENTE S.MIGUEL,220,Cantabria,PSM220-SNI,100.0,no match,,,,,
+PUENTES G.R.,400,Galicia,PGR400-GR3,551.0,no match,,,,,
+PUENTES G.R.,400,Galicia,PGR400-TG1,835.0,no match,,,,,
+PUNTA GRANDE,66,Canarias,PNG66-GR11,34.0,no match,,,,,
+QUEREÑO,220,Galicia,QRN220-GR1,17.0,no match,,,,,
+QUEREÑO,220,Galicia,QRN220-GR2,17.0,no match,,,,,
+RIBA-ROJA,220,Cataluña,RRJ220-GR1,65.0,no match,,"Ribarroja, Riba Roja Endesa, Riba Roja 1",,,
+RIBA-ROJA,220,Cataluña,RRJ220-GR2,65.0,no match,,"Ribarroja, Riba Roja Endesa, Riba Roja 1",,,
+RIBA-ROJA,220,Cataluña,RRJ220-GR3,65.0,no match,,"Ribarroja, Riba Roja Endesa, Riba Roja 1",,,
+RIBA-ROJA,220,Cataluña,RRJ220-GR4,65.0,no match,,"Ribarroja, Riba Roja Endesa, Riba Roja 1",,,
+RICOBAYO,220,Castilla y León,RIC220-GR1,158.0,no match,,Ricobayo (Esla),,,
+S.AGUSTIN,220,Galicia,SAG220-GR1,33.0,no match,,,,,
+S.AGUSTIN,220,Galicia,SAG220-GR2,33.0,no match,,,,,
+SABON,220,Galicia,SBO220-GR1/CCB,382.0,same voltage,G0334,Sabón 3 power station,220,391.0,False
+SAN ESTEBAN,220,Galicia,EST220-GR1,66.0,no match,,"Santo Estavo II, San Esteban II Grupo 1",,,
+SAN ESTEBAN,220,Galicia,EST220-GR2,251.0,same voltage,G0221,"Santo Estavo II, San Esteban II Grupo 1",220,285.0,False
+SAN ESTEBAN,220,Galicia,EST220-GR3,66.0,no match,,"Santo Estavo II, San Esteban II Grupo 1",,,
+SAN ESTEBAN,220,Galicia,EST220-GR4,66.0,no match,,"Santo Estavo II, San Esteban II Grupo 1",,,
+SAN ESTEBAN,220,Galicia,EST220-GR5,1.0,no match,,"Santo Estavo II, San Esteban II Grupo 1",,,
+SAN PEDRO,220,Galicia,SPR220-TRP1,58.0,no match,,,,,
+SANTA ENGRACIA,400,La Rioja,SNG400-ARU1,395.0,no match,,,,,
+SANTA ENGRACIA,400,La Rioja,SNG400-ARU2,390.0,no match,,,,,
+SANTA MARINA,220,Castilla y León,PEN220-GR2,14.0,no match,,,,,
+SANTURCE,220,País Vasco,STC220-GR4,396.0,same voltage,G0461,Santurce power station,220,396.0,False
+SOBRADELO,220,Galicia,SOB220-TM1,38.0,no match,,,,,
+SON REUS,220,Islas Baleares,REU220-TG10,74.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SON REUS,220,Islas Baleares,REU220-TG12,75.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SON REUS,220,Islas Baleares,REU220-TG34,39.0,same voltage,G0190,Son Reus incineration power station,220,38.0,False
+SON REUS,220,Islas Baleares,REU220-TG5,53.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SON REUS,220,Islas Baleares,REU220-TG6,91.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SON REUS,220,Islas Baleares,REU220-TG7,91.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SON REUS,220,Islas Baleares,REU220-TG9,75.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SON REUS,220,Islas Baleares,REU220-TV8,114.0,no match,,Son Reus incineration power station; Son Reus power station,,,
+SOTO DE RIBERA,400,Principado de Asturias,SRI400-GR4,426.0,same voltage,G0447 G0448,Soto de Ribera power station,400,854.0,True
+SOTO DE RIBERA,400,Principado de Asturias,SRI400-GR5,428.0,same voltage,G0447 G0448,Soto de Ribera power station,400,854.0,True
+TRILLO,400,Castilla-La Mancha,TRL400-GR1,1003.0,same voltage,G0307,Trillo nuclear power plant,400,1066.0,True
+VELLE,220,Galicia,41,48.0,no match,,,,,
+ZIERBENA,400,País Vasco,785,470.0,no match,,,,,

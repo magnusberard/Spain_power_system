@@ -67,6 +67,9 @@ def offer_sheet(book, name, quarter=False):
     label = [str(c).strip() for c in rows[hi - 1]]
     is_time = lambda c: bool(re.fullmatch(r"\d\d-\d\d", c) or re.fullmatch(r"\d+(\.0)?", c))
     slots = [j for j, c in enumerate(label) if is_time(c)]           # energy column; price is the next one
+    if not slots:                                                     # REE published the sheet without its time columns
+        print(f"    {name}: no hourly/quarter-hour columns in REE's sheet (totals only) - kept as missing for this day")
+        return pd.DataFrame()                                         # (seen: I90DIA32 on 28 May 2024)
     first = slots[0]
     ids = [c for c in head[:first] if c and c not in ("Total MWh", "PMP €/MWh", "Indicadores")]
     idx = [head.index(c) for c in ids]

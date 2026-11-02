@@ -48,7 +48,6 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                   anchor::Union{Nothing,Dict{Int,Dict{String,Float64}}} = nothing,
                   foreign = nothing,
                   hydro_budget_mwh::Union{Nothing,Float64} = nothing,
-                  hydro_budget_penalty::Union{Nothing,Float64} = nothing,
                   uc = nothing,
                   uc_bounds = nothing)
     H     = length(nets)
@@ -186,17 +185,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # a single day, so without this the day-ahead turbines to the fleet's
     # nameplate whenever the water value undercuts gas.  A cap rather than an
     # equality: the day may still use less water if it is not economic.
-    # hydro_budget_penalty (balancing, [balancing].hydro_budget_soft): the budget
-    # becomes soft, each MWh above it costs the penalty on top of its water value,
-    # so a short hour calls more water instead of the slack (1000 EUR/MWh).
-    budget_over = nothing
     if hydro_budget_mwh !== nothing && !isempty(reservoir_gen_ids)
-        if hydro_budget_penalty === nothing
-            JuMP.@constraint(model, total_hydro_puh <= hydro_budget_mwh / BASEMVA)
-        else
-            budget_over = JuMP.@variable(model, lower_bound = 0.0)   # pu·h above the budget
-            JuMP.@constraint(model, total_hydro_puh <= hydro_budget_mwh / BASEMVA + budget_over)
-        end
+        JuMP.@constraint(model, total_hydro_puh <= hydro_budget_mwh / BASEMVA)
     end
 
     θ_ref = isempty(cuts) ? 0.0 : maximum(c.b + c.a1 * v_es_0 for c in cuts)
@@ -407,8 +397,6 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         JuMP.add_to_expression!(op, g["cost"][1], pg[(h, k)])
     end
     cost_expr = op + θ_future + foreign_cost + start_cost_expr
-    budget_over === nothing ||
-        JuMP.add_to_expression!(cost_expr, hydro_budget_penalty * BASEMVA, budget_over)
 
     # ── Minimum-movement anchor (intraday gates only) ─────────────────────────
     # For every tradable-hour unit that has a previous-gate set-point, add L1
@@ -517,11 +505,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                        EU = JuMP.dual(bal_foreign[("EU", h)]) / BASEMVA) for h in 1:H]
         end
     end
-    hydro_over_mwh = budget_over === nothing || !(status in ("OPTIMAL", "LOCALLY_SOLVED")) ? 0.0 :
-                     JuMP.value(budget_over) * BASEMVA
     return (sched = sched, status = status, objective = objval, xb = xb,
-            prices = prices, es_price = es_price, setter = setter, uc = uc_result,
-            hydro_over_mwh = hydro_over_mwh)
+            prices = prices, es_price = es_price, setter = setter, uc = uc_result)
 end
 
 # ── Price setter: which unit is on the margin in each priced hour ─────────────
@@ -594,3 +579,10 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
     end
     return out
 end
+
+# ── Hydro top-up ([bellman].hydro_budget_topup, run_market_chain.jl) ──────────
+# MWh the slack covered in a solved gate's tradable hours (net indices; nothing = all).
+slack_mwh(sched, hours) = sum((get(sched[h], "SLACK", 0.0)
+                               for h in (hours === nothing ? keys(sched) : hours) if haskey(sched, h)); init = 0.0)
+# The day's reservoir budget raised by `extra` MWh (nothing stays nothing).
+topped_budget(bv, extra) = (b = get(bv, :budget, nothing); b === nothing ? nothing : b + extra)

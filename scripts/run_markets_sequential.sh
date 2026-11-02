@@ -24,8 +24,7 @@
 #   BALANCING      optional [balancing].eligible: all or qualified
 #   PUMPING        optional: removed = real 2024 pumping out of the load ([run].remove_pumping)
 #   PUMPLIMIT      optional: on = pumped storage pumps with its own pumping power ([da].pump_limits)
-#   LEFTOPEN       optional: on = intraday shortfalls left for balancing ([participation].left_for_balancing)
-#   HYDROSOFT      optional: on = soft daily hydro budget in balancing ([balancing].hydro_budget_soft)
+#   HYDROTOPUP     optional: on = a short stage after the DA gets the slack's MWh as extra hydro ([bellman].hydro_budget_topup)
 #   IDSTARTS       optional: on = CCGT/coal may start in ID2/ID3 ([unit_commitment].intraday_starts)
 #   SCENARIO       optional: trinity or necp = a 2035 run (make_run_config.jl --scenario)
 #
@@ -54,8 +53,7 @@ RES_ARG=()
 [ -n "${BALANCING:-}" ] && RES_ARG+=(--balancing "$BALANCING")
 [ -n "${PUMPING:-}" ] && RES_ARG+=(--pumping "$PUMPING")
 [ -n "${PUMPLIMIT:-}" ] && RES_ARG+=(--pump-limits "$PUMPLIMIT")
-[ -n "${LEFTOPEN:-}" ] && RES_ARG+=(--left-open "$LEFTOPEN")
-[ -n "${HYDROSOFT:-}" ] && RES_ARG+=(--hydro-soft "$HYDROSOFT")
+[ -n "${HYDROTOPUP:-}" ] && RES_ARG+=(--hydro-topup "$HYDROTOPUP")
 [ -n "${IDSTARTS:-}" ] && RES_ARG+=(--intraday-starts "$IDSTARTS")
 [ -n "${SCENARIO:-}" ] && RES_ARG+=(--scenario "$SCENARIO")
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1

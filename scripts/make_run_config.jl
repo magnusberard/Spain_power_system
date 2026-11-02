@@ -38,11 +38,9 @@
 #                        the real 2024 pumping taken out of the load (pumping.jl)
 #   --pump-limits on     [da] pump_limits = true: each pumped-storage plant pumps with
 #                        its own pumping power (Data/pumped_storage_pump_mw.csv)
-#   --left-open on       [participation] left_for_balancing = true: what ID2/ID3/CID
-#                        cannot cover is left for balancing, not priced at the
-#                        slack's 1000 EUR/MWh
-#   --hydro-soft on      [balancing] hydro_budget_soft = true: in balancing hydro may
-#                        exceed its daily budget at [balancing].hydro_budget_penalty
+#   --hydro-topup on     [bellman] hydro_budget_topup = true: a stage after the
+#                        day-ahead that needs the slack is solved again with the
+#                        day's hydro budget raised by the slack's MWh
 #   --intraday-starts on [unit_commitment] intraday_starts = true: CCGT/coal units
 #                        may start in ID2 and ID3 if the start pays (needs --gas on)
 #
@@ -129,15 +127,15 @@ function get_key(lines, section, key)
 end
 
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--left-open on|off] [--hydro-soft on|off] [--intraday-starts on|off] [--scenario trinity|necp] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--hydro-topup on|off] [--intraday-starts on|off] [--scenario trinity|necp] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
     opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept", "--pump-limits" => "off",
-               "--left-open" => "off", "--hydro-soft" => "off", "--intraday-starts" => "off",
+               "--hydro-topup" => "off", "--intraday-starts" => "off",
                "--config" => joinpath(REPO, "config.toml"))
     i = 2
     while i <= length(args)
-        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--left-open", "--hydro-soft", "--intraday-starts", "--scenario", "--config") &&
+        args[i] in ("--stage", "--gas", "--markup", "--hydro", "--res-input", "--participation", "--balancing", "--pumping", "--pump-limits", "--hydro-topup", "--intraday-starts", "--scenario", "--config") &&
             i < length(args) || error(usage)
         opt[args[i]] = args[i+1]
         i += 2
@@ -152,7 +150,7 @@ function main(args)
     opt["--balancing"] in ("all", "qualified") || error(usage)
     opt["--pumping"] in ("kept", "removed") || error(usage)
     opt["--pump-limits"] in ("on", "off") || error(usage)
-    for k in ("--left-open", "--hydro-soft", "--intraday-starts")
+    for k in ("--hydro-topup", "--intraday-starts")
         opt[k] in ("on", "off") || error(usage)
     end
     opt["--intraday-starts"] == "on" && opt["--gas"] != "on" && get(opt, "--scenario", "") == "" &&
@@ -203,8 +201,7 @@ function main(args)
     opt["--balancing"] == "qualified" && set_key(lines, "balancing", "eligible", BAL_QUALIFIED)
     opt["--pumping"] == "removed" && set_key(lines, "run", "remove_pumping", "true")
     opt["--pump-limits"] == "on" && set_key(lines, "da", "pump_limits", "true")
-    opt["--left-open"] == "on" && set_key(lines, "participation", "left_for_balancing", "true")
-    opt["--hydro-soft"] == "on" && set_key(lines, "balancing", "hydro_budget_soft", "true")
+    opt["--hydro-topup"] == "on" && set_key(lines, "bellman", "hydro_budget_topup", "true")
     opt["--intraday-starts"] == "on" && set_key(lines, "unit_commitment", "intraday_starts", "true")
     text = join(lines, "\n")
     crlf && (text = replace(text, "\n" => "\r\n"))
@@ -212,7 +209,7 @@ function main(args)
     tmp = out * ".tmp"
     write(tmp, text)
     mv(tmp, out; force = true)
-    println("wrote $out ($(scen == "" ? "" : "scenario " * scen * ", ")stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]), left open $(opt["--left-open"]), hydro soft $(opt["--hydro-soft"]), intraday starts $(opt["--intraday-starts"]))")
+    println("wrote $out ($(scen == "" ? "" : "scenario " * scen * ", ")stage $stage, gas $(opt["--gas"]), markup $(opt["--markup"])$(hyd == "" ? "" : ", hydro " * hyd)$(res == "" ? "" : ", res_input " * res), participation $(opt["--participation"]), balancing $(opt["--balancing"]), pumping $(opt["--pumping"]), pump limits $(opt["--pump-limits"]), hydro top-up $(opt["--hydro-topup"]), intraday starts $(opt["--intraday-starts"]))")
 end
 
 main(ARGS)

@@ -77,28 +77,6 @@ bal_may_move(fuel, tech, eligible) =
     isempty(eligible) || fuel in BAL_ALWAYS_FREE || fuel in eligible ||
     lowercase("$(fuel):$(tech)") in lowercase.(eligible)
 
-# [participation].left_for_balancing: in ID2, ID3 and CID the slack unit stands for
-# the part of a forecast update that no real offer can cover. Intraday trading is
-# voluntary, so such an order just does not trade and is left for balancing, which
-# clears the full final forecast anyway (the slack is never held there). Priced
-# `margin` EUR/MWh above the hour's dearest real offer instead of 1000 EUR/MWh, so
-# a short hour is priced at the top of the real supply curve and does not lift the
-# day's water to 1000. Returns the number of slack units changed.
-function left_for_balancing!(nets, basemva; margin = 1.0)
-    n = 0
-    for net in nets
-        top = maximum((Float64(g["cost"][1]) for g in values(net.gens)
-                       if !(String(g["fuel"]) in ("Slack", "LoadShed"))); init = 0.0)
-        for g in values(net.gens)
-            String(g["fuel"]) == "Slack" || continue
-            g["cost"] = [top + margin * basemva, 0.0]       # cost[1]: EUR per pu·h
-            g["technology"] = "Left_for_balancing"
-            n += 1
-        end
-    end
-    return n
-end
-
 # Fix every unit that may not move at its MW in `hold_sched[(date, hour)]`;
 # `nets` are prepare_network's per-hour outputs (named tuples with `gens`).
 function hold_units!(nets, day_ts, date_str, hold_sched, eligible, basemva)

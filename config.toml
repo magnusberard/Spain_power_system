@@ -635,6 +635,14 @@ volume_file  = "Data/Volume_Scen0_OUT_sddp4.csv"
 turbine_file = "Data/TurbineSchedule_sddp4.csv"
 hydro_budget = true
 hydro_budget_basis = "week"
+# hydro_budget_topup: in the stages after the day-ahead (ID2, ID3, CID gates,
+# balancing), if the slack (1000 EUR/MWh) is needed, the day's budget is raised
+# by exactly the slack's MWh and the stage solved once more, so reservoir hydro
+# covers the shortfall. Without it a short hour (e.g. 648 MWh on 20 May 2024)
+# priced the day's water at 1000 EUR/MWh and lifted every hydro-set hour. Real
+# reservoirs hold weeks of water; REE calls hydro beyond plan when short. The
+# extra water is not taken back later (~10 GWh/year). Run option HYDROTOPUP=on.
+hydro_budget_topup = false
 
 [da]
 # ── Stage 1: Day-Ahead market ────────────────────────────────────────────────
@@ -3456,14 +3464,6 @@ enabled = true
 #   ["Gas:Combined_cycle", "Gas:Gas_turbine", "Coal", "Hydro:reservoir",
 #    "Hydro:pumped_storage", "Battery"]
 eligible = []
-# Soft daily hydro budget in balancing: reservoir hydro may use more water than
-# the day's budget ([bellman].hydro_budget) at hydro_budget_penalty EUR/MWh on top
-# of its water value, instead of the stage running short (slack, 1000 EUR/MWh) and
-# the budget's shadow price lifting every hour of the day. Real reservoirs hold
-# weeks of water and the budget is a plan; in real time REE calls hydro beyond it.
-# Balancing only: the market stages keep the hard budget. Run option HYDROSOFT=on.
-hydro_budget_soft    = false
-hydro_budget_penalty = 20.0
 
 [participation]
 # ── Share of each forecast update traded per intraday stage ─────────────────
@@ -3480,13 +3480,6 @@ hydro_budget_penalty = 20.0
 id2 = { load = 1.0, wind = 1.0, solar = 1.0 }
 id3 = { load = 1.0, wind = 1.0, solar = 1.0 }
 cid = { load = 1.0, wind = 1.0, solar = 1.0 }
-# Left for balancing: in ID2, ID3 and CID the slack unit stands for the part of a
-# forecast update no real offer can cover. Intraday trading is voluntary, so such
-# an order just does not trade and is left for balancing (which clears the full
-# final forecast anyway); the slack is priced 1 EUR/MWh above the hour's dearest
-# real offer instead of 1000 EUR/MWh (price setter "Slack (Left_for_balancing)").
-# Run option LEFTOPEN=on.
-left_for_balancing = false
 
 [crossborder]
 # Fix the market-cleared FR/PT import/export schedule at the border buses.

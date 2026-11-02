@@ -288,6 +288,11 @@ const HYDRO_BUDGET_BASIS = Symbol(lowercase(String(
     get(cfg["bellman"], "hydro_budget_basis", "week"))))
 HYDRO_BUDGET_BASIS ∈ (:week, :day) ||
     error("config.toml: [bellman].hydro_budget_basis must be \"week\" or \"day\"")
+# [bellman].hydro_budget_topup: a stage after the day-ahead that needs the slack
+# is solved once more with the day's budget raised by the slack's MWh, so hydro
+# covers the shortfall instead of pricing the day's water at 1000 EUR/MWh.
+const HYDRO_BUDGET_TOPUP = Bool(get(cfg["bellman"], "hydro_budget_topup", false))
+HYDRO_BUDGET_TOPUP && println("Hydro top-up   : on (ID2/ID3/CID/BAL short ⇒ hydro covers the slack's MWh)")
 
 const VOLTAGE_BAND       = Float64(get(get(cfg, "network", Dict()), "voltage_band", 0.05))
 const GEN_BUS_VCTRL = get(get(cfg, "network", Dict()), "gen_bus_voltage_control", false)
@@ -569,15 +574,6 @@ const BAL_ELIGIBLE = [String(x) for x in get(get(cfg, "balancing", Dict()), "eli
 @printf "Balancing units: %s
 " (isempty(BAL_ELIGIBLE) ? "all" :
     join(BAL_ELIGIBLE, ", ") * " (+ wind/solar curtailment; the rest hold their CID MW)")
-# [participation].left_for_balancing: intraday shortfalls are left for balancing at
-# the top of the real supply curve, not priced at the slack's 1000 EUR/MWh.
-# [balancing].hydro_budget_soft: in balancing the daily hydro budget may be
-# exceeded at hydro_budget_penalty EUR/MWh (da.jl). Both off by default.
-const LEFT_FOR_BALANCING = Bool(get(get(cfg, "participation", Dict()), "left_for_balancing", false))
-const BAL_HYDRO_PENALTY = Bool(get(get(cfg, "balancing", Dict()), "hydro_budget_soft", false)) ?
-    Float64(get(get(cfg, "balancing", Dict()), "hydro_budget_penalty", 20.0)) : nothing
-@printf "Shortages      : intraday %s; balancing hydro budget %s
-" (LEFT_FOR_BALANCING ? "left for balancing" : "slack at 1000 EUR/MWh") (BAL_HYDRO_PENALTY === nothing ? "hard" : @sprintf("soft, +%.0f EUR/MWh above it", BAL_HYDRO_PENALTY))
 const RD_ENABLED  = get(get(cfg, "redispatch", Dict()), "enabled", true)
 const RD_WATER_VALUE = lowercase(get(get(cfg, "redispatch", Dict()), "water_value", "constant"))
 const RD_OBJECTIVE   = lowercase(get(get(cfg, "redispatch", Dict()), "objective", "quadratic"))
@@ -1698,7 +1694,6 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     reservoir_gen_ids = reservoir_ids_of(nets)
     # [balancing].eligible: units that may not move hold their previous-gate MW
     hold_sched === nothing || hold_units!(nets, day_ts, date_str, hold_sched, BAL_ELIGIBLE, BASEMVA)
-    LEFT_FOR_BALANCING && label in ("ID2", "ID3") && left_for_balancing!(nets, BASEMVA)
 
     # Map tradable delivery hours → net indices.  Hours NOT tradable at this gate
     # are frozen at prev_schedule (prev_map); tradable hours are anchored to it
@@ -1742,12 +1737,12 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
     end
     ucb = (label == "DA" || uc !== nothing) ? nothing : uc_bounds_for(date_str, day_ts)
+    extra_water = Ref(0.0)          # [bellman].hydro_budget_topup, below
     solve_gate(u) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es,
                         gurobi_da(log_file = log_file);
                         free_hours = free_set, prev_sched = prev_map, anchor = anchor_map,
                         foreign = foreign,
-                        hydro_budget_mwh = get(bv, :budget, nothing),
-                        hydro_budget_penalty = label == "BAL" ? BAL_HYDRO_PENALTY : nothing,
+                        hydro_budget_mwh = topped_budget(bv, extra_water[]),
                         uc = u, uc_bounds = ucb)
     if uc !== nothing && label == "DA" && UC_CFG.mic_check
         # Minimum-income check loop (unit_commitment.jl, mic_clear)
@@ -1767,11 +1762,20 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
     else
         result = solve_gate(uc)
     end
+    # Hydro top-up: a stage after the day-ahead that needed the slack is solved once
+    # more with the day's reservoir budget raised by exactly the slack's MWh.
+    if HYDRO_BUDGET_TOPUP && label != "DA" && get(bv, :budget, nothing) !== nothing &&
+       result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")
+        short = slack_mwh(result.sched, free_set)
+        if short > 0.5
+            extra_water[] = short
+            result = uc === nothing ? solve_gate(uc) : first(intraday_clear(solve_gate, uc, UC_CFG.max_rounds))
+            @printf "    %s short %.0f MWh: hydro budget raised by it, %.0f MWh slack left\n" label short (result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ? slack_mwh(result.sched, free_set) : NaN)
+        end
+    end
     @printf "  %s %s : status=%s  cost=%.0f EUR  (%.1f s)\n" label date_str result.status result.objective (time() - t_start)
     result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") ||
         error("$label dispatch failed for $date_str: $(result.status)")
-    result.hydro_over_mwh > 0.05 &&
-        @printf "    hydro above the day's budget: %.1f MWh (+%.0f EUR/MWh)\n" result.hydro_over_mwh BAL_HYDRO_PENALTY
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, result.sched;
                         nuclear_schedule = nuclear_schedule_acc)
     record_prices!(label, date_str, day_ts, result.es_price; setter = result.setter)
@@ -1822,11 +1826,11 @@ const CID_FALLBACKS = Ref(0)   # CID gates that failed and held the previous pla
 function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
                           nuclear_sched = nothing, anchor_base = nothing)
     nets = build_da_nets(date_str, day_ts; nuclear_sched = nuclear_sched)
-    LEFT_FOR_BALANCING && left_for_balancing!(nets, BASEMVA)
     reservoir_gen_ids = reservoir_ids_of(nets)
     H         = length(nets)
     committed = Dict{Int,Dict{String,Float64}}()
     t_start   = time()
+    n_topup   = 0                   # gates re-solved by the hydro top-up
     # prev_full holds the most recent market view of every hour, seeded from the
     # predecessor stage (anchor_base, a (date,hour)⇒sched lookup).  Each gate
     # anchors its tradable hours to it with minimum movement, then refreshes it
@@ -1841,10 +1845,21 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
     for hgate in 1:H
         free_set   = Set(hgate:H)
         anchor_map = Dict(h => prev_full[h] for h in hgate:H if haskey(prev_full, h))
-        result   = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
+        gate(extra) = solve_da(nets, reservoir_gen_ids, bv.cuts, bv.v_es, gurobi_da();
                             free_hours = free_set, prev_sched = committed, anchor = anchor_map,
-                            hydro_budget_mwh = get(bv, :budget, nothing),
+                            hydro_budget_mwh = topped_budget(bv, extra),
                             uc_bounds = uc_bounds_for(date_str, day_ts))
+        result   = gate(0.0)
+        # Hydro top-up ([bellman].hydro_budget_topup): a gate that needed the slack
+        # is solved once more with the budget raised by the slack's MWh.
+        if HYDRO_BUDGET_TOPUP && get(bv, :budget, nothing) !== nothing &&
+           result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED")
+            short = slack_mwh(result.sched, free_set)
+            if short > 0.5
+                r2 = gate(short)
+                r2.status ∈ ("OPTIMAL", "LOCALLY_SOLVED") && (result = r2; n_topup += 1)
+            end
+        end
         if !(result.status ∈ ("OPTIMAL", "LOCALLY_SOLVED"))
             # The previous gate's plan for this hour is feasible by construction (it
             # solved with the same frozen hours and constraints), so a failed gate is
@@ -1866,7 +1881,7 @@ function run_cid_rolling!(schedule, rows_acc, date_str, day_ts, bv;
             prev_full[h] = result.sched[h]
         end
     end
-    @printf "  CID %s : %d rolling gates solved  (%.1f s)\n" date_str H (time() - t_start)
+    @printf "  CID %s : %d rolling gates solved%s  (%.1f s)\n" date_str H (n_topup > 0 ? ", $n_topup short: hydro budget raised" : "") (time() - t_start)
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, committed)
 end
 

@@ -303,6 +303,10 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          # plants of isolated systems that generations.csv attached
                          # to a mainland bus (Ceuta).  `nothing` ⇒ none.
                          removed_units::Union{Nothing,AbstractSet{String}} = nothing,
+                         # Pumping power per pumped-storage unit_id [MW] ([da].pump_limits,
+                         # pumping.jl): the unit pumps down to −pump_mw instead of −Pmax.
+                         # `nothing` ⇒ pumping power = Pmax (as before).
+                         pump_mw::Union{Nothing,Dict{String,Float64}} = nothing,
                          # Stage-6 redispatch freeze set ([redispatch].frozen_fuels
                          # in config.toml).  A bare "Fuel" entry (e.g. "Nuclear")
                          # freezes every technology under that fuel; "Fuel:technology"
@@ -662,7 +666,13 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         # Pumped storage is bidirectional: negative pg = pumping (consumption).
         # Its floor is therefore −Pmax, not 0 — with a 0 floor the unit can only
         # ever generate, which is what let it run as free baseload.
-        pmin_free = is_pumped ? -pmax_pu : nuc_floor
+        # With pump_mw ([da].pump_limits) it pumps only down to the plant's own
+        # pumping power: only some machines of a plant are reversible.
+        pump_pu = !is_pumped || pump_mw === nothing ? pmax_pu :
+                  haskey(pump_mw, String(row.unit_id)) ?
+                  min(pmax_pu, pump_mw[String(row.unit_id)] / BASEMVA) :
+                  error("[da].pump_limits: no pumping power for $(row.unit_id) in Data/pumped_storage_pump_mw.csv")
+        pmin_free = is_pumped ? -pump_pu : nuc_floor
         pmin_g  = is_frozen ? frozen_pu : pmin_free
         pmax_g  = is_frozen ? frozen_pu : pmax_pu
         pg_strt = frozen_pu !== nothing ? clamp(frozen_pu, pmin_free, pmax_pu) :

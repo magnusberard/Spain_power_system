@@ -53,6 +53,7 @@ include("data_preparation.jl")
 include("bellman.jl")
 include("fuel_prices.jl")
 include("markup.jl")
+include("participation.jl")
 include("unit_commitment.jl")
 include("crossborder.jl")
 include("da.jl")
@@ -63,6 +64,7 @@ include("week_sampling.jl")
 include("week_profiles.jl")
 include("foreign_zones.jl")
 include("ntc_capacity.jl")
+include("pumping.jl")
 
 # ── 1. Config ────────────────────────────────────────────────
 # SPAIN_CONFIG lets a run point at an alternative config file (A/B experiments)
@@ -491,6 +493,18 @@ const ID2_ENABLED = get(get(cfg, "id2",        Dict()), "enabled", true)
 const ID3_ENABLED = get(get(cfg, "id3",        Dict()), "enabled", true)
 const CID_ENABLED = get(get(cfg, "cid",        Dict()), "enabled", true)
 const BAL_ENABLED = get(get(cfg, "balancing",  Dict()), "enabled", true)
+# [participation] / [balancing].eligible (participation.jl): how much of each
+# forecast update the intraday stages trade, and which units may balance.
+const PARTICIPATION = load_participation(cfg)
+const PARTICIPATION_ON = participation_active(PARTICIPATION)
+const BAL_ELIGIBLE = [String(x) for x in get(get(cfg, "balancing", Dict()), "eligible", String[])]
+@printf "Participation  : %s
+" (PARTICIPATION_ON ?
+    join(["$st " * join(["$src $(PARTICIPATION[st][src])" for src in ("load", "wind", "solar")], ", ")
+          for st in ("id2", "id3", "cid")], " | ") : "1.0 in every intraday stage (active)")
+@printf "Balancing units: %s
+" (isempty(BAL_ELIGIBLE) ? "all" :
+    join(BAL_ELIGIBLE, ", ") * " (+ wind/solar curtailment; the rest hold their CID MW)")
 const RD_ENABLED  = get(get(cfg, "redispatch", Dict()), "enabled", true)
 const RD_WATER_VALUE = lowercase(get(get(cfg, "redispatch", Dict()), "water_value", "constant"))
 const RD_OBJECTIVE   = lowercase(get(get(cfg, "redispatch", Dict()), "objective", "quadratic"))
@@ -672,6 +686,13 @@ RES_INPUT in ("accepted", "offered") ||
 const RES_OLD_NAME = RES_INPUT == "offered" ? "ES_old_offered" : "ES_old"
 RES_OLD_DIR = joinpath(@__DIR__, "Data", RES_OLD_NAME)
 @printf "Solar/wind     : %s (Data/%s)\n" RES_INPUT RES_OLD_NAME
+# [run].remove_pumping: the 2024 load minus the real 2024 pumping (pumping.jl).
+const PUMPING = load_pumping(cfg, SCEN_ACTIVE)
+PUMPING === nothing || println("Pumping        : real 2024 pumping taken out of the load (Data/OMIE/pumping_2024.csv)")
+# [da].pump_limits: pumped storage pumps with its own pumping power, not its full capacity (pumping.jl).
+const PUMP_MW = load_pump_limits(cfg, SCEN_ACTIVE)
+PUMP_MW === nothing ||
+    @printf "Pump limits    : %.0f MW of pumping over %d plants (Data/pumped_storage_pump_mw.csv)\n" sum(values(PUMP_MW)) length(PUMP_MW)
 
 function es_filename(date_str)
     d = Date(date_str)
@@ -776,7 +797,13 @@ else
     hourly_id3 = DataFrame(hourly_id3_rows); sort!(hourly_id3, [:date, :hour])
     hourly_cid = DataFrame(hourly_cid_rows); sort!(hourly_cid, [:date, :hour])
     hourly_bal = DataFrame(hourly_bal_rows); sort!(hourly_bal, [:date, :hour])
+    PUMPING === nothing || remove_pumping!(PUMPING, hourly_da, hourly_id2, hourly_id3, hourly_cid, hourly_bal)
 end
+
+# [participation]: the intraday stages clear against partly updated forecasts;
+# balancing keeps the full final one (participation.jl).
+PARTICIPATION_ON && apply_participation!(hourly_da, hourly_id2, hourly_id3, hourly_cid, PARTICIPATION;
+                                         id2_on = ID2_ENABLED, id3_on = ID3_ENABLED, cid_on = CID_ENABLED)
 
 function print_profile_summary(label, df)
     @printf "%s profiles: %d hours across %d days\n" label nrow(df) length(unique(df.date))
@@ -1478,7 +1505,7 @@ function build_da_nets(date_str, day_ts; nuclear_sched = nothing)
                      ramp_limits = RAMP_LIMITS,
                      island_buses = ISLAND_BUSES,
                      islands_off_market = true,
-                     removed_units = REMOVED_UNITS,
+                     removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                      chp_blocks = chp_blocks_for(date_str),
                      chp_siting_buses = CHP_SITING_BUSES,
                      voltage_band = VOLTAGE_BAND,
@@ -1570,9 +1597,12 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
                             nuclear_schedule_acc = nothing,
                             free_hours_actual = nothing,
                             prev_schedule = nothing,
-                            foreign = nothing)
+                            foreign = nothing,
+                            hold_sched = nothing)
     nets = build_da_nets(date_str, day_ts; nuclear_sched = nuclear_sched)
     reservoir_gen_ids = reservoir_ids_of(nets)
+    # [balancing].eligible: units that may not move hold their previous-gate MW
+    hold_sched === nothing || hold_units!(nets, day_ts, date_str, hold_sched, BAL_ELIGIBLE, BASEMVA)
 
     # Map tradable delivery hours → net indices.  Hours NOT tradable at this gate
     # are frozen at prev_schedule (prev_map); tradable hours are anchored to it
@@ -1872,7 +1902,8 @@ if RUN_MARKET && DA_ENABLED
             day_ts = filter(r -> r.date == date_str, hourly_bal)
             run_copper_plate!(bal_schedule, bal_rows_all, "BAL", date_str, day_ts, bv, "bal";
                               nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
-                              prev_schedule = pre_bal_schedule)
+                              prev_schedule = pre_bal_schedule,
+                              hold_sched = isempty(BAL_ELIGIBLE) ? nothing : pre_bal_schedule)
             clear_stage_day!(date_str, da_schedule, da_nuclear_schedule,
                              id2_schedule, id3_schedule, cid_schedule)
         end
@@ -2173,7 +2204,7 @@ if RD_WATER_VALUE == "constant"
                               da_dispatch = sched_hour,
                               frozen_fuels = RD_FROZEN_FUELS,
                               island_buses = ISLAND_BUSES,
-                              removed_units = REMOVED_UNITS,
+                              removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                               nuclear_availability = nuclear_avail_for(date_str),
                               coal_availability = coal_avail_for(date_str),
                               chp_blocks = chp_blocks_for(date_str),
@@ -2250,7 +2281,7 @@ elseif RD_WATER_VALUE == "piecewise"
                                 da_dispatch = rd_sched_for(date_str, ts.hour),
                                 frozen_fuels = RD_FROZEN_FUELS,
                                 island_buses = ISLAND_BUSES,
-                                removed_units = REMOVED_UNITS,
+                                removed_units = REMOVED_UNITS, pump_mw = PUMP_MW,
                                 nuclear_availability = nuclear_avail_for(date_str),
                                 coal_availability = coal_avail_for(date_str),
                                 chp_blocks = chp_blocks_for(date_str),

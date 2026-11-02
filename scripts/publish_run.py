@@ -291,6 +291,51 @@ def stream_rd_cost(path, hours, unit_index, n_units):
     return cost
 
 
+def balancing_ledger(units, keys, delta, market, both, gap, runs_repo):
+    """Who left the gap the balancing stage covers and who covered it (the viewer's Balancing page).
+    gap = (load, wind, solar) BAL - CID from the profiles: in the model only these three miss their
+    plan, one national change per source. delta = BAL - CID per responding unit (rows of `market`),
+    summed per fuel:technology for `cover`. Units that ever move by 1 MW or more are listed with code,
+    fuel:technology, grid node, capacity and the site name from reference/sites.json; their hourly
+    moves go sparse into the month files (ledger_month). Returns (ledger, unit rows, moves)."""
+    dl, dw, ds = gap
+    rows = np.flatnonzero(market)
+    cover = {}
+    for k in sorted({keys[i] for i in rows}):
+        sel = [j for j, i in enumerate(rows) if keys[i] == k]
+        v = delta[sel].sum(axis=0)
+        if np.any(np.abs(v[both]) >= 1):
+            cover[f"{k[0]}:{k[1]}"] = r1(np.where(both, v, np.nan))
+    moves = np.where(both[None, :], np.rint(delta), 0)
+    moves[np.abs(moves) < 1] = 0
+    moving = np.flatnonzero(np.any(moves != 0, axis=1))
+    site_of = {}
+    sites_file = runs_repo / "reference" / "sites.json"
+    if sites_file.exists():
+        for s in json.loads(sites_file.read_text(encoding="utf-8"))["sites"]:
+            for u in s["model_units"]:
+                site_of[u] = s["name"]
+    ulist = []
+    for j in moving:
+        u = units.iloc[rows[j]]
+        ulist.append(dict(code=u.unit_name, t=f"{u.fuel}:{u.technology}",
+                          bus=None if pd.isna(u.bus_i) else int(u.bus_i),
+                          cap=round(float(u.capacity_mw), 1), site=site_of.get(u.unit_name)))
+    ledger = dict(gap=dict(wind=r1(dw), solar=r1(ds), load=r1(dl)), cover=cover, units=ulist)
+    return ledger, moves[moving]
+
+
+def ledger_month(moves, hcols):
+    """One month of the ledger's plant moves, sparse: hour offset in the month (uint16), index into
+    ledger.units (uint16) and MW (int16, + = up), for every unit and hour that moved 1 MW or more."""
+    m = moves[:, hcols]
+    u, h = np.nonzero(m)
+    order = np.lexsort((u, h))
+    u, h = u[order], h[order]
+    mw = np.clip(m[u, h], -32767, 32767)
+    return dict(h=b64(h.astype("<u2")), u=b64(u.astype("<u2")), mw=b64(mw.astype("<i2")))
+
+
 def traded_volume(rdir, hours):
     """Volume traded in each intraday stage (MW in each hour, one side), the model's counterpart of
     the energy OMIE reports per auction. Every participant has a position, output minus consumption:
@@ -501,7 +546,7 @@ def build(rdir, runs_repo, args):
     # to cover (CID -> BAL
     # load minus wind minus solar; positive = the system needs more energy). Compared with REE's
     # balancing energy and imbalance on the viewer's REE (e·sios) tab.
-    balancing = None
+    balancing = ledger = ledger_moves = None
     if (rdir / "cid_dispatch.csv").exists() and (rdir / "cid_profiles.csv").exists():
         print("  reading the continuous-intraday schedule for the balancing volume ...")
         _, cid_signed, cid_seen = stream_dispatch(rdir / "cid_dispatch.csv", "gen_id", hours, uidx, U)
@@ -521,6 +566,7 @@ def build(rdir, runs_repo, args):
             prof[st] = a
         dl, dw, ds = prof["bal"] - prof["cid"]
         balancing = dict(up=r1(up), down=r1(down), need=r1(dl - dw - ds))
+        ledger, ledger_moves = balancing_ledger(units, keys, d, market, both, (dl, dw, ds), runs_repo)
 
     traded = traded_volume(rdir, hours)
 
@@ -616,6 +662,7 @@ def build(rdir, runs_repo, args):
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}
                           for s in ref_sites["sites"]], coverage=ref_sites["coverage"]),
     )
+    data["ledger"] = ledger
     months = sorted({d[:7] for d in hours.days})
     month_parts = {}
     for m in months:
@@ -626,6 +673,8 @@ def build(rdir, runs_repo, args):
                               grid_load=b64(grid_load[:, hcols].T), plant_out=b64(plant_out[:, hcols].T),
                               plant_chg=b64(plant_chg[:, hcols].T), site_model=b64(site_model16[:, hcols].T),
                               site_real=b64(site_real16[:, hcols].T))
+        if ledger_moves is not None:
+            month_parts[m]["ledger"] = ledger_month(ledger_moves, hcols)
     return hours, info, status, data, months, month_parts
 
 

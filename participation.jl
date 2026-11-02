@@ -14,6 +14,8 @@
 # thermal) 0.06, load 0.07 — the slope of the change between the schedule after
 # the last auction (PHF2 in hours 0–11, PHF3 in 12–23) and after continuous
 # trading (PHFC) on the error left after the last auction (actual − PHF).
+# The auctions, measured the same way (scripts/make_run_config.jl measured_all):
+# ID2 load 0.32, wind 0.22, solar 0.13; ID3 load 0.07, wind 0.15, solar 0.10.
 #
 # Balancing: in Spain only units qualified by REE provide balancing energy
 # (aFRR, mFRR, RR), and the same qualification admits units to phase II of the

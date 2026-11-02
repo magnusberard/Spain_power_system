@@ -20,7 +20,8 @@
 #   RES       optional [run].res_input (accepted or offered)
 #   Scenario runs (SCENARIO=trinity|necp): leave GAS, MARKUP and HYDRO out; the
 #   scenario sets the switches and make_run_config.jl stops if one is given.
-#   PARTICIPATION  optional [participation] (§23): active, measured or passive
+#   PARTICIPATION  optional [participation] (§23): active, measured (CID only), measured_all
+#                  (ID2, ID3 and CID) or passive
 #   BALANCING      optional [balancing].eligible: all or qualified
 #   PUMPING        optional: removed = real 2024 pumping out of the load ([run].remove_pumping)
 #   PUMPLIMIT      optional: on = pumped storage pumps with its own pumping power ([da].pump_limits)

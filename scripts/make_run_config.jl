@@ -29,6 +29,11 @@
 #   --participation P    [participation] (§23): active = 1.0 everywhere (as in
 #                        config.toml), measured = CID shares measured from REE
 #                        e·sios (load 0.07, wind 0.07, solar 0.06; IDA2/IDA3 1.0),
+#                        measured_all = measured shares in every intraday stage:
+#                        ID2 (IDA1+IDA2) load 0.32, wind 0.22, solar 0.13,
+#                        ID3 (IDA3) load 0.07, wind 0.15, solar 0.10, CID as
+#                        measured (esios_download/measure_auction_share.py, the
+#                        same slope on the final error as CID; a low estimate),
 #                        passive = 0.0 in ID2, ID3 and CID
 #   --balancing B        [balancing].eligible: all (as in config.toml) or
 #                        qualified = the units REE qualifies for balancing
@@ -57,6 +62,9 @@ const REPO = normpath(joinpath(@__DIR__, ".."))
 const PARTICIPATION = Dict(
     "active"   => [],
     "measured" => [("cid", "{ load = 0.07, wind = 0.07, solar = 0.06 }")],
+    "measured_all" => [("id2", "{ load = 0.32, wind = 0.22, solar = 0.13 }"),
+                       ("id3", "{ load = 0.07, wind = 0.15, solar = 0.10 }"),
+                       ("cid", "{ load = 0.07, wind = 0.07, solar = 0.06 }")],
     "passive"  => [(st, "{ load = 0.0, wind = 0.0, solar = 0.0 }") for st in ("id2", "id3", "cid")])
 const BAL_QUALIFIED = "[\"Gas:Combined_cycle\", \"Gas:Gas_turbine\", \"Coal\", \"Hydro:reservoir\", \"Hydro:pumped_storage\", \"Battery\"]"
 
@@ -122,7 +130,7 @@ function get_key(lines, section, key)
 end
 
 function main(args)
-    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--scenario trinity|necp] [--config file]"
+    usage = "julia scripts/make_run_config.jl <out.toml> --stage markets|redispatch [--gas on|off] [--markup on|off] [--hydro LABEL] [--res-input accepted|offered] [--participation active|measured|measured_all|passive] [--balancing all|qualified] [--pumping kept|removed] [--pump-limits on|off] [--scenario trinity|necp] [--config file]"
     isempty(args) && error(usage)
     out = args[1]
     opt = Dict("--gas" => "off", "--markup" => "off", "--participation" => "active", "--balancing" => "all", "--pumping" => "kept", "--pump-limits" => "off",

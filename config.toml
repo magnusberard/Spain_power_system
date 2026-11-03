@@ -25,9 +25,12 @@
 # Every output (Bellman cuts, volume trajectory, cut JSON, diagnostics) gets
 # the suffix "_<label>", and the market chain writes to results/<label>/ and
 # reads its Bellman inputs from the suffixed [midterm4] outputs automatically.
-label      = "2024"   # e.g. "NECP2035"
+label      = "2024"   # "2024" = the 2024 path. 2035 runs: SCENARIO=trinity|necp (scripts/make_run_config.jl
+                      # --scenario) sets label, empire_dir and the 2035 switches in the run's config copy
 empire_dir = "Data/2035/Trinity"   # EMPIRE run (Input/Tab + Output) - Ignore if label = "2024"
-period     = 2                            # EMPIRE period index: 2 = 2030-2035
+period     = 3                            # EMPIRE period index i = years 2020+5(i-1)..2020+5i, so 3 = 2030-2035
+                                          # (OpenEMPIRE empire.py: "2020+(i-1)*LeapYears"-"2020+i*LeapYears"; Ehsan's Output
+                                          # has periods 1-3, i.e. a 2035 horizon). Period 2 = 2025-2030.
 
 # How the EMPIRE expansion is disaggregated onto the bus-level grid
 # (empire_nodal.jl; diagnostics: julia --project=. empire_nodal.jl):
@@ -59,7 +62,8 @@ disaggregation = "nodal"
 #
 #   co2_price_file   — set to "" to fall back to General_CO2Price.tab (zeros)
 #   co2_price_region — "ES"; "Europe (average)" also available
-#   co2_price_year   — defaults to 2025 + 5*period, so period 2 -> 2035
+#   co2_price_year   — defaults to 2020 + 5*period (the end year of the EMPIRE
+#                      period), so period 3 -> 2035
 #   co2_price_model  — defaults to basename(empire_dir); matched case- and
 #                      punctuation-insensitively against "Model Version"
 #   co2_price        — an explicit number here overrides all of the above
@@ -78,11 +82,56 @@ co2_price_region = "ES"
 #           sets a deeply negative price in any hour it is marginal.
 negative_co2_credit = false
 
+# What Generator_CO2Content.tab is per GJ of (empire_scenario.jl):
+#   "fuel"        — CO2 adder = (3.6/η)·content·price, EMPIRE's own formula
+#                   (OpenEMPIRE user guide §4.3, content in tCO2/GJ from IPCC).
+#                   The EnVis v1.3.0 table in Data/2035 is per GJ of fuel: CCGT
+#                   and OCGT both 0.0558, oil 0.0740 = the IPCC fuel factors.
+#                   A CCGT then emits 0.36 tCO2/MWh_el (0.20 with "electricity").
+#   "electricity" — CO2 adder = 3.6·content·price, the original setting; right
+#                   for a per-GJ_el table such as the one [costs.gas_srmc] uses.
+co2_content_basis = "fuel"
+
+# Efficiency η (MWh_el per MWh_fuel) per EMPIRE generator, used with
+# co2_content_basis = "fuel" for every technology with a CO2 content.
+# Our assumption: the 2035 fleet keeps these values (no new gas, coal or oil
+# plants are built by period 2 in either scenario).
+[scenario.efficiency]
+GasCCGT    = 0.56    # EMPIRE input, period 1 (= [costs.gas_srmc].eta.ccgt)
+GasOCGT    = 0.425   # EMPIRE input, period 1 (= [costs.gas_srmc].eta.ocgt)
+Coal       = 0.435   # EMPIRE input (= [costs.coal_srmc].eta)
+Lignite    = 0.37    # OpenEMPIRE.jl data/test/Generator/genEfficiency.csv, period 2
+Oil        = 0.376   # same file, Oilexisting
+Waste      = 0.33    # same file, Waste
+GasCCS     = 0.43    # same file, GasCCS
+CoalCCS    = 0.37    # same file, CoalCCS
+LigniteCCS = 0.373   # same file, LigniteCCSadv
+BioCCS     = 0.385   # same file, Bio10cofiringCCS (no BioCCS row; closest)
+
+# Which CCGT units EMPIRE's lower capacity takes out (empire_nodal.jl, nodal only).
+# EMPIRE gives capacity per region; its existing fleet shrinks by one factor
+# everywhere (2035: ×0.838, no new CCGT in either scenario).
+#   "even"         — every unit of a region scaled by the same factor (original).
+#   "oldest_first" — whole units close, oldest first by build year (GEM, via
+#                    build_year_file), until EMPIRE's national CCGT total is met;
+#                    the unit crossing the total is shrunk to the remainder.
+#                    Total 20,021 MW in 2035 (= EMPIRE).  Our assumption.
+# keep_below_mw / keep_regions: units outside the rule, at their 2024 size (the
+# small industrial units).  empire_regions: regions outside the rule at EMPIRE's
+# own regional CCGT capacity — the Balearic Islands (ES53: 994 → 739 MW in
+# 2035), which supply only the island ([islands]); the mainland fills the rest.
+[scenario.retirement]
+ccgt            = "oldest_first"
+keep_below_mw   = 100.0
+keep_regions    = []
+empire_regions  = ["ES53"]
+build_year_file = "Data/gas_unit_efficiency.csv"
+
 [run]
 # ── Study days of the 2024 path ([scenario].label = "2024", [weeks] off) ─────
 # Either a list of days, or a range with `from` / `to` (both inclusive; a
 # range takes precedence over `days`). Days with every input: 2024-01-01 ..
-# 2024-12-29. The environment variable SPAIN_DAYS overrides this for one run
+# 2024-12-31 (all 366). The environment variable SPAIN_DAYS overrides this for one run
 # ("2024-01-01:2024-01-31" or "2024-07-08,2024-12-02"); a run keeps all
 # results in memory until it ends, so run long ranges month by month with
 # scripts/run_2024_by_month.ps1.
@@ -99,6 +148,14 @@ days = ["2024-07-08", "2024-12-02"]
 #                energy, curtails it itself and the price can fall to about 0.
 # Load is the same in both. Days need their Data/ES_old_offered files.
 res_input = "accepted"
+
+# The 2024 load is OMIE's day-ahead production + imports, so it also holds what
+# the real pumps bought (6.2 TWh in 2024, mostly at midday), and the model's own
+# pumped storage pumps on top of it. true takes the real hourly pumping (REE
+# e·sios 25, Data/OMIE/pumping_2024.csv) out of every stage's load; the model's
+# pumps then decide on their own, as in the 2035 runs (pumping.jl). 2024 path
+# only: a scenario run stops with an error.
+remove_pumping = false
 
 [costs]
 # ── Marginal-cost source for the market chain ───────────────────────────────
@@ -174,8 +231,16 @@ vom         = { ccgt = 4.68, ocgt = 5.76 }
 # ENTSO-E category (ERAA 2025/TYNDP 2026 Data Collection Guidelines, p. 6):
 #   built 2001-05 -> 0.56   2006-10 -> 0.58   2011+ -> 0.60   (our year proxy)
 #   units under 100 MW and units without a build year -> 0.56
-# Needs [costs.gas_srmc] on; 2024 path only. OCGTs, the [chp] gas block and the
-# mid-term SDDP (water values) keep the single CCGT cost.
+# 2024 path: needs [costs.gas_srmc] on.  Scenario runs (e.g. 2035): EMPIRE's
+# single CCGT cost is taken to be at [scenario.efficiency].GasCCGT (0.56) and
+# rescaled per unit, fuel and CO2 with 1/eta, the vom.ccgt above unchanged:
+#   cost_u = vom + (cost_EMPIRE - vom) * 0.56 / eta_u
+#   2035 (CO2 per GJ of fuel): Trinity 62.4 / 60.4 / 58.6, NECP 173.4 / 167.5 /
+#   162.1 EUR/MWh at eta 0.56 / 0.58 / 0.60; with [scenario.retirement]
+#   "oldest_first" 6.6 / 12.1 / 1.2 GW remain in each class.
+# OCGTs, the [chp] gas block and the mid-term SDDP (water values) keep the
+# single CCGT cost.  On in this branch (2035-improvements) for the 2035 runs;
+# it also turns the per-unit cost on for 2024 runs made from this branch.
 enabled = false
 file    = "Data/gas_unit_efficiency.csv"
 
@@ -235,7 +300,15 @@ vom                 = 3.3
 #   Both kept within 0 <= L <= cap.
 # Our assumptions: one table for all gas units and one constant for all coal
 #   units; 2024 values only; the hourly bid factor applies to the whole unit.
+# Scenario runs (e.g. 2035, branch 2035-improvements): the 2024 tax quarters and
+#   rsi_file are not read (the study days carry 2024 dates).  Tax = scenario_tax for
+#   the whole run: 0 — IVPEE at 0 % from 2028 (RDL 18/2026, art. 15; AEAT note
+#   "Medidas tributarias ... IVPEE").  No RSI for scenarios yet, so no gas
+#   mark-up; coal keeps L_coal = 0.188 (2024, our assumption that it carries to
+#   2035): 2035 coal Trinity 68.2 → 84.0, NECP 303.9 → 374.2 EUR/MWh.
+#   On in this branch; it also turns the 2024 mark-ups on for 2024 runs made here.
 enabled     = false
+scenario_tax = 0.0
 tax         = { "2024Q1" = 0.035, "2024Q2" = 0.0525, "2024Q3" = 0.07, "2024Q4" = 0.07 }
 tax_default = 0.07
 tax_fuels   = ["Gas", "Coal", "Nuclear", "Biomass", "Oil"]
@@ -243,6 +316,29 @@ rsi_file    = "Data/markup/rsi_2024.csv"
 table_file  = "Data/markup/markup_table_2024.csv"
 L_coal      = 0.188
 cap         = 0.5
+# RSI source.  rsi_source (2024 path): "file" = rsi_file (OMIE 2024 bids),
+# "model" = computed by the model, "none".  scenario_rsi_source (scenario runs,
+# which have no OMIE data): "model" or "none".  The model's RSI needs no owner
+# data: RSI = rsi_scale × (1 − largest_share) × offered MW / load MW, with
+# offered MW the units' pmax in the market stage (no French imports, as in OMIE).
+# largest_share: Iberdrola's share of OMIE's offered MW in 2024, mean 0.214
+# (5–95 % 0.183–0.250; Data/markup/omie_hourly_2024.csv); with it fixed the
+# RSI tracks OMIE's (corr 0.98, mean |ΔL_gas| 0.007).  rsi_scale: the model's
+# offered MW / load vs OMIE's on 2024 days.
+# Calibration (2024, the 15th of every month, 288 hours, market stages): the
+# model's offered MW runs ~1.7× OMIE's (OMIE's curves hold only the auction,
+# bilateral contracts outside; hydro offers are energy-limited) and its load
+# ~1.2×.  rsi_offset/rsi_scale give the model's RSI OMIE's mean and spread
+# (least squares would shrink the tails: RSI < 1.7 in 1 % of hours vs 14 %):
+# RSI = −1.013 + 1.110 × (1 − 0.214) × offered / load → mean L_gas 0.019 vs
+# OMIE 0.020; L_gas > 0.05 in 20 % vs 17 % of hours; RSI < 1.7 13 % vs 14 %;
+# hour-by-hour corr of L 0.48; within-day corr of RSI ≥ 0.8 on 10 of 12 days
+# (15 Apr 0.50, 15 Jun 0.11).  Our method.
+rsi_source          = "file"
+scenario_rsi_source = "model"
+largest_share       = 0.214
+rsi_scale           = 1.110
+rsi_offset          = -1.013
 
 [fleet]
 # ── Plants closed in reality, left out of every stage ────────────────────────
@@ -297,6 +393,9 @@ closed_units = ["G0039", "G0040", "G0742"]
 # The layout is not in our data; the 54 CCGTs >= 100 MW split into 43 units of
 # 200-435 MW and 11 of 782-859 MW with nothing between (~400 MW = typical 1x1,
 # ~800 MW = typical 2x1).
+# On in branch 2035-improvements (scenario runs price the start gas from EMPIRE's
+# CCGT cost, run_market_chain.jl UC_GAS_FUEL_TH); it also turns unit commitment
+# on for 2024 runs made from this branch.
 enabled               = false
 min_mw                = 100.0
 min_up_h              = 2
@@ -392,6 +491,10 @@ use_availability_factor     = false
 #                study_start, data_start, row_start), shared by all scenarios.
 #   xb_ntc_margin — fallback static symmetric margin, used only when
 #                [weeks.ntc].enabled=false.
+#   2035 reference run: all 52 weeks from 1 Jan, weather year 2015 (average
+#   reservoir inflow and close to average sun and wind of the five years
+#   2015-2019); the key is written by hand, not drawn.  Run it as one-week
+#   chunks with SPAIN_DAYS (scripts/solstorm_start_weeks.sh).
 enabled    = false
 n_weeks    = 2
 contiguous = true
@@ -569,6 +672,14 @@ volume_file  = "Data/Volume_Scen0_OUT_sddp4.csv"
 turbine_file = "Data/TurbineSchedule_sddp4.csv"
 hydro_budget = true
 hydro_budget_basis = "week"
+# hydro_budget_topup: in the stages after the day-ahead (ID2, ID3, CID gates,
+# balancing), if the slack (1000 EUR/MWh) is needed, the day's budget is raised
+# by exactly the slack's MWh and the stage solved once more, so reservoir hydro
+# covers the shortfall. Without it a short hour (e.g. 648 MWh on 20 May 2024)
+# priced the day's water at 1000 EUR/MWh and lifted every hydro-set hour. Real
+# reservoirs hold weeks of water; REE calls hydro beyond plan when short. The
+# extra water is not taken back later (~10 GWh/year). Run option HYDROTOPUP=on.
+hydro_budget_topup = false
 
 [da]
 # ── Stage 1: Day-Ahead market ────────────────────────────────────────────────
@@ -588,6 +699,15 @@ enabled = true
 # gates and redispatch freeze nuclear at that DA value.
 nuclear_min_gen_frac = 0.8
 
+# Pumping power of pumped storage. generations.csv has one capacity per plant and
+# the model lets it pump with that same power (8.2 GW in all), while Spain pumped
+# at most 4.45 GW in any hour of 2024 (REE e·sios 25): only some machines are
+# reversible. true caps each plant's pumping at Data/pumped_storage_pump_mw.csv
+# (5.1 GW: JRC Hydro-power database, or 0.63 × capacity where JRC has none;
+# omie_conversion/build_pump_mw.py); turbining stays at the capacity. 2024 path
+# only: a scenario run stops with an error.
+pump_limits = false
+
 # Nuclear availability: the fraction of nameplate actually available on the
 # study day, covering planned refuelling outages and forced outages.  Applied to
 # Pmax, so nuclear_min_gen_frac stays a floor on what is *available* rather than
@@ -598,6 +718,10 @@ nuclear_min_gen_frac = 0.8
 #     days sat at very different fleet availability (8 Jul ≈ 93 %, 2 Dec ≈ 69 %
 #     of the 7 408 MW nameplate, from the OMIE cleared programme), so a single
 #     annual factor cannot match both.
+#   Scenario runs (e.g. 2035) ignore the per-day table: their study days carry
+#     2024 dates, and the 2024 values include that year's outages and its
+#     price-driven cuts (monthly means Mar–May 0.55 / 0.51 / 0.64, year 0.79).
+#     They use nuclear_availability for every day (our assumption).
 nuclear_availability = 0.85
 
 # ── Coal availability ───────────────────────────────────────────────────────
@@ -1008,6 +1132,8 @@ ramp_limits = true
 "2024-12-28" = 0.957
 "2024-12-29" = 0.957
 "2024-01-01" = 0.957
+"2024-12-30" = 0.957
+"2024-12-31" = 0.957
 
 # Per-day coal availability (see [da].coal_availability above for the derivation).
 [da.coal_availability_by_date]
@@ -1375,6 +1501,8 @@ ramp_limits = true
 "2024-12-28" = 0.172
 "2024-12-29" = 0.172
 "2024-01-01" = 0.101
+"2024-12-30" = 0.172
+"2024-12-31" = 0.172
 
 [islands]
 # ── Balearic plants in the market stages ─────────────────────────────────────
@@ -1406,6 +1534,11 @@ ramp_limits = true
 #     island coal in) is rescaled to the 2 640 MW mainland coal fleet;
 #   • the [chp] blocks are not sited on these buses.
 # false = the original behaviour.
+# Scenario runs (on in branch 2035-improvements): EMPIRE's load and solar/wind
+# include the Balearic Islands (ES532: 3.8–4.3 TWh, 0.9–1.3 GW solar in 2035),
+# so the series are shared over ALL units (data_preparation.jl,
+# inputs_peninsular = false) and coal is not rescaled; the island units still
+# get 0 MW in the market stages and run in the redispatch.
 exclude_from_market = false
 # The 10 Mallorca buses (the only island buses; LTGES0254 lands on ES00683).
 buses = ["ES00285", "ES00286", "ES00287", "ES00288", "ES00289",
@@ -1422,11 +1555,19 @@ buses = ["ES00285", "ES00286", "ES00287", "ES00288", "ES00289",
 # remove_isolated = true leaves the listed units out of every stage, market and
 # redispatch. For runs after the link is in service, model Ceuta's demand and
 # the link instead of putting the plant back on the mainland.
+# On in branch 2035-improvements: by 2035 the link exists, but neither EMPIRE's
+# nor our data has Ceuta's demand, so the plant would only be an extra mainland
+# peaker at Algeciras.
 remove_isolated = false
 isolated_units = ["G0116"]   # Ceuta
 
 [chp]
 # ── Industrial cogeneration / waste / mini-hydro ─────────────────────────────
+# Scenario runs (e.g. 2035) ignore [chp.by_date] for their 2024-dated study
+# days and take each block's 2024 mean for the month (run_market_chain.jl,
+# CHP_BY_MONTH); gas CHP 1,761 (Apr) – 2,628 (Dec), year 2,289 MW; waste 506–717;
+# mini-hydro 313 (Sep) – 820 (May).  Our assumption: the 2024 level and
+# season carry to 2035 (EMPIRE has no CHP class).
 # OMIE clears this fleet as a single market group, "Cogeneración / Residuos /
 # Mini hidráulica" (3.4 GWh/h on 8 Jul, 3.9 on 2 Dec).  generations.csv has no
 # equivalent at all — 493 MW of Biomass — so without this block the model has to
@@ -1485,6 +1626,16 @@ siting_buses = 100
 gas_mw       = 2260.0
 waste_mw     =  730.0
 minihydro_mw =  420.0
+
+[chp.by_date."2024-12-30"]
+gas_mw       = 2769.3
+waste_mw     = 566.0
+minihydro_mw = 274.5
+
+[chp.by_date."2024-12-31"]
+gas_mw       = 2324.6
+waste_mw     = 554.7
+minihydro_mw = 420.8
 
 [chp.by_date."2024-01-01"]
 gas_mw       = 1023.7
@@ -3339,6 +3490,63 @@ enabled = true
 # BE factor).  Nuclear stays frozen at its DA dispatch.  The cleared balancing
 # schedule — and the BE profiles — anchor the redispatch.  Requires [da].enabled.
 enabled = true
+# Units that may move in balancing, as "Fuel" or "Fuel:technology" (unit table
+# names; the BESS fleet is "Battery"). The others hold their CID MW; wind and solar
+# keep their curtailment and nuclear its DA freeze. Empty = every unit (the
+# behaviour before this switch). In Spain only units qualified by REE provide
+# balancing energy (aFRR, mFRR, RR), and the same qualification (tertiary / RR)
+# admits units to phase II of the technical constraints (P.O. 3.2 §6.2,
+# BOE-A-2024-6215; renewables may qualify since Res. 18 Dec 2015, BOE-A-2015-13875).
+# Proposed list (Magnus's [redispatch.reserve].providers + batteries):
+#   ["Gas:Combined_cycle", "Gas:Gas_turbine", "Coal", "Hydro:reservoir",
+#    "Hydro:pumped_storage", "Battery"]
+eligible = []
+
+[bess]
+# ── Li-Ion BESS operation in the market stages (2035 runs; EMPIRE's fleet) ───
+# Off: the BESS are lossless, free to cycle and usable 0–100 % (as before).
+# On (run option BESS=on): each day still starts and ends half full, and
+#   round_trip_eff  0.85 — NREL Annual Technology Baseline, utility-scale Li-ion
+#                   (Cole & Frazier 2019: 85 % grid side); the US fleet measured
+#                   82 % (EIA, 2019). Split √η per leg, as for pumped hydro.
+#   wear_eur_mwh    10 — cost per MWh discharged, so the battery only cycles when
+#                   the spread pays its wear (method: Xu et al. 2018, IEEE Trans.
+#                   Power Syst. 33(2), cycle aging cost in market bids). Value =
+#                   replacement cost / lifetime cycles ≈ 60–90 EUR/kWh / ~6,000
+#                   cycles (LFP, vendor figures); DC block ~65 USD/kWh, LFP cell
+#                   material ~35 USD/kWh (Rystad Energy, Renewables and Power
+#                   Outlook 2026, p. 22). Sensitivity 0 / 10 / 25.
+#   soc_min/soc_max 0.0 / 1.0 — EMPIRE's storENInstalledCap taken as usable
+#                   energy (NREL ATB states battery size as usable MWh); a
+#                   narrower window (0.1 / 0.9) would count the margin twice.
+#                   To confirm with Ehsan.
+# The redispatch stage is unchanged (BESS free within ±rated power).
+enabled        = false
+round_trip_eff = 0.85
+wear_eur_mwh   = 10.0
+soc_min        = 0.0
+soc_max        = 1.0
+
+[participation]
+# ── Share of each forecast update traded per intraday stage ─────────────────
+# Each intraday stage clears against a forecast only partly updated from what the
+# previous stage planned: planned = previous + α · (new forecast − previous), per
+# source (load, wind, solar); balancing always gets the full final forecast, so
+# whatever is not traded intraday is balanced there. 1.0 = every actor trades its
+# whole update (PowerVision's active case; the default and the behaviour before
+# this switch), 0.0 = no trading in that stage (passive).
+# Measured for CID from REE e·sios, 14 Jun–31 Dec 2024 (schedules after IDA2 /
+# IDA3 / continuous trading and actual output, per technology; slope of the CID
+# change on the error left after the last auction): wind 0.07, solar (PV +
+# thermal) 0.06, load 0.07 (by volume 0.16 / 0.13 / 0.17).
+# Measured the same way for the auctions (esios_download/measure_auction_share.py;
+# change over the auction on the final error, a low estimate since part of the
+# error is not known at gate time): ID2 = IDA1+IDA2 (PHF2 - PDVP) load 0.32,
+# wind 0.22, solar 0.13; ID3 = IDA3 (PHF3 - PHF2, hours 12-23) load 0.07, wind
+# 0.15, solar 0.10. Run option PARTICIPATION=measured_all sets all three stages.
+id2 = { load = 1.0, wind = 1.0, solar = 1.0 }
+id3 = { load = 1.0, wind = 1.0, solar = 1.0 }
+cid = { load = 1.0, wind = 1.0, solar = 1.0 }
 
 [crossborder]
 # Fix the market-cleared FR/PT import/export schedule at the border buses.
@@ -3421,6 +3629,8 @@ enabled = true
 # growth — see empire_nodal.jl), and pinning that inflated MW makes the local
 # network infeasible with no way to relieve it. Add "Hydro:run_of_river" here
 # to restore the old fully-frozen behaviour once the grid can actually carry it.
+# 2035-improvements: coal has its own on/off ([unit_commitment.coal]) and runs
+# at full size, so the redispatch may move it (as GAS=on in 2024).
 frozen_fuels = ["Nuclear", "Biomass", "Coal"]
 # down_only: fuels or technologies that, instead of frozen at the schedule, may be turned down but not
 # up in the redispatch (pmax = schedule; pmin = CHP blocks' min_frac, others down_only_min_frac ×
@@ -3736,6 +3946,14 @@ voll        = 3000.0     # unserved-energy penalty [EUR/MWh]
 #                 with load shedding.  0 disables the target entirely.
 end_fill    = 1.0
 end_penalty = 150.0
+# ── Seasonal envelope (rule curves) on the ES reservoir ─────────────────────
+# Soft lower/upper fill per weekly stage from REE's month-end fill 2014–2023
+# (hydro_state/build_rule_curves.py; Magnus's aligned_rc variant). Weather-based,
+# not 2024 plants, so it also serves the scenario runs, whose weeks sit on the
+# same 2024-01-01 stage calendar. Each MWh outside costs es_rule_curve_penalty
+# (default end_penalty). "" = no envelope (the 2024 default); SCENARIO=trinity|necp
+# (scripts/make_run_config.jl) sets Data/hydro_state/es_rule_curves_2014_2023.csv.
+es_rule_curve_file = ""
 solver      = "gurobi"   # "gurobi" | "highs"
 sim_year    = 1982       # EDF climate year for the exported volume trajectory
 seed        = 1234
@@ -3812,6 +4030,12 @@ Geo        = 0.90
 
 [midterm4.availability.FR]
 # Zone override: French nuclear ran at ~70 % CF in 2024 (heavy maintenance).
+Nuclear    = 0.85
+
+[midterm4.availability.ES]
+# Zone override, scenario runs only (the 2024 path sizes ES from smspp, not from
+# this table): Spanish nuclear at the market chain's [da].nuclear_availability
+# (0.85), so the water values see the same nuclear as the day-ahead stage.
 Nuclear    = 0.85
 
 [midterm4.gas_cost]

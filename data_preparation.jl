@@ -414,11 +414,22 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
                          # true (copper-plate market gates only): units on
                          # `island_buses` are held at 0 MW.
                          islands_off_market::Bool = false,
+                         # true (2024): the solar/wind series and the coal
+                         # availability are OMIE's, i.e. peninsular, hence the
+                         # mainland-only sharing and coal rescaling above.
+                         # false (scenario runs): the EMPIRE series already
+                         # include the island units, so they are shared over
+                         # all units and coal is not rescaled.
+                         inputs_peninsular::Bool = true,
                          # Units (generations.csv unit_id) left out of the network
                          # altogether, in every stage ([islands].remove_isolated):
                          # plants of isolated systems that generations.csv attached
                          # to a mainland bus (Ceuta).  `nothing` ⇒ none.
                          removed_units::Union{Nothing,AbstractSet{String}} = nothing,
+                         # Pumping power per pumped-storage unit_id [MW] ([da].pump_limits,
+                         # pumping.jl): the unit pumps down to −pump_mw instead of −Pmax.
+                         # `nothing` ⇒ pumping power = Pmax (as before).
+                         pump_mw::Union{Nothing,Dict{String,Float64}} = nothing,
                          # Stage-6 redispatch freeze set ([redispatch].frozen_fuels
                          # in config.toml).  A bare "Fuel" entry (e.g. "Nuclear")
                          # freezes every technology under that fuel; "Fuel:technology"
@@ -481,13 +492,15 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
     # The solar/wind series are OMIE's, i.e. PENINSULAR output, so with
     # [islands] on they are shared over mainland units only; an island unit then
     # gets the same capacity factor without taking a share of the peninsula's.
+    # Scenario series (inputs_peninsular = false) include the islands: all units.
+    excl_island(row) = inputs_peninsular && on_island(row)
     total_solar_mw = sum(Float64(row.capacity_mw) * uscale(row) for row in eachrow(gen_df)
                          if row.primary_fuel == "Solar" && haskey(bus_idx, row.bus_id) &&
-                            !on_island(row);
+                            !excl_island(row);
                          init = 0.0)
     total_wind_mw  = sum(Float64(row.capacity_mw) * uscale(row) for row in eachrow(gen_df)
                          if row.primary_fuel == "Wind" && haskey(bus_idx, row.bus_id) &&
-                            !on_island(row);
+                            !excl_island(row);
                          init = 0.0)
     # coal_availability is the day's peak OMIE coal ÷ the WHOLE coal nameplate
     # (omie_conversion/add_nuclear_coal_calibration.py), which includes the
@@ -497,7 +510,7 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         all_mw  = sum(Float64(r.capacity_mw) * uscale(r) for r in eachrow(gen_df) if coal(r); init = 0.0)
         main_mw = sum(Float64(r.capacity_mw) * uscale(r) for r in eachrow(gen_df)
                       if coal(r) && !on_island(r); init = 0.0)
-        (island_buses === nothing || main_mw <= 0.0) ? 1.0 : all_mw / main_mw
+        (island_buses === nothing || !inputs_peninsular || main_mw <= 0.0) ? 1.0 : all_mw / main_mw
     end
 
     # ── Buses ────────────────────────────────────────────────
@@ -790,7 +803,13 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         # Pumped storage is bidirectional: negative pg = pumping (consumption).
         # Its floor is therefore −Pmax, not 0 — with a 0 floor the unit can only
         # ever generate, which is what let it run as free baseload.
-        pmin_free = is_pumped ? -pmax_pu : nuc_floor
+        # With pump_mw ([da].pump_limits) it pumps only down to the plant's own
+        # pumping power: only some machines of a plant are reversible.
+        pump_pu = !is_pumped || pump_mw === nothing ? pmax_pu :
+                  haskey(pump_mw, String(row.unit_id)) ?
+                  min(pmax_pu, pump_mw[String(row.unit_id)] / BASEMVA) :
+                  error("[da].pump_limits: no pumping power for $(row.unit_id) in Data/pumped_storage_pump_mw.csv")
+        pmin_free = is_pumped ? -pump_pu : nuc_floor
         pmin_g  = is_frozen ? frozen_pu : pmin_free
         pmax_g  = is_frozen ? frozen_pu : pmax_pu
         # redispatch builds only (they pass da_dispatch; the market stages freeze nuclear via
@@ -1148,4 +1167,35 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         dclines  = dclines,
         loads    = loads,
     )
+end
+
+# ── Battery operating settings ([bess], market stages) ───────────────────────
+# Read [bess]: nothing when off (the BESS stay lossless, free and 0–100 %, as
+# before). Values and sources are in config.toml.
+function load_bess_params(cfg)
+    b = get(cfg, "bess", Dict{String,Any}())
+    Bool(get(b, "enabled", false)) || return nothing
+    p = (eta_rt = Float64(get(b, "round_trip_eff", 0.85)),
+         wear   = Float64(get(b, "wear_eur_mwh", 10.0)),
+         soc_min = Float64(get(b, "soc_min", 0.0)),
+         soc_max = Float64(get(b, "soc_max", 1.0)))
+    0.0 < p.eta_rt <= 1.0 || error("config.toml: [bess].round_trip_eff must be in (0, 1]")
+    p.wear >= 0.0 || error("config.toml: [bess].wear_eur_mwh must be >= 0")
+    0.0 <= p.soc_min < 0.5 < p.soc_max <= 1.0 ||
+        error("config.toml: [bess].soc_min/soc_max must satisfy 0 <= soc_min < 0.5 < soc_max <= 1 (each day starts half full)")
+    return p
+end
+
+# Attach the settings to every Li-Ion BESS unit of a day's networks (fuel
+# "Battery"); da.jl reads eta_rt, wear_eur_mwh, soc_min and soc_max. Returns the
+# number of units changed.
+function set_bess_params!(nets, p)
+    n = 0
+    for net in nets, g in values(net.gens)
+        String(g["fuel"]) == "Battery" || continue
+        g["eta_rt"] = p.eta_rt; g["wear_eur_mwh"] = p.wear
+        g["soc_min"] = p.soc_min; g["soc_max"] = p.soc_max
+        n += 1
+    end
+    return n
 end

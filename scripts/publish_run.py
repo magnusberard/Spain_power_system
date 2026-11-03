@@ -38,6 +38,46 @@ KX, KY = 111.32 * cos(radians(40.0)), 111.32       # map projection in km; the s
 
 # model (fuel, technology) -> OMIE's day-ahead technology groups
 OMIE_CATS = ["Nuclear", "Coal", "CCGT", "Hydro", "Wind", "Solar", "CHP group", "Imports"]
+# Who set the price (market_prices.csv price_setter, "<fuel> (<technology>)" from da.jl
+# price_setters), grouped for the viewer. Reservoir hydro sets it at its water value.
+# indices are shared with the website and omie_conversion/build_price_setter.py; 6 (wind, solar and
+# run-of-river together) stays for packages published before 2 Nov 2026, and for real hours where they tie;
+# 10 ("Demand bid"), 13 ("Other renewables") and 14 ("Generator buy-back") occur on the real side only;
+# 1 ("Storage", both directions together) stays for packages published before 2 Nov 2026
+SETTER_GROUPS = ["Hydro (water value)", "Storage", "CCGT", "Gas turbine & oil", "Coal", "Nuclear",
+                 "Wind, solar, run-of-river", "CHP group", "Imports", "Shortage / unclear", "Demand bid",
+                 "Wind", "Solar, run-of-river", "Other renewables", "Generator buy-back",
+                 "Pumped storage, generating", "Pumped storage, pumping", "Battery, discharging", "Battery, charging"]
+
+
+def setter_group(label):
+    """Index into SETTER_GROUPS for a price_setter label."""
+    label = str(label) if isinstance(label, str) else ""
+    fuel, _, rest = label.partition(" (")
+    tech = rest.rstrip(")").lower()
+    if fuel == "Imports":
+        return 8
+    if fuel == "Hydro":
+        if tech.startswith("pumped_storage"):   # da.jl adds ", charging" when the unit pumps
+            return 16 if "charging" in tech else 15
+        return {"reservoir": 0, "run_of_river": 12}.get(tech, 7)   # mini_hydro: CHP group
+    if fuel == "Battery":
+        return 18 if "charging" in tech else 17
+    if fuel == "Gas":
+        return 2 if tech == "combined_cycle" else 7 if tech == "chp" else 3
+    if fuel == "Oil":
+        return 3
+    if fuel in ("Coal", "Lignite"):
+        return 4
+    if fuel == "Nuclear":
+        return 5
+    if fuel == "Wind":   # wind bids 0.18 EUR/MWh, solar and run-of-river 0.0036 (tied with each other)
+        return 11
+    if fuel == "Solar":
+        return 12
+    if fuel in ("Biomass", "Waste", "Bio"):
+        return 7
+    return 9
 OMIE_OF = {
     ("Nuclear", "Nuclear"): "Nuclear", ("Coal", "Coal"): "Coal",
     ("Gas", "Combined_cycle"): "CCGT", ("Gas", "Gas_turbine"): "CCGT", ("Oil", "Combined_cycle"): "CCGT",
@@ -170,7 +210,11 @@ def detect_features(rdir):
     config_used.toml. None if neither exists. The same keys as scripts/make_run_config.jl sets:
     res = [run].res_input (model change §12); xb = [redispatch].crossborder_split = "country_total"
     (§11); gas = [unit_commitment].enabled, i.e. --gas on (§13, §14, §16); markup =
-    [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15)."""
+    [costs.markup].enabled (§17); hydro = [bellman] files from Data/hydro_state/ (§15);
+    pumping = [run].remove_pumping, the real 2024 pumping taken out of the load; pump_limits =
+    [da].pump_limits, pumped storage pumping with its own pumping power; hydro_topup =
+    [bellman].hydro_budget_topup, a short stage after the DA gets extra hydro; intraday_starts =
+    [unit_commitment].intraday_starts, CCGT/coal starts in ID2/ID3."""
     import tomllib
     path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
     if path is None:
@@ -189,6 +233,41 @@ def detect_features(rdir):
         gas=bool(sec("unit_commitment").get("enabled", False)),
         markup=bool(sec("costs", "markup").get("enabled", False)),
         hydro="hydro_state" in str(sec("bellman").get("volume_file", "")),
+        pumping=bool(sec("run").get("remove_pumping", False)),
+        pump_limits=bool(sec("da").get("pump_limits", False)),
+        hydro_topup=bool(sec("bellman").get("hydro_budget_topup", False)),
+        intraday_starts=bool(sec("unit_commitment").get("intraday_starts", False)),
+        # [bess] on: the values used, so sensitivity runs can be told apart; False when off
+        bess=(dict(eff=float(sec("bess").get("round_trip_eff", 0.85)),
+                   wear=float(sec("bess").get("wear_eur_mwh", 10.0)),
+                   soc=[float(sec("bess").get("soc_min", 0.0)), float(sec("bess").get("soc_max", 1.0))])
+              if bool(sec("bess").get("enabled", False)) else False),
+    )
+
+
+def detect_trading_features(rdir):
+    """The newer run settings for the viewer's run header (meta.features), from the same saved
+    config as detect_features: participation = [participation] shares (§23; all 1.0 = "active",
+    the default; all 0.0 in ID2/ID3/CID = "passive"; only CID below 1.0 = "measured"; ID2 or ID3
+    below 1.0 as well = "measured_all"); balancing =
+    [balancing].eligible ("qualified" when it lists units, §23); rd = [redispatch.phase1].enabled
+    ("ree" = the redispatch the REE way, branch redispatch-realism §20, else "ac"). {} if no config."""
+    import tomllib
+    path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
+    if path is None:
+        return {}
+    c = tomllib.loads(path.read_text(encoding="utf-8"))
+    part = c.get("participation", {})
+    shares = [float(v) for st in ("id2", "id3", "cid") for v in (part.get(st) or {}).values()]
+    auctions = [float(v) for st in ("id2", "id3") for v in (part.get(st) or {}).values()]
+    participation = ("active" if all(v == 1.0 for v in shares)
+                     else "passive" if all(v == 0.0 for v in shares)
+                     else "measured_all" if any(v != 1.0 for v in auctions) else "measured")
+    phase1 = c.get("redispatch", {}).get("phase1", {})
+    return dict(
+        participation=participation,
+        balancing="qualified" if c.get("balancing", {}).get("eligible") else "all",
+        rd="ree" if phase1.get("enabled", False) else "ac",
     )
 
 
@@ -232,6 +311,51 @@ def stream_rd_cost(path, hours, unit_index, n_units):
         ok = ui.notna().to_numpy()
         cost[ui.to_numpy()[ok].astype(int), hours.of(ch)[ok]] = ch.cost_eur_per_mwh.to_numpy()[ok]
     return cost
+
+
+def balancing_ledger(units, keys, delta, market, both, gap, runs_repo):
+    """Who left the gap the balancing stage covers and who covered it (the viewer's Balancing page).
+    gap = (load, wind, solar) BAL - CID from the profiles: in the model only these three miss their
+    plan, one national change per source. delta = BAL - CID per responding unit (rows of `market`),
+    summed per fuel:technology for `cover`. Units that ever move by 1 MW or more are listed with code,
+    fuel:technology, grid node, capacity and the site name from reference/sites.json; their hourly
+    moves go sparse into the month files (ledger_month). Returns (ledger, unit rows, moves)."""
+    dl, dw, ds = gap
+    rows = np.flatnonzero(market)
+    cover = {}
+    for k in sorted({keys[i] for i in rows}):
+        sel = [j for j, i in enumerate(rows) if keys[i] == k]
+        v = delta[sel].sum(axis=0)
+        if np.any(np.abs(v[both]) >= 1):
+            cover[f"{k[0]}:{k[1]}"] = r1(np.where(both, v, np.nan))
+    moves = np.where(both[None, :], np.rint(delta), 0)
+    moves[np.abs(moves) < 1] = 0
+    moving = np.flatnonzero(np.any(moves != 0, axis=1))
+    site_of = {}
+    sites_file = runs_repo / "reference" / "sites.json"
+    if sites_file.exists():
+        for s in json.loads(sites_file.read_text(encoding="utf-8"))["sites"]:
+            for u in s["model_units"]:
+                site_of[u] = s["name"]
+    ulist = []
+    for j in moving:
+        u = units.iloc[rows[j]]
+        ulist.append(dict(code=u.unit_name, t=f"{u.fuel}:{u.technology}",
+                          bus=None if pd.isna(u.bus_i) else int(u.bus_i),
+                          cap=round(float(u.capacity_mw), 1), site=site_of.get(u.unit_name)))
+    ledger = dict(gap=dict(wind=r1(dw), solar=r1(ds), load=r1(dl)), cover=cover, units=ulist)
+    return ledger, moves[moving]
+
+
+def ledger_month(moves, hcols):
+    """One month of the ledger's plant moves, sparse: hour offset in the month (uint16), index into
+    ledger.units (uint16) and MW (int16, + = up), for every unit and hour that moved 1 MW or more."""
+    m = moves[:, hcols]
+    u, h = np.nonzero(m)
+    order = np.lexsort((u, h))
+    u, h = u[order], h[order]
+    mw = np.clip(m[u, h], -32767, 32767)
+    return dict(h=b64(h.astype("<u2")), u=b64(u.astype("<u2")), mw=b64(mw.astype("<i2")))
 
 
 def traded_volume(rdir, hours):
@@ -327,6 +451,27 @@ def line_loading(rdir, hours, corr_of, n):
     return np.where(load >= 0, np.clip(np.rint(load), 0, 254), 255).astype(np.uint8)
 
 
+def scenario_of(rdir, info):
+    """Scenario runs (run_info label other than "2024", e.g. Trinity): their study days carry 2024
+    calendar dates, but the system is the scenario year's, so no real data may be set next to them.
+    Returns None for the 2024 path, else label, EMPIRE period and weather years from the run's own
+    config_used.toml and week key file."""
+    label = str(info.get("label") or "2024")
+    if label == "2024":
+        return None
+    sc = dict(label=label, period=None, weather_years=[])
+    try:
+        import tomllib
+        cfg = tomllib.loads((rdir / "config_used.toml").read_text(encoding="utf-8"))
+        sc["period"] = cfg.get("scenario", {}).get("period")
+        key = MODEL_REPO / cfg.get("weeks", {}).get("key_file", "")
+        if cfg.get("weeks", {}).get("enabled") and key.is_file():
+            sc["weather_years"] = sorted(int(y) for y in pd.read_csv(key).climate_year.unique())
+    except Exception as e:                       # the package is still fine without these details
+        print(f"  scenario details not read ({e})")
+    return sc
+
+
 def real_reference(runs_repo, hours):
     ref = runs_repo / "reference"
     idx = pd.MultiIndex.from_tuples([(d, h) for d in hours.days for h in range(24)], names=["date", "hour"])
@@ -357,6 +502,24 @@ def build(rdir, runs_repo, args):
         p[hours.of(s)] = s.price_eur_mwh.to_numpy()
         price[st] = r1(p)
 
+    # who set the price, per stage and hour: group index and plant (-1 = no price that hour)
+    setter = None
+    if "price_setter" in prices.columns:
+        sp = prices[prices.date.isin(hours.day_i)]
+        units = sorted({u for u in sp.setter_unit if isinstance(u, str) and u})
+        uix = {u: i for i, u in enumerate(units)}
+        stages = {}
+        for st in STAGES:
+            s = sp[sp.stage == st]
+            if s.empty:
+                continue
+            grp, unit = np.full(H, -1, dtype=int), np.full(H, -1, dtype=int)
+            hi = hours.of(s)
+            grp[hi] = [setter_group(x) for x in s.price_setter]
+            unit[hi] = [uix.get(u, -1) if isinstance(u, str) else -1 for u in s.setter_unit]
+            stages[st] = dict(group=grp.tolist(), unit=unit.tolist())
+        setter = dict(groups=SETTER_GROUPS, units=units, stages=stages)
+
     units = unit_table(rdir)
     to_bus = bus_ids(rdir)
     units["bus_id"] = units.bus_i.map(to_bus)
@@ -378,12 +541,34 @@ def build(rdir, runs_repo, args):
                 v = out[rows].sum(axis=0) if rows else np.zeros(H)
                 dest[st][c] = r1(np.where(seen, v, np.nan))
 
+    # 4-zone runs (2035 weeks mode): the joint day-ahead clears the France/Portugal exchange and the
+    # network takes it as fixed border injections, not as CrossBorder units, so the loop above finds
+    # no imports. Take it from xb_flows.csv (+ = import to Spain); later stages keep the day-ahead
+    # exchange, so every stage gets the same imports. The signed flows go in the package so the
+    # viewer can show exports too.
+    exchange = None
+    # (xb_flows.csv is written only by the 4-zone runs; their CrossBorder units exist in the AC
+    # redispatch only, never in the market stages, so they cannot be used for the imports)
+    if (rdir / "xb_flows.csv").exists():
+        xb = pd.read_csv(rdir / "xb_flows.csv")
+        xb = xb[xb.date.isin(hours.day_i)]
+        fr, pt = np.full(H, np.nan), np.full(H, np.nan)
+        fr[hours.of(xb)] = xb.fr_mw.to_numpy()
+        pt[hours.of(xb)] = xb.pt_mw.to_numpy()
+        imp = np.clip(fr, 0, None) + np.clip(pt, 0, None)
+        for st, (_, _, seen) in per_unit.items():
+            for dest in (mix, phys):
+                dest[st]["Imports"] = r1(np.where(seen, imp, np.nan))
+        exchange = dict(FR=r1(fr), PT=r1(pt))
+        print(f"  4-zone exchange (xb_flows.csv): imports {np.nansum(imp) / 1e6:.2f} TWh, exports "
+              f"{np.nansum(np.clip(-fr, 0, None) + np.clip(-pt, 0, None)) / 1e6:.2f} TWh")
+
     # balancing stage: what BAL moved relative to CID, summed up and down over the responding units
     # (wind, solar and the fixed cross-border injections left out), and the forecast change it had
     # to cover (CID -> BAL
     # load minus wind minus solar; positive = the system needs more energy). Compared with REE's
     # balancing energy and imbalance on the viewer's REE (e·sios) tab.
-    balancing = None
+    balancing = ledger = ledger_moves = None
     if (rdir / "cid_dispatch.csv").exists() and (rdir / "cid_profiles.csv").exists():
         print("  reading the continuous-intraday schedule for the balancing volume ...")
         _, cid_signed, cid_seen = stream_dispatch(rdir / "cid_dispatch.csv", "gen_id", hours, uidx, U)
@@ -403,6 +588,7 @@ def build(rdir, runs_repo, args):
             prof[st] = a
         dl, dw, ds = prof["bal"] - prof["cid"]
         balancing = dict(up=r1(up), down=r1(down), need=r1(dl - dw - ds))
+        ledger, ledger_moves = balancing_ledger(units, keys, d, market, both, (dl, dw, ds), runs_repo)
 
     traded = traded_volume(rdir, hours)
 
@@ -442,6 +628,10 @@ def build(rdir, runs_repo, args):
     units["group"] = [PLANT_OF.get(k) for k in keys]
     groups, group_rows = [], []
     for (b, g), u in units.dropna(subset=["group", "bus_id"]).groupby(["bus_id", "group"], sort=False):
+        # scenario runs scale retired units to 0 MW (a technology EMPIRE no longer has, CCGTs
+        # closed oldest first): such a group has nothing to show and no capacity to divide by
+        if round(float(u.capacity_mw.sum()), 1) <= 0:      # the map divides by the rounded value
+            continue
         techs = u.technology.map(TECH_NAME).value_counts()
         x, y = proj(bus.loc[b, "x"], bus.loc[b, "y"])
         groups.append(dict(bus=b, f=g, x=x, y=y, cap=round(float(u.capacity_mw.sum()), 1), n=len(u),
@@ -465,8 +655,14 @@ def build(rdir, runs_repo, args):
     corr, corr_of, frame = corridors(rdir)
     grid_load = line_loading(rdir, hours, corr_of, len(corr))
 
-    # real data and the ENTSO-E sites
+    # real data and the ENTSO-E sites (left empty for scenario runs: their dates are 2024's)
     real, real_sites, ref_sites = real_reference(runs_repo, hours)
+    scenario = scenario_of(rdir, info)
+    if scenario is not None:
+        real.loc[:, :] = np.nan
+        real_sites.loc[:, :] = np.nan
+        print(f"  scenario run ({scenario['label']}, period {scenario['period']}, weather {scenario['weather_years']}): "
+              "no real data in the package")
     site_rows = [[uidx[u] for u in s["model_units"] if u in uidx] for s in ref_sites["sites"]]
     site_model = np.array([rd_out[r].sum(axis=0) if r else np.zeros(H) for r in site_rows])
     NA = 65535
@@ -475,19 +671,20 @@ def build(rdir, runs_repo, args):
     site_real16 = np.where(np.isfinite(rs), np.clip(np.rint(np.nan_to_num(rs)), 0, NA - 1), NA).astype("<u2")
 
     data = dict(
-        schema=SCHEMA, days=hours.days, price=price,
+        schema=SCHEMA, days=hours.days, price=price, scenario=scenario,
         real_price=r1(real["price"].to_numpy()),
         status=status.tolist(), shed=r1(shed), fail_info=fail_info(rdir, summ, hours),
         categories=OMIE_CATS, categories_phys=PHYS_CATS,
         real_mix={c: r1(real[f"omie_{c}"].to_numpy()) for c in OMIE_CATS},
         real_phys={c: r1(real[f"phys_{c}"].to_numpy()) for c in PHYS_CATS},
         mix=mix, mix_phys=phys,
-        balancing=balancing, redispatch=redispatch, traded=traded,
+        balancing=balancing, redispatch=redispatch, traded=traded, exchange=exchange, setter=setter,
         grid=dict(frame=frame, corridors=corr),
         plants=dict(groups=groups),
         sites=dict(sites=[{k: v for k, v in s.items() if k != "model_units"} | {"model_units": len(s["model_units"])}
                           for s in ref_sites["sites"]], coverage=ref_sites["coverage"]),
     )
+    data["ledger"] = ledger
     months = sorted({d[:7] for d in hours.days})
     month_parts = {}
     for m in months:
@@ -498,6 +695,8 @@ def build(rdir, runs_repo, args):
                               grid_load=b64(grid_load[:, hcols].T), plant_out=b64(plant_out[:, hcols].T),
                               plant_chg=b64(plant_chg[:, hcols].T), site_model=b64(site_model16[:, hcols].T),
                               site_real=b64(site_real16[:, hcols].T))
+        if ledger_moves is not None:
+            month_parts[m]["ledger"] = ledger_month(ledger_moves, hcols)
     return hours, info, status, data, months, month_parts
 
 
@@ -566,9 +765,13 @@ def main():
                 info={k: info.get(k) for k in ("ran_by", "branch", "commit", "commit_message", "uncommitted_files",
                                                "started", "finished", "runtime_min", "power_flow", "linear_solver",
                                                "label", "reconstructed")})
+    if data.get("scenario"):
+        meta["scenario"] = data["scenario"]
     # model changes for the viewer's filters: from the run's config, else kept from the package
     # being replaced (runs published before configs were saved were tagged by hand)
     features = detect_features(rdir)
+    if features is not None:
+        features.update(detect_trading_features(rdir))
     if features is None and old_meta.get("features"):
         features = old_meta["features"]
     if features is not None and stage_order(info.get("commit")):

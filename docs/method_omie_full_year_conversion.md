@@ -5,8 +5,7 @@ originally covered only the two hand-validated study days (8 July, 2
 December 2024). The pipeline in `omie_conversion/` and `entsoe_download/`
 reproduces those two days' data **exactly** from bulk-downloadable public
 sources (OMIE + ENTSO-E), and extends coverage to every day from
-**2024-01-01 to 2024-12-29** (364 days — all of 2024 except 30–31
-December, see "Why not all 366 days"). `run_market_chain.jl`'s
+**2024-01-01 to 2024-12-31** (all 366 days, see "All 366 days"). `run_market_chain.jl`'s
 `TARGET_DAYS` can cover that whole range, but is currently set to the two
 reference days while it's rolled out gradually and checked at each step —
 see "Rolling out beyond the two reference days" below.
@@ -15,7 +14,7 @@ This note records the formula, what was validated against what, and what is
 still known-imperfect, so a future run knows exactly how much to trust each
 piece.
 
-## Why not all 366 days
+## All 366 days
 
 - **2024-01-02 now has every input** (2026-10-02). It used to be blocked
   with 1 January because the gas SRMC needs that day's MIBGAS quote and the
@@ -33,9 +32,26 @@ piece.
   with the gates window starting on 2023-12-31 (the code skips the first
   day of its window). Only the 1 January files were written: the longer
   window would move the other days' factors by at most 0.0013.
-- **2024-12-30, 2024-12-31**: no input data generated; the forecast factors
-  also need ENTSO-E data into January 2025 (the window's last day is
-  skipped the same way).
+- **2024-12-30, 2024-12-31 have every input too** (2026-10-29). They were
+  left out because their forecast factors need ENTSO-E data into January
+  2025 (the gates window's last day is skipped, and the trained forecasts
+  ended on 30 December 22:00 UTC). Steps: `run_spain.py download --years 2025`
+  (keep a copy of `capacities/` and `mean_capacities/` first: the download
+  writes them for 2025 only, and put them back after); in a separate work
+  folder (`FORECAST_DATA_DIR`) with the 2025 files cut to 1–7 January,
+  `train --years 2022 2023 2024 2025` with `train_test_split` = 0.66 × 26 304 /
+  26 472 = 0.6558114 (the same training hours as the 2022–2024 run; set for
+  that work folder's run only, `configs/spain.yaml` keeps 0.66), then `gates
+  --from 2024-01-01 --to 2025-01-01` with the same years and split, and `normalize`. Check: the load
+  forecasts over 2024 are identical, solar/wind differ by 4 / 1 MW on average
+  (the trend line now includes 1–7 January); the factor files of the other 363
+  days come out within 0.0003 on average (worst 0.009), so only the 30–31
+  December files were written. The gates window matters: a short window
+  (28–30 December) moves 29 December by up to 0.15. The other inputs came from
+  data already downloaded: `convert_omie_to_model_data.py`
+  (`EXCLUDED_DATES` now empty), `build_res_offered.py`,
+  `build_crossborder_csv.py --to-date 2024-12-31` (only lines added) and the
+  nuclear/coal/CHP calibration for the two days.
 - A separate, now-resolved blocker used to also stand in the way of January
   onward: `midterm_sddp4.jl` also hits a real leap-day bug (`profile_row`
   re-stamps every date onto the non-leap reference year 2023 to read an
@@ -395,7 +411,7 @@ python3 entsoe_download/fetch_da_exchange_year.py
 
 # 3. ENTSO-E actual physical flows -- for crossborder.csv
 python3 entsoe_download/fetch_crossborder_year.py
-python3 omie_conversion/build_crossborder_csv.py --from-date 2024-01-01 --to-date 2024-12-29
+python3 omie_conversion/build_crossborder_csv.py --from-date 2024-01-01 --to-date 2024-12-31
 #    (always pass the FULL date range you want the file to contain -- this
 #     script overwrites the whole file rather than merging, see the
 #     crossborder.csv section above)
@@ -407,15 +423,15 @@ python3 entsoe_download/fetch_chp_entsoe_year.py
 python3 omie_conversion/convert_omie_to_model_data.py --validate
 
 # 6. Write Data/ES_old/{load,Solar,Wind}/
-python3 omie_conversion/convert_omie_to_model_data.py --all --from-date 2024-01-01 --to-date 2024-12-29
+python3 omie_conversion/convert_omie_to_model_data.py --all --from-date 2024-01-01 --to-date 2024-12-31
 
 # 7. Per-day config.toml calibration (--force recomputes/replaces already-present
 #    dates instead of skipping them; the two reference days are always protected)
-python3 omie_conversion/add_nuclear_coal_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --force
-python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --force
+python3 omie_conversion/add_nuclear_coal_calibration.py --from-date 2024-01-01 --to-date 2024-12-31 --force
+python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-31 --force
 #    gas_mw alone, from the waste/minihydro already in config.toml (needs only
 #    OMIE_data/tecnologias/; add --dry-run to just write the report)
-python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-29 --gas-from-config
+python3 omie_conversion/add_chp_calibration.py --from-date 2024-01-01 --to-date 2024-12-31 --gas-from-config
 
 # 8. Retrain the mid-term SDDP model to cover the new range
 #    (edit [bellman].bgn_date in config.toml first)
@@ -428,6 +444,7 @@ python3 forecast_updates/run_spain.py download --years 2022 2023 2024
 python3 forecast_updates/run_spain.py train
 python3 forecast_updates/run_spain.py gates --from 2023-12-31 --to 2024-12-30
 python3 forecast_updates/run_spain.py normalize --from 2024-01-01 --to 2024-12-29 --out Data/ES
+#    30-31 December need January 2025 and a matched split: see "All 366 days".
 
 # 10. Optional, for validation only (the model does not read it): ENTSO-E actual
 #     generation per production type, all 17 types, 2020-01-01 to yesterday by

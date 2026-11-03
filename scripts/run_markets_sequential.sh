@@ -8,16 +8,28 @@
 # solstorm_start_redispatch.sh); step 3 joins the chunks with merge_runs.py.
 #
 #     scripts/run_markets_sequential.sh <out>
-#     GAS=on FROM=2024-01-01 TO=2024-12-29 DAYS=7 scripts/run_markets_sequential.sh <out>
+#     GAS=on FROM=2024-01-01 TO=2024-12-31 DAYS=7 scripts/run_markets_sequential.sh <out>
 #
 #   <out>     parent folder; one folder per chunk, <out>/<from>_<to>/
-#   FROM, TO  first and last study day (default 2024-01-01 .. 2024-12-29)
+#   FROM, TO  first and last study day (default 2024-01-01 .. 2024-12-31)
 #   DAYS      chunk length in days (default 7)
 #   GAS       on: the gas/coal switches on (scripts/make_run_config.jl); off
 #             (default): config.toml as it is
 #   MARKUP    on: [costs.markup] on as well (generation tax + RSI mark-ups); off (default)
 #   HYDRO     optional hydro_state variant for [bellman] (e.g. aligned_rc_observed)
 #   RES       optional [run].res_input (accepted or offered)
+#   Scenario runs (SCENARIO=trinity|necp): leave GAS, MARKUP and HYDRO out; the
+#   scenario sets the switches and make_run_config.jl stops if one is given.
+#   PARTICIPATION  optional [participation] (§23): active, measured (CID only), measured_all
+#                  (ID2, ID3 and CID) or passive
+#   BALANCING      optional [balancing].eligible: all or qualified
+#   PUMPING        optional: removed = real 2024 pumping out of the load ([run].remove_pumping)
+#   PUMPLIMIT      optional: on = pumped storage pumps with its own pumping power ([da].pump_limits)
+#   BESS           optional: on = BESS efficiency, wear cost, usable range ([bess]); BESSEFF, BESSWEAR,
+#                  BESSSOC (LO:HI) set a sensitivity value and imply BESS=on
+#   HYDROTOPUP     optional: on = a short stage after the DA gets the slack's MWh as extra hydro ([bellman].hydro_budget_topup)
+#   IDSTARTS       optional: on = CCGT/coal may start in ID2/ID3 ([unit_commitment].intraday_starts)
+#   SCENARIO       optional: trinity or necp = a 2035 run (make_run_config.jl --scenario)
 #
 # Writes <out>/config_markets.toml, <out>/config_redispatch.toml and
 # <out>/chunks.txt (the chunk list step 2 reads). A finished chunk gets a file
@@ -33,13 +45,24 @@ set -u
 
 [ $# -ge 1 ] || { sed -n '2,30p' "$0"; exit 1; }
 OUT="$1"
-FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-29}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"; MARKUP="${MARKUP:-off}"
+FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-31}"; DAYS="${DAYS:-7}"; GAS="${GAS:-off}"; MARKUP="${MARKUP:-off}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$OUT"
 
 RES_ARG=()
 [ -n "${RES:-}" ] && RES_ARG=(--res-input "$RES")
 [ -n "${HYDRO:-}" ] && RES_ARG+=(--hydro "$HYDRO")
+[ -n "${PARTICIPATION:-}" ] && RES_ARG+=(--participation "$PARTICIPATION")
+[ -n "${BALANCING:-}" ] && RES_ARG+=(--balancing "$BALANCING")
+[ -n "${PUMPING:-}" ] && RES_ARG+=(--pumping "$PUMPING")
+[ -n "${PUMPLIMIT:-}" ] && RES_ARG+=(--pump-limits "$PUMPLIMIT")
+[ -n "${BESS:-}" ] && RES_ARG+=(--bess "$BESS")
+[ -n "${BESSEFF:-}" ] && RES_ARG+=(--bess-eff "$BESSEFF")
+[ -n "${BESSWEAR:-}" ] && RES_ARG+=(--bess-wear "$BESSWEAR")
+[ -n "${BESSSOC:-}" ] && RES_ARG+=(--bess-soc "$BESSSOC")
+[ -n "${HYDROTOPUP:-}" ] && RES_ARG+=(--hydro-topup "$HYDROTOPUP")
+[ -n "${IDSTARTS:-}" ] && RES_ARG+=(--intraday-starts "$IDSTARTS")
+[ -n "${SCENARIO:-}" ] && RES_ARG+=(--scenario "$SCENARIO")
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_markets.toml" --stage markets --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 julia --startup-file=no "$REPO/scripts/make_run_config.jl" "$OUT/config_redispatch.toml" --stage redispatch --gas "$GAS" --markup "$MARKUP" ${RES_ARG[@]+"${RES_ARG[@]}"} || exit 1
 

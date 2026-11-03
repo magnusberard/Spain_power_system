@@ -117,14 +117,18 @@ function load_uc_coal(c)
 end
 
 """
-    uc_units_for(nets, date_str, ucc, fp) -> Dict{String,UCUnit}
+    uc_units_for(nets, date_str, ucc, fp; fuel_th) -> Dict{String,UCUnit}
 
 The committed units for one day: every Gas/Combined_cycle unit in `nets`
 (and, with [unit_commitment.coal], every coal unit; see below)
-whose largest hourly pmax is at least `ucc.min_mw`.
+whose largest hourly pmax is at least `ucc.min_mw`.  `fuel_th` (EUR per MWh
+of gas burned, gas + its CO2) prices the start fuel; `nothing` takes it from
+the day's MIBGAS + EUA (`fp`, 2024 path).  Scenario runs pass a fixed value
+derived from EMPIRE's CCGT cost (run_market_chain.jl, UC_GAS_FUEL_TH).
 """
-function uc_units_for(nets, date_str, ucc, fp)
-    fuel_th = gas_fuel_cost_th(fp, Date(String(date_str)))      # EUR/MWh of gas
+function uc_units_for(nets, date_str, ucc, fp; fuel_th = nothing)
+    fuel_th = fuel_th === nothing ? gas_fuel_cost_th(fp, Date(String(date_str))) :   # EUR/MWh of gas
+                                    Float64(fuel_th)
     start_eur_per_mw = ucc.wear_eur_per_mw + ucc.start_fuel_mwh_per_mw * fuel_th
     mw  = Dict{String,Float64}()
     vc  = Dict{String,Vector{Float64}}()      # cost per hour of the day

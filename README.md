@@ -33,8 +33,8 @@ a run reads and writes:
 
 Reproduces the observed 2024 Spanish market. The per-day input data
 (load/Wind/Solar, forecast factors, cross-border exchange, nuclear/coal/CHP
-calibration) is prepared for **2024-01-01 to 2024-12-29** (364 days — every
-day of 2024 except 30–31 December, see "Known limitations"),
+calibration) is prepared for **2024-01-01 to 2024-12-31** (all 366 days of
+2024; 30–31 December added 2026-10-29),
 and `config.toml` `[run]` chooses which of them a run covers — by default the
 two hand-validated reference days (8 July, 2 December), the ones to check new
 results against. The chain checks before solving that every chosen day has
@@ -216,6 +216,92 @@ ES/PT/FR/EU day-ahead. Writes `results/<label>/`. Expect 1–3 hours.
 Switch scenario by setting **both** `[scenario].label` and
 `[scenario].empire_dir`.
 
+**Full year (2035 reference run, branch `2035-reference-run`).** The config
+runs Trinity over all 52 weeks from 1 January with weather year 2015
+(`Data/sample_weeks_2015_year.csv`, written by hand: 2015 has average reservoir
+inflow and close to average sun and wind of 2015–2019), and `[crossborder]` off
+(the 4-zone day-ahead sets the exchange). First retrain the Trinity cuts with
+`midterm_sddp4.jl` (the shipped ones assume `bgn_date` 2024-07-02).
+`SPAIN_DAYS` picks days out of the week sample, so the year runs as one-week
+chunks in parallel, e.g. on Solstorm
+`scripts/solstorm_start_weeks.sh accepted <folder> k/N` (the res_input argument
+is unused in weeks mode), then `scripts/merge_runs.py`. The chunks are
+independent: scenario runs have no unit commitment. 2024 has 29 February and
+2015 does not, so from March the weather is one day ahead of the date.
+
+**CO₂ cost in the scenarios (branch `2035-improvements`).** The EnVis
+`Generator_CO2Content.tab` in `Data/2035` is tCO₂ per GJ of **fuel** (CCGT and
+OCGT both 0.0558, the IPCC factors), so the CO₂ adder is
+(3.6/η)·content·price, as in EMPIRE itself (OpenEMPIRE user guide §4.3).
+`[scenario].co2_content_basis = "fuel"` does that with the efficiencies in
+`[scenario.efficiency]` (CCGT 0.56, OCGT 0.425, coal 0.435 from EMPIRE; the
+rest from OpenEMPIRE's default table); `"electricity"` is the original
+3.6·content·price. 2035 costs, Trinity / NECPEssentials: CCGT 62.4 / 173.4
+(was 52.5 / 115.3), coal 68.2 / 303.9 (was 40.5 / 142.3) €/MWh, so coal is no
+longer cheaper than gas in Trinity. Retrain the scenario cuts after changing it.
+
+**Which CCGTs close (branch `2035-improvements`).** EMPIRE gives CCGT capacity
+per region and builds no new CCGT by 2035 in either scenario; its existing
+fleet shrinks by one factor everywhere (×0.838 to 20,021 MW). With
+`[scenario.retirement] ccgt = "oldest_first"` (nodal only) whole units close
+instead, oldest first by build year (GEM, `Data/gas_unit_efficiency.csv`),
+until EMPIRE's national total is met; the unit crossing it is shrunk. Units
+under 100 MW stay at their 2024 size; the Balearic plants (`empire_regions`)
+take EMPIRE's island total, 994 → 739 MW. 2035: 14 units built 2002–2004
+close (6,457 MW), Palos G0379 387 → 200 MW.
+The list is written to `results/<run>/ccgt_fleet.csv`; `"even"` is the
+original scaling. Our 2024 list has 26.9 GW of CCGT against EMPIRE's 23.9 GW
+start (EMPIRE's regions are our units × 0.888), so 6.9 GW are removed in all.
+
+**Gas efficiency per plant in the scenarios (branch `2035-improvements`).**
+`[costs.gas_unit_efficiency]` now also works in scenario runs: EMPIRE's single
+CCGT cost is taken to be at η = 0.56 (`[scenario.efficiency].GasCCGT`) and
+rescaled per unit with the same efficiency file as 2024, fuel and CO₂ with
+0.56/η, the variable O&M (4.68 €/MWh) unchanged. 2035 costs at η 0.56 / 0.58 /
+0.60: Trinity 62.4 / 60.4 / 58.6, NECP 173.4 / 167.5 / 162.1 €/MWh; after the
+oldest-first closures 6.6 / 12.1 / 1.2 GW remain in each class. OCGTs, the CHP
+block and the mid-term SDDP keep the single CCGT cost.
+
+**Mark-ups in the scenarios (branch `2035-improvements`).** `[costs.markup]` now
+also runs in scenario (weeks) runs. Their study days carry 2024 dates, so the
+2024 tax quarters and `rsi_file` are not read: the tax is `scenario_tax` (0 —
+IVPEE at 0 % from 2028, RDL 18/2026) and there is no RSI yet, so no gas
+mark-up. Coal keeps the 2024 constant `L_coal = 0.188` (our assumption):
+2035 coal Trinity 68.2 → 84.0, NECP 303.9 → 374.2 €/MWh in the market stages.
+Gas mark-up from the model's own RSI (`scenario_rsi_source = "model"`): no
+owner data is needed, since the largest firm held a near-constant 21.4 % of
+OMIE's offered MW in 2024, so RSI = rsi_offset + rsi_scale × (1 − 0.214) ×
+offered MW / load (offered = the units' pmax in the market stage, without the
+French imports and the SLACK backstop). Calibrated on 2024 (the 15th of every
+month, 288 hours) to OMIE's mean and spread: −1.013 + 1.110 × …; mean L_gas
+0.019 vs 0.020, L_gas > 0.05 in 20 % vs 17 % of hours; the tight hours within
+a day match on 10 of 12 days. `markup_hours.csv` logs RSI, offered MW and load
+per hour.
+
+**Island plants in the scenarios (branch `2035-improvements`).** As in 2024
+(`[islands]`), the Balearic plants get 0 MW in the market stages and run only
+in the redispatch, and Ceuta's plant is left out (no Ceuta demand in the data).
+Unlike OMIE's series, EMPIRE's load and solar/wind include the islands
+(ES532: 3.8–4.3 TWh, 0.9–1.3 GW solar in 2035), so scenario runs share the
+solar/wind series over all units (`prepare_network(; inputs_peninsular =
+false)`) and do not rescale coal; with the 2024 rule the island share
+(~1.9 % of solar) was counted twice. The Mallorca link is 277 MW in the grid
+vs 400 (Trinity) / 587 MW (NECP) in EMPIRE — to check in a test run.
+
+**Unit commitment in the scenarios (branch `2035-improvements`).** The gas/coal
+on/off with start costs, minimum load, min up/down and the minimum-income check
+([unit_commitment], as with GAS=on in 2024) now also runs in scenario runs.
+EMPIRE gives no gas price, so the start gas (1.5 MWh/MW) is priced from its
+CCGT cost: gas + CO₂ per MWh of gas = (cost − vom) × 0.56 — 32.3 €/MWh in
+Trinity, 94.5 in NECP, one value for the run — giving 106 / 199 €/MW per start
+incl. wear (57.4 €/MW). Coal runs at full size with its own on/off and may be
+moved in the redispatch (`frozen_fuels = ["Nuclear", "Biomass"]`). With unit
+commitment the weeks are no longer independent: run the year with the market
+stages in order (`scripts/run_markets_sequential.sh`, which passes
+`uc_state.json` on) and the redispatch in parallel
+(`scripts/solstorm_start_redispatch.sh`), GAS=off since this config already has
+the switches.
+
 ### 4. Grid reinforcement
 
 When the market stages clear but the redispatch reports `LOCALLY_INFEASIBLE`,
@@ -257,9 +343,9 @@ empty for this reason.
 | ---- | ---- |
 | `Data/Bus_Data.csv`, `lines.csv`, `transformers_reactance.csv` | bus-level network topology |
 | `Data/Generation.csv`, `Storage.csv`, `power_unit_tech_params.csv` | unit fleet, ramp rates, tech parameters |
-| `Data/ES_old/{Solar,Wind,load}/` | 2024 MW baselines; column `-12` is the day-ahead vintage. 364 days (2024-01-01 to 2024-12-29, all of 2024 except 30–31 December) — see `docs/method_omie_full_year_conversion.md` |
-| `Data/ES_old_offered/{Solar,Wind}/` | the same baselines plus the solar and wind offered in OMIE's day-ahead auction but not accepted, 2024-01-01 to 2024-12-29; read when `[run].res_input = "offered"` (`omie_conversion/build_res_offered.py`) |
-| `Data/ES/{Solar,Wind Onshore,load}/` | per-gate forecast-update factors (`DA,ID2,ID3,CID,BE`), 364 days of 2024 (to 2024-12-29) in Spanish local time, generated by `forecast_updates/run_spain.py` (Koks' forecast-update model, floor method) — see the method doc's "Forecast-update factors" |
+| `Data/ES_old/{Solar,Wind,load}/` | 2024 MW baselines; column `-12` is the day-ahead vintage. 366 days (2024-01-01 to 2024-12-31) — see `docs/method_omie_full_year_conversion.md` |
+| `Data/ES_old_offered/{Solar,Wind}/` | the same baselines plus the solar and wind offered in OMIE's day-ahead auction but not accepted, 2024-01-01 to 2024-12-31; read when `[run].res_input = "offered"` (`omie_conversion/build_res_offered.py`) |
+| `Data/ES/{Solar,Wind Onshore,load}/` | per-gate forecast-update factors (`DA,ID2,ID3,CID,BE`), 366 days of 2024 in Spanish local time, generated by `forecast_updates/run_spain.py` (Koks' forecast-update model, floor method) — see the method doc's "Forecast-update factors" |
 | `Data/ts/EDF__*-ES__*.csv` | EDF load factors and hydro coefficients, 37 climate years 1982–2018. The climate years these files share define the SDDP's scenario set. Run-of-river drives the ES RoR units; inflow is used only when `[midterm4].es_inflow_source = "edf"`. The wind and PV load-factor files are read for the climate-year set only — availability comes from the EMPIRE series below |
 | `Data/ts/Profile-Iberia.csv` | ES load shape for the SDDP |
 | `Data/ts/EMPIRE/` | hourly NUTS3 weather series the SDDP reads for every run, 2024 and scenario alike. Byte-identical to each scenario's own `ScenarioData/` copy, which is where the market chain takes the same series |
@@ -289,11 +375,9 @@ branch.
 - The reinforcement sizing assumes symmetric thermal limits, and is only
   meaningful once the binding mechanism has been confirmed thermal rather than
   voltage — see step 2 of the method doc.
-- **30–31 December 2024 cannot run.** They have no input data (and their
-  forecast factors would need ENTSO-E data from January 2025). 1 and
-  2 January have every input (`bgn_date = "2024-01-01"`, December 2023
-  MIBGAS/EUA quotes added) but have not been test-run yet. See the method
-  doc's "Why not all 366 days".
+- **30–31 December 2024** have every input since 2026-10-29 (forecast
+  factors from ENTSO-E data into January 2025); runs published before that
+  date stop on 29 December (364 days). See the method doc's "All 366 days".
 - **Water values are a coarse staircase.** With 60 SDDP iterations the
   binding-cut water value steps (e.g. 36.8 → 52.9 EUR/MWh) across small
   volume changes, so a retrain can move a day's intraday/balancing prices by

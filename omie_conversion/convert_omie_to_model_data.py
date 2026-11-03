@@ -38,11 +38,10 @@ EXCHANGE_CSV = os.path.join(ENTSOE_DIR, "da_exchange_2024.csv")
 ES_OLD_DIR = os.path.join(REPO_DATA, "ES_old")
 OMIE_REF_DIR = os.path.join(REPO_DATA, "OMIE")
 
-# Days excluded from the run: the [ES] forecast-factor files don't cover
-# these, and per project decision they're simply skipped rather than
-# generated/guessed at. 2024-01-01 was excluded too until its forecast
-# factors could be generated (forecast_updates/, 2026-10-05).
-EXCLUDED_DATES = {"2024-12-30", "2024-12-31"}
+# Days excluded from the run: none now. 2024-01-01 was excluded until its
+# forecast factors could be generated (forecast_updates/, 2026-10-05), and
+# 2024-12-30/31 until ENTSO-E's January 2025 data was downloaded (2026-10-29).
+EXCLUDED_DATES = set()
 
 # The 8 raw OMIE "TECNOLOGÍA" categories, grouped into the technology buckets
 # that reproduce Data/OMIE/actual_generation_*.csv exactly (validated against

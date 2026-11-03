@@ -42,6 +42,26 @@ using JuMP
 #           NTC-bounded flow variables on the PT–ES–FR–EU chain.  The result
 #           then carries `xb` (per-hour net imports into ES, MW) and `prices`
 #           (per-zone marginal prices, EUR/MWh).  DA (all hours free) only.
+# SPAIN_IIS=1 (debugging only): name the main variables and constraints, and when a
+# stage is infeasible ask the solver for the conflicting set (IIS) and print it.
+const IIS_DEBUG = get(ENV, "SPAIN_IIS", "") == "1"
+function iis_dump(model; max_lines = 80)
+    try
+        JuMP.compute_conflict!(model)
+    catch e
+        println("  IIS: computation failed: ", e); return
+    end
+    JuMP.get_attribute(model, JuMP.MOI.ConflictStatus()) == JuMP.MOI.CONFLICT_FOUND ||
+        (println("  IIS: no conflict found"); return)
+    n = 0
+    for (F, S) in JuMP.list_of_constraint_types(model), c in JuMP.all_constraints(model, F, S)
+        JuMP.MOI.get(model, JuMP.MOI.ConstraintConflictStatus(), c) == JuMP.MOI.IN_CONFLICT || continue
+        n += 1
+        n <= max_lines && println("  IIS ", n, ": ", c)
+    end
+    println("  IIS: ", n, " constraints/bounds in conflict")
+end
+
 function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, optimizer;
                   free_hours::Union{Nothing,Set{Int}} = nothing,
                   prev_sched::Union{Nothing,Dict{Int,Dict{String,Float64}}} = nothing,
@@ -80,6 +100,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             JuMP.set_start_value(v, g["pg"])
             pg[(h, k)] = v
             pg_by_name[(h, g["name"])] = v
+            IIS_DEBUG && JuMP.set_name(v, "pg[$h,$(g["name"])]")
             if frozen
                 mw     = ps === nothing ? nothing : get(ps, g["name"], nothing)
                 fixval = mw === nothing ? g["pg"] : mw / BASEMVA
@@ -213,6 +234,11 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # never does it and no complementarity constraint is needed.  Lossless units
     # (the EMPIRE BESS) keep the original single-variable form, leaving the 2035
     # scenario LPs unchanged.
+    # [bess] (data_preparation.jl, set_bess_params!) gives the BESS a round-trip
+    # efficiency (the same legs as pumped hydro), a wear cost per MWh discharged
+    # (wear_eur_mwh, on the discharge leg only) and a usable range
+    # soc_min…soc_max of energy_mwh (each day still starts and ends half full).
+    wear_cost = JuMP.AffExpr(0.0)
     for (_, g) in nets[1].gens
         haskey(g, "energy_mwh") || continue
         name   = g["name"]                        # stable across hours (unlike key k)
@@ -220,7 +246,10 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         e_puh > 0 || continue
         soc0   = 0.5 * e_puh
         eta_rt = Float64(get(g, "eta_rt", 1.0))
-        if eta_rt >= 1.0
+        wear   = Float64(get(g, "wear_eur_mwh", 0.0))
+        s_lo   = Float64(get(g, "soc_min", 0.0)) * e_puh
+        s_hi   = Float64(get(g, "soc_max", 1.0)) * e_puh
+        if eta_rt >= 1.0 && wear == 0.0
             draw = [pg_by_name[(j, name)] for j in 1:H]
         else
             eta = sqrt(eta_rt)
@@ -231,17 +260,39 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             # power limit is enforced on pg itself, which the legs must equal.
             p_nom = Float64(get(g, "installed_mw", 0.0)) / BASEMVA
             draw  = JuMP.AffExpr[]
+            # [bess] batteries in a frozen hour (ID3 hours 0–11, past CID gates): the
+            # output is fixed, so its charge-level change is a number, not legs; legs
+            # bounded by nameplate made the gate infeasible by solver round-off when a
+            # 2-h battery was frozen at full power (NECP, ID3 13 May 2024). Pumped
+            # hydro keeps the legs (unchanged LPs).
+            bess_cfg = haskey(g, "wear_eur_mwh")
             for j in 1:H
+                vj = pg_by_name[(j, name)]
+                if bess_cfg && !(j in free) && JuMP.is_fixed(vj)
+                    x = clamp(JuMP.fix_value(vj), -p_nom, p_nom)
+                    push!(draw, JuMP.AffExpr(x > 0 ? x / eta : x * eta))
+                    continue
+                end
                 dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
                 chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
-                JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
+                legc = JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
+                if IIS_DEBUG
+                    JuMP.set_name(dis, "dis[$j,$name]"); JuMP.set_name(chg, "chg[$j,$name]")
+                    JuMP.set_name(legc, "legs[$j,$name]")
+                end
                 push!(draw, dis / eta - chg * eta)
+                wear > 0 && JuMP.add_to_expression!(wear_cost, wear * BASEMVA, dis)
             end
         end
+        # batteries in a gate with frozen hours: a hair of slack on the charge limits
+        # for their round-off (none when every hour is free, e.g. the DA)
+        tol = haskey(g, "wear_eur_mwh") && length(free) < H ? 1e-6 * e_puh : 0.0
         for h in 1:H
-            JuMP.@constraint(model, 0.0 <= soc0 - sum(draw[j] for j in 1:h) <= e_puh)
+            socc = JuMP.@constraint(model, s_lo - tol <= soc0 - sum(draw[j] for j in 1:h) <= s_hi + tol)
+            IIS_DEBUG && JuMP.set_name(socc, "soc[$h,$name]")
         end
-        JuMP.@constraint(model, sum(draw) == 0.0)
+        endc = JuMP.@constraint(model, sum(draw) == 0.0)
+        IIS_DEBUG && JuMP.set_name(endc, "end_half_full[$name]")
     end
 
     # ── Thermal ramp limits ───────────────────────────────────────────────────
@@ -315,6 +366,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 p  = pg_by_name[(h, name)]
                 on = JuMP.@variable(model, binary = true)
                 st = JuMP.@variable(model, binary = true)
+                IIS_DEBUG && (JuMP.set_name(on, "on[$h,$name]"); JuMP.set_name(st, "start[$h,$name]"))
                 uc_on[(h, name)] = on
                 uc_start[(h, name)] = st
                 was_on = prev_on === nothing ? nothing : get(prev_on, (h, name), false)
@@ -423,7 +475,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     for h in 1:H, (k, g) in nets[h].gens
         JuMP.add_to_expression!(op, g["cost"][1], pg[(h, k)])
     end
-    cost_expr = op + θ_future + foreign_cost + start_cost_expr
+    cost_expr = op + θ_future + foreign_cost + start_cost_expr + wear_cost
 
     # ── Minimum-movement anchor (intraday gates only) ─────────────────────────
     # For every tradable-hour unit that has a previous-gate set-point, add L1
@@ -453,6 +505,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     JuMP.@objective(model, Min, cost_expr)
     JuMP.optimize!(model)
     status = string(JuMP.termination_status(model))
+    IIS_DEBUG && status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED") && iis_dump(model)
 
     # Unit commitment: keep the MIP's on/off decisions, then fix every binary at
     # that value and re-solve as an LP so the ES balance has duals (the price).
@@ -469,6 +522,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             JuMP.fix_discrete_variables(model)
             JuMP.optimize!(model)
             status = string(JuMP.termination_status(model))
+            IIS_DEBUG && status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED") && iis_dump(model)
             uc_result = (on = on_v, start = st_v, start_cost_eur = sc,
                          mip_status = mip_status, mip_gap = gap)
         end
@@ -544,7 +598,9 @@ end
 #      price, the closest one   → "cost"        (gas, coal, wind at 0, CHP, …)
 #   2. part-loaded reservoir hydro (cost 0 here; its value comes from the
 #      Bellman cuts or the daily budget)                → "water_value"
-#   3. a part-loaded storage unit (pumped hydro, BESS)  → "storage"
+#   3. a part-loaded storage unit (pumped hydro, BESS)  → "storage"; its label gets
+#      ", charging" when it pumps / charges (negative output); an idle battery
+#      (0 MW) does not count
 #   4. a running unit AT a limit whose cost equals the price within 0.05 €/MWh
 #      (degenerate LP: the same price either way)       → "cost_at_limit"
 #   5. an interconnector flow inside its NTC limits: the price is set abroad
@@ -560,7 +616,7 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
     out = Dict{Int,NamedTuple}()
     for (h, price) in es_price
         best = nothing; best_gap = Inf
-        hydro = nothing; store = nothing
+        hydro = nothing; store = nothing; store_v = 0.0
         edge = nothing; edge_gap = Inf               # running AT a limit with cost = price
         for (k, g) in nets[h].gens
             v  = JuMP.value(pg[(h, k)])
@@ -584,7 +640,10 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
             if k in resv
                 hydro === nothing && (hydro = g)
             elseif haskey(g, "energy_mwh")
-                store === nothing && (store = g)
+                # an idle battery (0 MW) is inside its limits but not on the margin:
+                # with losses and wear it idles because cycling does not pay
+                String(get(g, "fuel", "")) == "Battery" && abs(v) <= tol_mw && continue
+                store === nothing && (store = g; store_v = v)
             else
                 gap = abs(g["cost"][1] / BASEMVA - price)
                 if gap <= max(0.5, 0.01 * abs(price)) && gap < best_gap
@@ -594,7 +653,8 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
         end
         out[h] = best  !== nothing ? (setter = label(best),  unit = string(best["name"]),  rule = "cost") :
                  hydro !== nothing ? (setter = label(hydro), unit = string(hydro["name"]), rule = "water_value") :
-                 store !== nothing ? (setter = label(store), unit = string(store["name"]), rule = "storage") :
+                 store !== nothing ? (setter = store_v < 0 ? replace(label(store), r"\)$" => ", charging)") : label(store),
+                                      unit = string(store["name"]), rule = "storage") :
                  edge  !== nothing ? (setter = label(edge),  unit = string(edge["name"]),  rule = "cost_at_limit") :
                  begin
                      inside(f) = f !== nothing && JuMP.value(f[h]) > JuMP.lower_bound(f[h]) + tol_mw &&
@@ -605,4 +665,39 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
                  end
     end
     return out
+end
+
+# ── Hydro top-up ([bellman].hydro_budget_topup, run_market_chain.jl) ──────────
+# MWh the slack covered in a solved gate's tradable hours (net indices; nothing = all).
+slack_mwh(sched, hours) = sum((get(sched[h], "SLACK", 0.0)
+                               for h in (hours === nothing ? keys(sched) : hours) if haskey(sched, h)); init = 0.0)
+# The day's reservoir budget raised by `extra` MWh (nothing stays nothing).
+topped_budget(bv, extra) = (b = get(bv, :budget, nothing); b === nothing ? nothing : b + extra)
+# An hour priced at the slack (1000 EUR/MWh): the next MW there would be short,
+# even when the slack itself produces nothing (the system exactly at its edge).
+const SHORT_PRICE = 999.0
+
+# The top-up loop. `resolve(extra)` re-solves the stage with the day's budget
+# raised by `extra` MWh. While the slack runs, or an hour is priced at the slack,
+# add the slack's MWh + 1 MWh per tradable hour and re-solve; at most `max_rounds`,
+# and stop once a round no longer helps (e.g. hydro already at full power in the
+# short hour). Returns the last result and what it took.
+function hydro_topup(result, resolve, hours, n_hours; max_rounds = 5)
+    ok(r)     = r.status in ("OPTIMAL", "LOCALLY_SOLVED")
+    at_cap(r) = count(p -> p >= SHORT_PRICE,
+                      (p for (h, p) in r.es_price if hours === nothing || h in hours))
+    extra = 0.0; rounds = 0
+    ok(result) || return (result = result, rounds = 0, extra = 0.0, slack_left = 0.0, at_cap = 0)
+    s = slack_mwh(result.sched, hours); c = at_cap(result)
+    while (s > 0.5 || c > 0) && rounds < max_rounds
+        extra += s + n_hours
+        r = resolve(extra); rounds += 1
+        ok(r) || break
+        s2 = slack_mwh(r.sched, hours); c2 = at_cap(r)
+        result = r
+        helped = s2 < s - 0.5 || c2 < c
+        s, c = s2, c2
+        helped || break
+    end
+    return (result = result, rounds = rounds, extra = extra, slack_left = s, at_cap = c)
 end

@@ -8,7 +8,7 @@
 # just start the script again; --force re-runs them.
 #
 # Usage (from the repo root):
-#     scripts/run_2024_by_month.sh                              # 2024-01-01 .. 2024-12-29
+#     scripts/run_2024_by_month.sh                              # 2024-01-01 .. 2024-12-31
 #     scripts/run_2024_by_month.sh 2024-04-01 2024-06-30        # April .. June
 #     scripts/run_2024_by_month.sh 2024-04-01 2024-06-30 --force
 #
@@ -19,7 +19,7 @@
 set -u
 
 FROM="${1:-2024-01-01}"
-TO="${2:-2024-12-29}"
+TO="${2:-2024-12-31}"
 FORCE=0
 [ "${3:-}" = "--force" ] && FORCE=1
 

@@ -1000,6 +1000,16 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**s4b_dec results (step 4 with the finer curves, 3 Nov): step 4 replaces B; three gaps stated.** All 672 hours solved,
+fallback on 11 Dec only (as ly8). Wind's mean refund 18 → 46 €/MWh (REE 82); all reductions 50 → 55 (REE 87); down
+cost 39.3 → 34.3 M€; phase I+II cost 131.8 → 127.7 M€ (166 % of REE's 77.0; ly8 133 %). Turned down, GWh (REE all
+down): gas 56 (27), reservoir + run-of-river 86 (132), wind + solar 403 (379), CHP + biomass 169 (74), nuclear 20
+(12.5), pumped storage 77 (103). Sum of gaps to REE over these six: B (ly8) 806 GWh, s4b 228. Intraday prices against
+ly8: ID2 +1.8 (104.9, real ≈ 110), ID3 +3.2, CID +6.7, BAL +9.6 €/MWh; day-ahead unchanged. The finer curves explain
+only part of the gaps. Stated limitations (scope freeze, no further iteration): CHP turned down 2.3× REE's volume;
+phase I+II cost 166 % of REE; pumped storage (77 GWh, kept out of the offers) and CCGT (56 GWh, 50 % own offers at
+~0 €/MWh) are turned down at almost no refund (14 of 34 M€ down cost), which points to location or limits, not price.
+
 **ly9b_dec results (sweep b: the border ties, 2–29 Dec, 2 Nov).** ly8 + Lagoaça relabelled PT, Aldeadávila–Pocinho
 220 kV ×2, Vic–Baixas continued to a French bus (data/sweep_b/, run from a copy of the repo). All 672 hours solved;
 the markets' fallback no longer needed (ly8: 21 gates on 11 Dec → 0); load shed 31 → 0 MWh. Day-ahead identical; ID2,

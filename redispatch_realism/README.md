@@ -1000,6 +1000,12 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**cmbm_dec (3 Nov): merging main changes nothing with its options off.** cmb_dec's setup on the merged code
+(`c1057bb`, hydro top-up off): all 3,024 hour-stage prices identical to cmb_dec (largest difference 0.00 €/MWh); phase I
+volume, cost, turned-down mix by technology, binding hours and the one unsolved real-time hour (23 Dec h08) the
+same. The main-2024 options (pumping, option B, intraday starts, top-up) are tested next, with the pipelined
+sequential runner (`solstorm_start_year_pipeline.sh`).
+
 **cmb_dec results (combined: ly8 + sweep a + step 4 finer curves + border ties, 3 Nov): passes; this is the setup to
 freeze for the year.** Run from the ly9b copy with `--sweep-a --offers redispatch_realism/data/phase2_offers_dec_tail.csv`
 (all three checked in the outputs). 671 of 672 hours solved: 23 Dec h08 real time stopped at Ipopt's iteration limit

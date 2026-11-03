@@ -522,6 +522,41 @@ end
 Phase I/II for one study day (see the file header).  Fills RD_PHASE1_ON,
 RD_PHASE1_ROWS and RD_PHASE1_SUM.
 """
+function phase1_storage_rule!(m, pg_of, gen_of, scheds, H)
+    n = 0
+    for (name, g) in gen_of
+        e_puh = Float64(get(g, "energy_mwh", 0.0)) / BASEMVA
+        e_puh > 0 || continue
+        all(k -> haskey(pg_of, (name, k)), 1:H) || continue
+        soc0 = 0.5 * e_puh
+        s_lo = Float64(get(g, "soc_min", 0.0)) * e_puh
+        s_hi = Float64(get(g, "soc_max", 1.0)) * e_puh
+        eta  = sqrt(Float64(get(g, "eta_rt", 1.0)))
+        p_nom = Float64(get(g, "installed_mw", g["pmax"] * BASEMVA)) / BASEMVA
+        draw  = JuMP.AffExpr[]
+        draw0 = Float64[]                                   # the day-ahead's own path
+        for k in 1:H
+            t = get(scheds[k], name, 0.0) / BASEMVA
+            push!(draw0, max(t, 0.0) / eta - max(-t, 0.0) * eta)
+            if eta >= 1.0
+                push!(draw, JuMP.AffExpr(0.0, pg_of[(name, k)] => 1.0))
+            else
+                dis = JuMP.@variable(m, lower_bound = 0.0, upper_bound = max(p_nom, abs(t)))
+                chg = JuMP.@variable(m, lower_bound = 0.0, upper_bound = max(p_nom, abs(t)))
+                JuMP.@constraint(m, pg_of[(name, k)] == dis - chg)
+                push!(draw, dis / eta - chg * eta)
+            end
+        end
+        for h in 1:H
+            lvl0 = soc0 - sum(draw0[1:h])
+            JuMP.@constraint(m, min(s_lo, lvl0) <= soc0 - sum(draw[j] for j in 1:h) <= max(s_hi, lvl0))
+        end
+        JuMP.@constraint(m, sum(draw) == sum(draw0))
+        n += 1
+    end
+    return n
+end
+
 function run_phase1_day!(su, date_str)
     p1 = su.phase1
     day_ts = sort(filter(r -> r.date == date_str, hourly_da), :hour)
@@ -536,6 +571,7 @@ function run_phase1_day!(su, date_str)
     p_da  = [rd_da_price(date_str, h) for h in hours]
     scheds = [something(phase1_sched_for(date_str, h), Dict{String,Float64}()) for h in hours]
     u = Dict{Tuple{String,Int},JuMP.VariableRef}()       # on/off of candidates
+    uc_da_on = Dict{Tuple{String,Int},Bool}()            # candidate-type units: on in the day-ahead in that hour
     pg_of = Dict{Tuple{String,Int},JuMP.VariableRef}()
     gen_of = Dict{String,Any}()
     ramp_pg = Dict{Tuple{String,Int},JuMP.VariableRef}()   # ramp_limits: every unit with a ramp rate, by name
@@ -562,6 +598,7 @@ function run_phase1_day!(su, date_str)
             tgt  = get(scheds[k], name, 0.0) / BASEMVA
             inst = Float64(get(g, "installed_mw", g["pmax"] * BASEMVA)) / BASEMVA
             cand = su_is_candidate(su, g) && abs(tgt) < RD_Q_ONLINE_FRAC * inst      # off in the day-ahead
+            su_is_candidate(su, g) && (uc_da_on[(name, k)] = !cand)
             (cand || abs(g["pmax"] - g["pmin"]) > 1e-9) || continue                 # frozen, not a candidate
             gen_of[name] = g
             pg_of[(name, k)] = pg
@@ -585,9 +622,47 @@ function run_phase1_day!(su, date_str)
             end
         end
     end
-    # start-ups, minimum up and down times (every candidate starts the day off)
+    # start-ups, minimum up and down times. Standalone: every candidate starts the day off and only phase I's own
+    # hours count. In the chain, ID2/ID3 with intraday starts ([unit_commitment].intraday_starts) hold phase I's
+    # on-hours AND apply the markets' minimum up/down times across the day-ahead's on-hours and the carry-over
+    # from the day before (da.jl). Phase I's on/off chain then runs over the whole day: its own on/off where the
+    # unit is a candidate, the day-ahead's where it is not, from the carry-over state, with each unit's own times
+    # from the day-ahead's unit list (UC_PHASE1_RULES). Without this phase I restarted G0386 in hour 1 of
+    # 2 Jan 2024 inside its 6-h down time from 1 Jan, and ID2 had no solution.
     starts = Dict{Tuple{String,Int},JuMP.VariableRef}()
-    for name in unique(first.(collect(keys(u))))
+    rules = (RD_PHASE1_IN_CHAIN && isdefined(Main, :UC_PHASE1_RULES)) ?
+            get(Main.UC_PHASE1_RULES, date_str, nothing) : nothing
+    for name in (rules === nothing ? String[] : unique(first.(collect(keys(u)))))
+        r  = get(rules, name, nothing)
+        mu = r === nothing ? p1.min_up : r.min_up
+        md = r === nothing ? p1.min_down : r.min_down
+        start_cost = su_terms(su, gen_of[name])[2]
+        xs = [haskey(u, (name, k)) ? JuMP.AffExpr(0.0, u[(name, k)] => 1.0) :
+              JuMP.AffExpr(get(uc_da_on, (name, k), false) ? 1.0 : 0.0) for k in 1:H]
+        x0 = (r !== nothing && r.init_on) ? 1.0 : 0.0
+        s = JuMP.@variable(m, [1:H], lower_bound = 0.0, upper_bound = 1.0)
+        w = JuMP.@variable(m, [1:H], lower_bound = 0.0, upper_bound = 1.0)
+        for k in 1:H
+            prev = k == 1 ? JuMP.AffExpr(x0) : xs[k - 1]
+            JuMP.@constraint(m, s[k] >= xs[k] - prev)
+            JuMP.@constraint(m, w[k] >= prev - xs[k])
+            haskey(u, (name, k)) || continue                     # the day-ahead's own starts are not phase I's
+            starts[(name, k)] = s[k]
+            starts[(name, -k)] = w[k]
+            JuMP.add_to_expression!(obj, start_cost, s[k])
+        end
+        for k in 1:H
+            JuMP.@constraint(m, sum(s[j] for j in max(1, k - mu + 1):k) <= xs[k])
+            JuMP.@constraint(m, sum(w[j] for j in max(1, k - md + 1):k) <= 1 - xs[k])
+        end
+        # carry-over (da.jl): off since the day before for fewer than its minimum down time ⇒ stays off
+        if r !== nothing && !r.init_on && r.init_down < md
+            for k in 1:min(H, md - r.init_down)
+                haskey(u, (name, k)) && JuMP.@constraint(m, u[(name, k)] == 0)
+            end
+        end
+    end
+    for name in (rules === nothing ? unique(first.(collect(keys(u)))) : String[])
         g = gen_of[name]
         start_cost = su_terms(su, g)[2]
         ks = sort([k for (nm, k) in keys(u) if nm == name])
@@ -614,6 +689,13 @@ function run_phase1_day!(su, date_str)
         k > 1 && haskey(ramp_pg, (name, k - 1)) || continue
         JuMP.@constraint(m, -ramp_r[name] <= pg - ramp_pg[(name, k - 1)] <= ramp_r[name])
     end
+    # In the chain, phase I's schedule becomes ID2–BAL's starting point and its security limits: storage then
+    # keeps the markets' reservoir rule (da.jl): discharge/charge legs with η = √η_rt, the storage level within
+    # its range every hour, and the day's net draw unchanged. Without it phase I had pumped storage G0705 pump
+    # ~100 MW for 19 h on 1 Jan 2024 (no energy limit in phase I); no market gate could follow that limit, so
+    # every gate of the day was cleared without phase I's limits. The day-ahead's own path is always allowed
+    # (bounds widened to it), so phase I can never be made infeasible by the day-ahead's round-off.
+    RD_PHASE1_IN_CHAIN && rules !== nothing && phase1_storage_rule!(m, pg_of, gen_of, scheds, H)
     # RD13 water budget ([redispatch.hydro_budget]): phase I may not add hydro energy to a
     # unit's day — Σ_h (pg − schedule) ≤ tolerance; shifting between hours and going down stay free
     if p1.hydro_budget !== nothing

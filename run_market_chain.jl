@@ -476,6 +476,7 @@ const UC_COMMIT = Dict{Tuple{String,Int},Dict{String,Tuple{Bool,Float64}}}()
 # The starting state (carry-over) each day's DA used, so ID2/ID3 of the same day
 # start from it too (UC_STATE already holds that day's end by then).
 const UC_INIT_FOR_DAY = Dict{String,Any}()
+const UC_PHASE1_RULES = Dict{String,Any}()   # date ⇒ unit ⇒ (min_up, min_down, init_on, init_down), DA unit list
 # (h_idx, unit) ⇒ on, from the latest committing gate of this day (intraday starts).
 function uc_prev_on_for(date_str, day_ts)
     on = Dict{Tuple{Int,String},Bool}()
@@ -1850,6 +1851,14 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
               init = UC_STATE_DATE[] == prev_day ? copy(UC_STATE) : nothing,
               mip_gap = UC_CFG.mip_gap, time_limit_s = UC_CFG.time_limit_s)
         UC_INIT_FOR_DAY[String(date_str)] = uc.init
+        # phase I in the chain with intraday starts: ID2/ID3 apply these units' minimum up/down times and this
+        # carry-over to phase I's on-hours, so phase I gets them too (redispatch_phase1.jl, run_phase1_day!)
+        if RD_PHASE1_IN_CHAIN && UC_CFG.intraday_starts
+            UC_PHASE1_RULES[String(date_str)] = Dict(n => (min_up = v.min_up, min_down = v.min_down,
+                init_on = uc.init !== nothing && haskey(uc.init, n) && uc.init[n].on,
+                init_down = (uc.init !== nothing && haskey(uc.init, n)) ? uc.init[n].down : typemax(Int) ÷ 2)
+                for (n, v) in uc.units)
+        end
     elseif label in ("ID2", "ID3") && UC_CFG !== nothing && UC_CFG.intraday_starts
         # Intraday starts: units on in the previous gate stay on, units off may
         # start (da.jl, prev_on); new starts must pay their way (intraday_clear).

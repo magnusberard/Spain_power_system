@@ -2210,6 +2210,19 @@ if RUN_MARKET && DA_ENABLED
     end
 end
 
+# In-chain runs (phase I inside the market chain): the unit-commitment state is final once the market stages
+# and phase I of the last study day are cleared (the AC check and real time below never change it), so it is
+# written now, not only at the end of the run. A pipelined year run (redispatch_realism/solstorm_start_year_pipeline.sh)
+# starts the next week from it while this week's AC check and real time still run.
+if RUN_MARKET && RD_PHASE1_IN_CHAIN && UC_CFG !== nothing && UC_STATE_DATE[] != ""
+    open(joinpath(RESULTS, "uc_state.json"), "w") do io
+        JSON.print(io, Dict("date" => UC_STATE_DATE[],
+                            "units" => Dict(u => Dict("on" => v.on, "up" => v.up, "down" => v.down)
+                                            for (u, v) in UC_STATE)), 2)
+    end
+    @printf "  uc_state.json : %d units, end of %s (written after the market stages, in-chain)\n" length(UC_STATE) UC_STATE_DATE[]
+end
+
 # Reconstruct a (date,hour) ⇒ Dict(unit ⇒ MW) anchor schedule from a previous
 # run's <stage>_dispatch.csv in RESULTS.  Used by the [redispatch].from_saved
 # standalone load-flow path so stages 1–5 need not be re-solved.  The CSV's

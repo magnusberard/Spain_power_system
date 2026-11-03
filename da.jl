@@ -572,7 +572,8 @@ end
 #   2. part-loaded reservoir hydro (cost 0 here; its value comes from the
 #      Bellman cuts or the daily budget)                → "water_value"
 #   3. a part-loaded storage unit (pumped hydro, BESS)  → "storage"; its label gets
-#      ", charging" when it pumps / charges (negative output)
+#      ", charging" when it pumps / charges (negative output); an idle battery
+#      (0 MW) does not count
 #   4. a running unit AT a limit whose cost equals the price within 0.05 €/MWh
 #      (degenerate LP: the same price either way)       → "cost_at_limit"
 #   5. an interconnector flow inside its NTC limits: the price is set abroad
@@ -612,6 +613,9 @@ function price_setters(nets, pg, es_price, reservoir_gen_ids, uc, uc_on, f_fr, f
             if k in resv
                 hydro === nothing && (hydro = g)
             elseif haskey(g, "energy_mwh")
+                # an idle battery (0 MW) is inside its limits but not on the margin:
+                # with losses and wear it idles because cycling does not pay
+                String(get(g, "fuel", "")) == "Battery" && abs(v) <= tol_mw && continue
                 store === nothing && (store = g; store_v = v)
             else
                 gap = abs(g["cost"][1] / BASEMVA - price)

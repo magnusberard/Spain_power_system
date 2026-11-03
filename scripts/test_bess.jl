@@ -91,3 +91,13 @@ end
     r3b = solve_da(n3b, Int[], [], 0.0, HiGHS.Optimizer; free_hours = Set(13:24), prev_sched = Dict(h => r2.sched[h] for h in 1:12))
     @test r3b.status == "OPTIMAL"
 end
+
+@testset "price setter: idle batteries do not count" begin
+    nw = day_nets(); set_bess_params!(nw, (eta_rt = 0.85, wear = 5000.0, soc_min = 0.0, soc_max = 1.0))
+    rw = solve(nw)                                              # wear too high: the battery idles all day
+    @test dis(rw) < 1.0
+    @test !any(s.unit == NAME for s in values(rw.setter))       # so it never sets the price
+    nc = day_nets(); set_bess_params!(nc, (eta_rt = 0.85, wear = 0.0, soc_min = 0.0, soc_max = 1.0))
+    rc = solve(nc)                                              # cycling battery: a setter only in hours it moves
+    @test all(abs(rc.sched[h][NAME]) > 0.5 for (h, s) in rc.setter if s.unit == NAME)
+end

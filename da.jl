@@ -259,7 +259,19 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             # power limit is enforced on pg itself, which the legs must equal.
             p_nom = Float64(get(g, "installed_mw", 0.0)) / BASEMVA
             draw  = JuMP.AffExpr[]
+            # [bess] batteries in a frozen hour (ID3 hours 0–11, past CID gates): the
+            # output is fixed, so its charge-level change is a number, not legs; legs
+            # bounded by nameplate made the gate infeasible by solver round-off when a
+            # 2-h battery was frozen at full power (NECP, ID3 13 May 2024). Pumped
+            # hydro keeps the legs (unchanged LPs).
+            bess_cfg = haskey(g, "wear_eur_mwh")
             for j in 1:H
+                vj = pg_by_name[(j, name)]
+                if bess_cfg && !(j in free) && JuMP.is_fixed(vj)
+                    x = clamp(JuMP.fix_value(vj), -p_nom, p_nom)
+                    push!(draw, JuMP.AffExpr(x > 0 ? x / eta : x * eta))
+                    continue
+                end
                 dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
                 chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
                 legc = JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
@@ -271,8 +283,11 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 wear > 0 && JuMP.add_to_expression!(wear_cost, wear * BASEMVA, dis)
             end
         end
+        # batteries in a gate with frozen hours: a hair of slack on the charge limits
+        # for their round-off (none when every hour is free, e.g. the DA)
+        tol = haskey(g, "wear_eur_mwh") && length(free) < H ? 1e-6 * e_puh : 0.0
         for h in 1:H
-            socc = JuMP.@constraint(model, s_lo <= soc0 - sum(draw[j] for j in 1:h) <= s_hi)
+            socc = JuMP.@constraint(model, s_lo - tol <= soc0 - sum(draw[j] for j in 1:h) <= s_hi + tol)
             IIS_DEBUG && JuMP.set_name(socc, "soc[$h,$name]")
         end
         endc = JuMP.@constraint(model, sum(draw) == 0.0)

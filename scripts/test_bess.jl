@@ -67,3 +67,27 @@ soc(r, eta_rt) = (e = sqrt(eta_rt); 2000.0 .- cumsum([x > 0 ? x / e : x * e for 
     # each day still ends where it started (half full)
     @test isapprox(soc(rr, 0.85)[end], 2000.0; atol = 1e-3)
 end
+
+@testset "frozen hours (ID3, CID gates)" begin
+    p = (eta_rt = 0.85, wear = 10.0, soc_min = 0.0, soc_max = 1.0)
+    # hours 1–12 frozen: the battery idle except hour 1, charging at full power plus
+    # a round-off hair (as in NECP ID3, 13 May 2024: a 2-h battery frozen at its
+    # power); legs bounded by nameplate could not hold it, the frozen hour's charge
+    # change is now a number
+    prev = Dict(h => Dict(NAME => (h == 1 ? -(2000.0 + 1e-3) : 0.0)) for h in 1:12)
+    n3 = day_nets(); set_bess_params!(n3, p)
+    r3 = solve_da(n3, Int[], [], 0.0, HiGHS.Optimizer; free_hours = Set(13:24), prev_sched = prev)
+    @test r3.status == "OPTIMAL"
+    if r3.status == "OPTIMAL"
+        @test all(isapprox(r3.sched[h][NAME], prev[h][NAME]; atol = 1e-6) for h in 1:12)   # frozen hours kept
+        s3 = soc(r3, 0.85)
+        @test all(-0.01 .<= s3 .<= 4000.01)                     # charge level inside 0–100 %
+        @test isapprox(s3[end], 2000.0; atol = 0.5)             # and back to half full
+    end
+    # a normal ID2 → ID3 pair: the free afternoon re-plans from the frozen morning
+    n2 = day_nets(); set_bess_params!(n2, p)
+    r2 = solve(n2)
+    n3b = day_nets(); set_bess_params!(n3b, p)
+    r3b = solve_da(n3b, Int[], [], 0.0, HiGHS.Optimizer; free_hours = Set(13:24), prev_sched = Dict(h => r2.sched[h] for h in 1:12))
+    @test r3b.status == "OPTIMAL"
+end

@@ -1000,6 +1000,16 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**cmb_dec results (combined: ly8 + sweep a + step 4 finer curves + border ties, 3 Nov): passes; this is the setup to
+freeze for the year.** Run from the ly9b copy with `--sweep-a --offers redispatch_realism/data/phase2_offers_dec_tail.csv`
+(all three checked in the outputs). 671 of 672 hours solved: 23 Dec h08 real time stopped at Ipopt's iteration limit
+(numerical, not infeasible; load shed 0.8 MWh); no market fallback needed, and 11 Dec CID at 193 €/MWh without
+scarcity hours (ly8 fallback, ly9b 1,000 €/MWh; real 110). The effects add up roughly as tested: phase I up 906 (ly8)
+→ 848 GWh (110 % of REE's 769, the closest so far); phase I+II cost 122.3 M€ (159 % of REE's 77.0); binding 2,459
+branch-hours. Turned down, GWh (REE all down): gas 54 (27), reservoir + run-of-river 79 (132), wind + solar 375 (379),
+CHP + biomass 168 (74), nuclear 19 (12.5), pumped storage 79 (103); summed gap 209 GWh (s4b 228, ly8 806). Prices
+against ly8: day-ahead unchanged, ID2 +2.3 (105.4, real ≈ 110), ID3 +2.0, CID +7.4, BAL +9.2 €/MWh.
+
 **s4b_dec results (step 4 with the finer curves, 3 Nov): step 4 replaces B; three gaps stated.** All 672 hours solved,
 fallback on 11 Dec only (as ly8). Wind's mean refund 18 → 46 €/MWh (REE 82); all reductions 50 → 55 (REE 87); down
 cost 39.3 → 34.3 M€; phase I+II cost 131.8 → 127.7 M€ (166 % of REE's 77.0; ly8 133 %). Turned down, GWh (REE all

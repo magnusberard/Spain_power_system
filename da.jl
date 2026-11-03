@@ -42,6 +42,26 @@ using JuMP
 #           NTC-bounded flow variables on the PT–ES–FR–EU chain.  The result
 #           then carries `xb` (per-hour net imports into ES, MW) and `prices`
 #           (per-zone marginal prices, EUR/MWh).  DA (all hours free) only.
+# SPAIN_IIS=1 (debugging only): name the main variables and constraints, and when a
+# stage is infeasible ask the solver for the conflicting set (IIS) and print it.
+const IIS_DEBUG = get(ENV, "SPAIN_IIS", "") == "1"
+function iis_dump(model; max_lines = 80)
+    try
+        JuMP.compute_conflict!(model)
+    catch e
+        println("  IIS: computation failed: ", e); return
+    end
+    JuMP.get_attribute(model, JuMP.MOI.ConflictStatus()) == JuMP.MOI.CONFLICT_FOUND ||
+        (println("  IIS: no conflict found"); return)
+    n = 0
+    for (F, S) in JuMP.list_of_constraint_types(model), c in JuMP.all_constraints(model, F, S)
+        JuMP.MOI.get(model, JuMP.MOI.ConstraintConflictStatus(), c) == JuMP.MOI.IN_CONFLICT || continue
+        n += 1
+        n <= max_lines && println("  IIS ", n, ": ", c)
+    end
+    println("  IIS: ", n, " constraints/bounds in conflict")
+end
+
 function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, optimizer;
                   free_hours::Union{Nothing,Set{Int}} = nothing,
                   prev_sched::Union{Nothing,Dict{Int,Dict{String,Float64}}} = nothing,
@@ -79,6 +99,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             JuMP.set_start_value(v, g["pg"])
             pg[(h, k)] = v
             pg_by_name[(h, g["name"])] = v
+            IIS_DEBUG && JuMP.set_name(v, "pg[$h,$(g["name"])]")
             if frozen
                 mw     = ps === nothing ? nothing : get(ps, g["name"], nothing)
                 fixval = mw === nothing ? g["pg"] : mw / BASEMVA
@@ -241,15 +262,21 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             for j in 1:H
                 dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
                 chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
-                JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
+                legc = JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
+                if IIS_DEBUG
+                    JuMP.set_name(dis, "dis[$j,$name]"); JuMP.set_name(chg, "chg[$j,$name]")
+                    JuMP.set_name(legc, "legs[$j,$name]")
+                end
                 push!(draw, dis / eta - chg * eta)
                 wear > 0 && JuMP.add_to_expression!(wear_cost, wear * BASEMVA, dis)
             end
         end
         for h in 1:H
-            JuMP.@constraint(model, s_lo <= soc0 - sum(draw[j] for j in 1:h) <= s_hi)
+            socc = JuMP.@constraint(model, s_lo <= soc0 - sum(draw[j] for j in 1:h) <= s_hi)
+            IIS_DEBUG && JuMP.set_name(socc, "soc[$h,$name]")
         end
-        JuMP.@constraint(model, sum(draw) == 0.0)
+        endc = JuMP.@constraint(model, sum(draw) == 0.0)
+        IIS_DEBUG && JuMP.set_name(endc, "end_half_full[$name]")
     end
 
     # ── Thermal ramp limits ───────────────────────────────────────────────────
@@ -323,6 +350,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 p  = pg_by_name[(h, name)]
                 on = JuMP.@variable(model, binary = true)
                 st = JuMP.@variable(model, binary = true)
+                IIS_DEBUG && (JuMP.set_name(on, "on[$h,$name]"); JuMP.set_name(st, "start[$h,$name]"))
                 uc_on[(h, name)] = on
                 uc_start[(h, name)] = st
                 was_on = prev_on === nothing ? nothing : get(prev_on, (h, name), false)
@@ -435,6 +463,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     JuMP.@objective(model, Min, cost_expr)
     JuMP.optimize!(model)
     status = string(JuMP.termination_status(model))
+    IIS_DEBUG && status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED") && iis_dump(model)
 
     # Unit commitment: keep the MIP's on/off decisions, then fix every binary at
     # that value and re-solve as an LP so the ES balance has duals (the price).
@@ -451,6 +480,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             JuMP.fix_discrete_variables(model)
             JuMP.optimize!(model)
             status = string(JuMP.termination_status(model))
+            IIS_DEBUG && status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED") && iis_dump(model)
             uc_result = (on = on_v, start = st_v, start_cost_eur = sc,
                          mip_status = mip_status, mip_gap = gap)
         end

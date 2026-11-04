@@ -1019,6 +1019,15 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2 step A, multi-hour diagnostic (4 Nov, `e2_diag_multihour.py`, nothing fitted).** The best single-hour rule
+(CCGT + coal + pumped storage) finds **92 % of REE's need episodes** (539 of 589 blocks, holding 95 % of the need
+hours); what it misses is the length: REE's need blocks last median 5–6 h (84 % ≥ 4 h), the rule's shortfalls 2–3 h.
+REE's blocks start about an hour earlier (most at 06 and 17–19 h; the rule's at 07 and 19–20 h) and run on after the
+shortfall (shortfall hours sit in the first third of REE's blocks 30 %, the middle 48–50 %, the last third 20–22 %).
+Lead/lag correlation peaks at 0 (0.45 full year, 0.55 Jul–Dec), ±1 h 0.35–0.45. Of the rule's 546 hours outside
+REE's blocks, about 165 lie ≤ 3 h before one and 286 ≤ 3 h after. Reading: REE decides per episode, not per hour;
+step B (look-ahead by the declared CCGT lead time, hold by the minimum up time) is worth testing.
+
 **E2, additional test chosen after the others (4 Nov, `e2_test_ccgt_pumped.py`, fixed before running in `9d4d694`):
 CCGT + coal + pumped storage (turbine headroom and stoppable pumping, mean 1,314 MW), no reservoir hydro.** Best so far.
 January–June: corr 0.44 with the aFRR band. July–December: hourly corr **0.55**, daily 0.39, volume **0.89×**, 78 % of

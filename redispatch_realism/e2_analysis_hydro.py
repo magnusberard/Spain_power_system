@@ -34,7 +34,8 @@ ph_sol = esios(PH, 1413).fillna(0) + esios(PH, 1414).fillna(0)
 fc = {"H3": (esios(FC, 1776), esios(FC, 1778), esios(FC, 1780)), "D1": (esios(FC, 1775), esios(FC, 1777), esios(FC, 1779))}
 
 u = pd.read_csv(D / "i90" / "i90_phfc.csv.gz", encoding="utf-8", encoding_errors="replace")
-u.columns = ["date", "unit", "tof", "hour", "mwh"]
+u = u.iloc[:, [0, 1, 3, 4]]                      # date, unit, hour, mwh (DST days add "02-03a/b" columns)
+u.columns = ["date", "unit", "hour", "mwh"]
 u = u.groupby(["date", "unit", "hour"], as_index=False).mwh.sum()
 t = pd.read_csv(HERE / "data" / "ree_unit_technology.csv")
 t["ree_max_mw"] = pd.to_numeric(t.ree_max_mw.astype(str).str.replace(",", "."), errors="coerce")

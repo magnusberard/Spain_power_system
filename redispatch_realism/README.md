@@ -1019,6 +1019,15 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2 analysis, third and last test (4 Nov, `e2_analysis_hydro.py`, variants committed before the data in `a986abc`):
+headroom from the per-unit after-intraday programme (I90DIA36, 366 days).** No variant passes. Thermal only (T, mean
+3,752 MW): volume right (0.9–1.8×) but 43–59 % of REE's need hours, hourly corr 0.32–0.34. With running hydro (T+H,
+7,591 MW) or pumped storage too (T+H+P, 8,906 MW): the rule almost never fires (1–8 % of need hours, though 86–98 %
+of its alarms are real). REE's need lies between counting no hydro and counting all of it, and choosing a share
+would be fitting. **Outcome as agreed before the test: real-time reserve stays a documented gap.** Evidence: REE
+publishes the need (1880), it triggers 98 % of the RSI starts (98 % CCGT), and P.O. 1.5's §4.4 recipe explains part of
+it (daily corr up to 0.42) but not REE's exact rule.
+
 **E2 analysis, second test (4 Nov, `e2_analysis_phfc.py`): §4.4 with the programme after intraday (e·sios PHFC).**
 The forecast gaps halve (supplementary 1,163 vs 2,604 MW with the day-ahead programme) and the daily correlation
 rises to 0.36–0.42, but no variant passes the marks: best (D+1 forecasts, headroom of the day-ahead's running CCGT/coal

@@ -46,6 +46,8 @@ except ImportError:
 URL = ("https://api.esios.ree.es/archives/34/download?date_type=datos"
        "&start_date={d}T00:00:00&end_date={d}T23:59:59&locale=es")
 REPO = Path(__file__).resolve().parents[1]
+if ".claude" in REPO.parts:                    # a worktree: the download folder sits next to the main checkout
+    REPO = Path(*REPO.parts[:REPO.parts.index(".claude")])
 UNIT = "Unidad de Programación"
 
 
@@ -81,7 +83,15 @@ def sheet_long(book, name, value_name, how="sum"):
     return (agg.sum() if how == "sum" else agg.mean()).reset_index()
 
 
-TABLES = ("tc_phase", "tc_realtime", "limits", "pdvp", "afrr_band")
+TABLES = ("tc_phase", "tc_realtime", "limits", "pdvp", "afrr_band", "phfc")
+# I90DIA36, the programme after the continuous intraday market (PHFC) per unit, kept for the dispatchable units
+# (step E2: headroom of the units running before real time); groups from data/ree_unit_technology.csv
+PHFC_GROUPS = ("CCGT", "coal", "hydro", "run-of-river", "pumped storage (turbine)", "pumped storage (pump)", "nuclear")
+try:
+    _t = pd.read_csv(Path(__file__).resolve().parent / "data" / "ree_unit_technology.csv")
+    PHFC_UNITS = set(_t[_t.group.isin(PHFC_GROUPS)].ree_unit.astype(str).str.strip())
+except FileNotFoundError:
+    PHFC_UNITS = None
 
 
 def parse_day(xls_bytes, d, pdvp_units=None):
@@ -93,6 +103,12 @@ def parse_day(xls_bytes, d, pdvp_units=None):
         if pdvp_units is not None:
             pv = pv[pv[UNIT].isin(pdvp_units)]
         out["pdvp"] = pv
+    ph = sheet_long(book, "I90DIA36", "mwh", "sum")
+    if not ph.empty:
+        ph = ph[ph.mwh != 0]
+        if PHFC_UNITS is not None:
+            ph = ph[ph[UNIT].astype(str).str.strip().isin(PHFC_UNITS)]
+        out["phfc"] = ph
     band = sheet_long(book, "I90DIA05", "mw", "mean")
     if not band.empty:
         out["afrr_band"] = band[band.mw != 0]
@@ -142,7 +158,7 @@ def main():
     ddir, zdir = a.out / "days", a.out / "zips"
     ddir.mkdir(parents=True, exist_ok=True); zdir.mkdir(parents=True, exist_ok=True)
     for i, d in enumerate(days, 1):
-        if (ddir / f"{d}.done").exists() and all((ddir / f"{d}_{k}.csv").exists() for k in ("pdvp", "afrr_band")):
+        if (ddir / f"{d}.done").exists() and all((ddir / f"{d}_{k}.csv").exists() for k in ("pdvp", "afrr_band", "phfc")):
             continue                                    # (days fetched before these tables existed are fetched again)
         t = time.time()
         try:
@@ -151,8 +167,10 @@ def main():
         except Exception as e:
             print(f"[{i}/{len(days)}] {d}: FAILED ({e})", flush=True)
             continue
+        was_done = (ddir / f"{d}.done").exists()           # fetched before: add only the missing tables
         for k, v in parts.items():
-            v.to_csv(ddir / f"{d}_{k}.csv", index=False)
+            if not (was_done and (ddir / f"{d}_{k}.csv").exists()):
+                v.to_csv(ddir / f"{d}_{k}.csv", index=False)
         (ddir / f"{d}.done").touch()
         if not a.keep_zips:
             z.unlink()

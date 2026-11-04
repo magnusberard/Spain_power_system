@@ -1000,6 +1000,15 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**REE's real-time reserve need (4 Nov, e·sios 1880/1881; for E2).** `fetch_esios_forecasts.py --only
+1880,1881,626,630,631,632 --tag reserve`. 1880 "Necesidades de reserva adicional identificadas en Tiempo Real" (15 min,
+published only when there is a need: 3,610 hours on 352 days, median 787 MW) is the trigger of REE's "insufficient
+upward reserve" starts (I90 RSI, 4,894 GWh, 98 % CCGT): 4,773 GWh (98 %) of RSI falls in hours with a need; hourly
+correlation 0.70, hour-of-day shape 0.99; monthly only 0.32 (Jan–Feb needs ≈ 1.2 GW, other months ≈ 0.3 GW, RSI flat).
+1881 "Reserva adicional programada en Tiempo Real" (hourly) is what REE scheduled: correlation with RSI 0.98 hourly.
+626 (P.O. 3.9 day-ahead additional reserve) has no 2024 data. Use (agreed 4 Nov): 2024 data only to estimate and test
+rules that also work for 2035; 1880 is E2's validation target, not a model input.
+
 **y24act / y24part (4 Nov): the 2024 year with the main settings, in-chain phase I (`9bf3094`).** GAS, MARKUP,
 HYDRO aligned_rc_observed, RES offered, PUMPING removed, PUMPLIMIT, IDSTARTS, HYDROTOPUP, BALANCING qualified;
 Active and Partial (PARTICIPATION measured_all); the combined December redispatch setup with the year's offer

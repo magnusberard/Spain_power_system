@@ -1019,6 +1019,14 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2 analysis, second test (4 Nov, `e2_analysis_phfc.py`): §4.4 with the programme after intraday (e·sios PHFC).**
+The forecast gaps halve (supplementary 1,163 vs 2,604 MW with the day-ahead programme) and the daily correlation
+rises to 0.36–0.42, but no variant passes the marks: best (D+1 forecasts, headroom of the day-ahead's running CCGT/coal
+at their PHFC output, without the aFRR band) hourly 0.44, daily 0.42, 89 % of the need hours, precision 0.56, volume 2.8×.
+Demand (0.30–0.38) and wind (0.22–0.24) gaps carry the signal, solar none. REE's correction series 1439–1441 are empty
+in 2024. The rule fires in about twice as many hours as REE identifies a need: REE's check is more selective than
+forecast gaps against thermal headroom.
+
 **y24act / y24part (4 Nov): the 2024 year with the main settings, in-chain phase I (`9bf3094`).** GAS, MARKUP,
 HYDRO aligned_rc_observed, RES offered, PUMPING removed, PUMPLIMIT, IDSTARTS, HYDROTOPUP, BALANCING qualified;
 Active and Partial (PARTICIPATION measured_all); the combined December redispatch setup with the year's offer

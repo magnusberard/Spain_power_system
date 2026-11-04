@@ -271,6 +271,16 @@ def detect_trading_features(rdir):
     )
 
 
+def phase1_in_chain(rdir):
+    """True if the run's redispatch phase I ran inside the market chain ([redispatch.phase1].in_chain)."""
+    import tomllib
+    path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
+    if path is None:
+        return False
+    c = tomllib.loads(path.read_text(encoding="utf-8"))
+    return bool(c.get("redispatch", {}).get("phase1", {}).get("in_chain", False))
+
+
 def read_run_info(rdir, args, hours, status):
     path = rdir / "run_info.json"
     if path.exists():
@@ -603,6 +613,21 @@ def build(rdir, runs_repo, args):
     _, bal_s2, bal_sn = per_unit["BAL"]
     plant = np.array([f != "CrossBorder" for f, _ in keys])
     dlt = (rd_s - bal_s2)[plant]
+    # REE-way redispatch inside the market chain ([redispatch.phase1].in_chain, §30): phase I changes the
+    # day-ahead schedule before ID2, so its changes are already in the balancing schedule and the AC
+    # stage only adds real time. Add phase I's own change (rd_phase1.csv, phase1_mw - da_mw per unit and
+    # hour), as REE pools phases I + II + real time. Losses stay the AC stage's.
+    if phase1_in_chain(rdir) and (rdir / "rd_phase1.csv").exists():
+        ph1 = np.zeros((U, H))
+        for ch in pd.read_csv(rdir / "rd_phase1.csv", chunksize=CHUNK, usecols=["date", "hour", "unit", "da_mw", "phase1_mw"]):
+            ch = ch[ch.date.isin(hours.day_i)]
+            ui = ch.unit.map(uidx)
+            ok = ui.notna().to_numpy()
+            np.add.at(ph1, (ui.to_numpy()[ok].astype(int), hours.of(ch)[ok]),
+                      (ch.phase1_mw - ch.da_mw).to_numpy()[ok])
+        dlt = dlt + ph1[plant]
+        print(f"  phase I in the chain: {np.clip(ph1, 0, None).sum() / 1e3:.0f} GWh up, "
+              f"{np.clip(-ph1, 0, None).sum() / 1e3:.0f} GWh down added to the redispatch")
     okh = rd_sn & bal_sn & (status == 1)
     redispatch = dict(
         up=r1(np.where(okh, np.clip(dlt, 0, None).sum(axis=0), np.nan)),

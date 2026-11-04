@@ -1009,6 +1009,16 @@ correlation 0.70, hour-of-day shape 0.99; monthly only 0.32 (Jan–Feb needs ≈
 626 (P.O. 3.9 day-ahead additional reserve) has no 2024 data. Use (agreed 4 Nov): 2024 data only to estimate and test
 rules that also work for 2035; 1880 is E2's validation target, not a model input.
 
+**E2 analysis, first test (4 Nov, `e2_analysis.py`): P.O. 1.5 §4.4 with the day-ahead programme.** Requirement =
+mFRR (1788, mean 1,570 MW) + aFRR assigned (632, 922) + §4.4 deficits of OMIE's day-ahead programme against REE's
+forecasts (demand, wind, PV; H+3 or D+1); headroom = running CCGT + coal in the I90 day-ahead programme (mean 2,908 MW).
+Against REE's need (1880): the shortfall rule catches 96 % of the need hours but also fires in 4,000 hours without one
+(precision 0.46), at 5.1× the volume; hourly correlation 0.42–0.44, daily 0.21–0.24 (pass marks: ≥ 70 % of hours ✓,
+corr ≥ 0.5 ✗, volume 0.5–2× ✗). Demand is the most telling part (corr 0.34–0.36), wind weak (0.16), solar none.
+Likely cause: the day-ahead programme, while REE checks the programme after the intraday markets (PHF), where most
+forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
+technology), before any rule goes into the model.
+
 **y24act / y24part (4 Nov): the 2024 year with the main settings, in-chain phase I (`9bf3094`).** GAS, MARKUP,
 HYDRO aligned_rc_observed, RES offered, PUMPING removed, PUMPLIMIT, IDSTARTS, HYDROTOPUP, BALANCING qualified;
 Active and Partial (PARTICIPATION measured_all); the combined December redispatch setup with the year's offer

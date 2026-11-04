@@ -359,9 +359,9 @@ version = "13.0.2"
 
 [[deps.HSL_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "METIS_jll", "libblastrampoline_jll"]
-path = "C:/Users/magnu/HSL_jll.jl.v2026.8.4/HSL_jll.jl.v2026.8.4"
+path = "C:\\Users\\ehsanno\\Downloads\\HSL_jll.jl.v2025.7.21\\HSL_jll.jl.v2025.7.21"
 uuid = "017b0a0e-03f4-516a-9b91-836bbd1904dd"
-version = "2026.8.4+0"
+version = "2025.7.21+0"
 
 [[deps.HTTP]]
 deps = ["Base64", "CodecZlib", "ConcurrentUtilities", "Dates", "ExceptionUnwrapping", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "PrecompileTools", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]

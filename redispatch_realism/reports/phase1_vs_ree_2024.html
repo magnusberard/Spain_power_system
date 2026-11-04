@@ -79,6 +79,15 @@ td.low { color: var(--ree); font-weight: 500; }
 details summary { cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
 details[open] summary { margin-bottom: 8px; }
 ul.method { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; color: var(--ink-2); max-width: 80ch; }
+h3.grp { font: 600 15px/1.3 var(--font-display); margin: 10px 0 0; color: var(--ink-2); letter-spacing: 0.01em; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.chg { border: 1px solid var(--rule); border-left: 3px solid var(--model); border-radius: 6px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; background: var(--bg); }
+.chg.gap { border-left-color: var(--ree); }
+.chg h4 { margin: 0; font: 600 14.5px/1.3 var(--font-body); text-wrap: balance; }
+.chg p { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.chg p b { color: var(--ink); font-weight: 600; }
+.chg .src { font: 11.5px/1.4 var(--font-mono); color: var(--ink-3); }
+code { font: 12.5px var(--font-mono); }
 @media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
 </style>
 </head>
@@ -135,6 +144,132 @@ ul.method { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 1
       <div class="tablewrap"><table id="t-cause"></table></div>
     </section>
   </div>
+
+  <section class="block" id="changes">
+    <div class="head"><h2>What changed from the original redispatch, and why</h2></div>
+    <p class="note">The original model had one redispatch step: after the balancing market, an AC power flow moved plants at their marginal cost until the grid was secure. For 2024 that gave a redispatch cost of −51 M€ against REE's 2.5 b€, so the model could not tell costly hours from cheap ones. Every change below makes one part of the model work the way REE's process works. Each states what it does, the market mechanism behind it, and its source. All of them are on the branch <code>redispatch-realism</code>; they are the settings of the year run shown above.</p>
+
+    <h3 class="grp">1 · Where the redispatch sits in the market sequence</h3>
+    <div class="cards">
+      <article class="chg"><h4>Phase I and II inside the market chain</h4>
+        <p><b>What it does.</b> Phase I and II run each day right after the day-ahead market, before the first intraday auction, on the day-ahead schedule. The intraday markets, the continuous market and balancing then trade from the corrected schedule. The AC check and real time follow after balancing.</p>
+        <p><b>Why.</b> In Spain, REE resolves technical constraints on the day-ahead programme (PDBF) and publishes the viable programme (PDVP); only then do the intraday markets open. Run after the markets instead, the intraday trading undid phase I, and real time reversed 82–86 % of it.</p>
+        <p class="src">P.O. 3.2 (technical constraints) · vault §30</p></article>
+      <article class="chg"><h4>Security limits in the intraday markets and real time</h4>
+        <p><b>What it does.</b> A plant that phase I turned up cannot sell back below its new output in ID2, ID3, CID or balancing; a plant it turned down cannot buy back above it. The same holds in real time.</p>
+        <p><b>Why.</b> REE attaches security limits to the units it redispatched, so the market cannot trade away the grid security it just bought. REE publishes these limits per unit (I90DIA34 and 35).</p>
+        <p class="src">P.O. 3.1, P.O. 3.2 · REE I90DIA34/35</p></article>
+      <article class="chg"><h4>A safety valve for infeasible limits</h4>
+        <p><b>What it does.</b> If phase I's limits would make a market gate impossible to clear, or force load shedding, that gate is cleared without them, and this is logged.</p>
+        <p><b>Why.</b> In REE's order of measures, shedding load comes last; a model inconsistency should not stop a year run. It is a stated modelling choice: in the year runs it was never used.</p>
+        <p class="src">stated choice (P.O. 3.2, load shedding as last resort)</p></article>
+      <article class="chg"><h4>Phase I follows the markets' start-up rules and storage limits</h4>
+        <p><b>What it does.</b> Phase I's on/off decisions see the whole day: the day-ahead's running hours, the state carried over from the day before, and each unit's minimum up and down times. Pumped storage and batteries keep their reservoir: pumping and generation balance over the day and the storage level stays within range.</p>
+        <p><b>Why.</b> A gas plant that stopped a few hours ago cannot restart at once, and a reservoir cannot pump all day without releasing the water again. Without these rules phase I handed the intraday markets schedules no market could follow (2 January: a CCGT restarted inside its 6-hour down time; 1 January: pumped storage pumping 19 hours).</p>
+        <p class="src">the markets' own rules in the model (unit commitment, da.jl storage)</p></article>
+      <article class="chg"><h4>Ramp limits in phase I</h4>
+        <p><b>What it does.</b> Phase I keeps the same hour-to-hour ramp limits as the markets.</p>
+        <p><b>Why.</b> Without them phase I ran a CCGT 391 → 0 → 362 MW in consecutive hours, which the intraday markets could not follow under the security limits. REE's procedure leaves ramps to the intraday markets; this is a stated deviation that keeps phase I's schedule followable.</p>
+        <p class="src">stated deviation (P.O. 3.2)</p></article>
+    </div>
+
+    <h3 class="grp">2 · How phase I decides which plants to move</h3>
+    <div class="cards">
+      <article class="chg"><h4>Phase I as a daily unit commitment</h4>
+        <p><b>What it does.</b> Phase I decides for the whole day which plants to start, at minimum load, and which to move up or down, on a DC grid model with start-up costs.</p>
+        <p><b>Why.</b> REE's phase I is mostly starting plants that are off in the day-ahead, mainly CCGTs, because a plant that is off cannot hold voltage or relieve a line. A start commits a plant for hours, so the decision is made for the day, not hour by hour.</p>
+        <p class="src">P.O. 3.2 · REE I90 (2024)</p></article>
+      <article class="chg"><h4>An AC voltage check of every hour</h4>
+        <p><b>What it does.</b> After the DC decision, every hour of phase I is checked with an AC power flow; where voltage cannot be held, more units are started.</p>
+        <p><b>Why.</b> Voltage control is the largest cause of REE's phase I (45 % of its volume), and a DC model cannot see voltage at all.</p>
+        <p class="src">REE e·sios, phase I by cause (CT, SCA, RTD)</p></article>
+      <article class="chg"><h4>Voltage zones in phase I</h4>
+        <p><b>What it does.</b> In 17 zones, at least the number of synchronous units REE kept running must be online in phase I.</p>
+        <p><b>Why.</b> REE keeps a minimum of synchronous plants in each area to hold voltage; the counts come from REE's 2024 unit data. They apply in phase I only, since REE's real time is not driven by them.</p>
+        <p class="src">REE I90 (2024), 85 units in 17 zones</p></article>
+      <article class="chg"><h4>Units REE needs specifically</h4>
+        <p><b>What it does.</b> Plants REE redispatched on at least 183 days of 2024 are required on in the hours REE used them.</p>
+        <p><b>Why.</b> Some plants are needed for local grid reasons no national model captures. This input is observed 2024 data; for 2035 it has to become a rule.</p>
+        <p class="src">REE I90 (2024) · 2024 only</p></article>
+      <article class="chg"><h4>Minimum load of started gas plants</h4>
+        <p><b>What it does.</b> A CCGT started by phase I runs at least 39 % of its capacity (one-shaft units) or 18 % (two-on-one units).</p>
+        <p><b>Why.</b> These are the median outputs of the CCGTs REE started in 2024: the energy a start forces into the system.</p>
+        <p class="src">REE I90, Jan–Jun 2024</p></article>
+      <article class="chg"><h4>REE's price rule for turning up</h4>
+        <p><b>What it does.</b> Phase I pays each plant its bid, not the market price: the day-ahead price plus a mark-up per technology (CCGT 0.451, coal 0.403), with start-up costs counted once.</p>
+        <p><b>Why.</b> Technical constraints are settled pay-as-bid. The mark-ups are fitted on REE's accepted prices in the first half of 2024; start-ups are taken out because REE's prices already include them.</p>
+        <p class="src">P.O. 14.4 (settlement) · REE I90, Jan–Jun 2024</p></article>
+      <article class="chg"><h4>Phase II from REE's buy-back offers</h4>
+        <p><b>What it does.</b> The energy phase I adds is taken out again by turning other plants down, using REE's real buy-back offers of each day, highest price first. The refund is capped at the day-ahead price.</p>
+        <p><b>Why.</b> In phase II, REE rebalances the system by buying back energy from plants' down offers. REE accepts only a small slice of what is offered (median 1.8 %), so the offers' price tail decides who is turned down; equal-sized offer blocks hid it.</p>
+        <p class="src">P.O. 3.2, phase II · REE I90DIA17 (2024)</p></article>
+      <article class="chg"><h4>Nuclear and CHP turned down only</h4>
+        <p><b>What it does.</b> Nuclear and cogeneration can now be turned down by the redispatch (to half of their capacity, or a CHP block's minimum), but not up. Before, they were frozen at their market schedule.</p>
+        <p><b>Why.</b> REE turned down 0.9 TWh of nuclear and 0.8 TWh of CHP in 2024, so frozen plants pushed that down side onto others. Nuclear already runs at full output and CHP follows its heat demand, so neither is a source of extra energy.</p>
+        <p class="src">REE I90 (2024)</p></article>
+      <article class="chg"><h4>A water budget for hydro</h4>
+        <p><b>What it does.</b> The redispatch may shift a hydro plant's output between hours but not add energy to its day.</p>
+        <p><b>Why.</b> A reservoir's water is planned over weeks; the redispatch cannot create water. Without the budget, hydro was a free source of extra energy and replaced the gas plants REE actually starts.</p>
+        <p class="src">hydro planning (water values) · REE I90 (mostly gas in phase I)</p></article>
+    </div>
+
+    <h3 class="grp">3 · Grid physics and grid data</h3>
+    <div class="cards">
+      <article class="chg"><h4>REE's voltage band per voltage level</h4>
+        <p><b>What it does.</b> Generator buses may run between 0.975 and 1.05 pu at 400 kV and 0.932–1.114 pu at 220 kV, instead of one fixed 0.98–1.03 band.</p>
+        <p><b>Why.</b> These are REE's operating ranges. It was the largest single fix: on 2 December 2024 the solved hours went from 21 to 24 and real time fell from 85.5 to 19.8 GWh.</p>
+        <p class="src">P.O. 1.4</p></article>
+      <article class="chg"><h4>Reactive power only from running units</h4>
+        <p><b>What it does.</b> Only plants that are on can give reactive power; load shedding and the balancing slack no longer act as free sources.</p>
+        <p><b>Why.</b> A plant that is off cannot control voltage, which is why REE starts plants for it. Free reactive power hid the voltage need.</p>
+        <p class="src">grid physics</p></article>
+      <article class="chg"><h4>Reactive power bands of plants</h4>
+        <p><b>What it does.</b> Wind and solar run at power factor 0.98, inductive or capacitive; synchronous plants within ±15 % of their installed MW.</p>
+        <p><b>Why.</b> These are the 2024 rules for what each plant must deliver; the old model either forced wind and solar to 1.0 or gave synchronous plants unlimited reactive power.</p>
+        <p class="src">RD 413/2014 art. 7 e) and Annex III · P.O. 7.4</p></article>
+      <article class="chg"><h4>Grid losses counted once</h4>
+        <p><b>What it does.</b> The AC stage takes 1.01 % of the load out before solving, because the market demand already includes losses.</p>
+        <p><b>Why.</b> OMIE's demand is measured with losses; the AC power flow adds them again, which double-counted about 1 % of demand as redispatch.</p>
+        <p class="src">OMIE demand definition</p></article>
+      <article class="chg"><h4>Duplicate lines counted once</h4>
+        <p><b>What it does.</b> 692 lines that appear twice in the grid data are counted once.</p>
+        <p><b>Why.</b> The duplicates doubled those lines' capacity, so congestion REE has to relieve did not appear in the model.</p>
+        <p class="src">grid data check (Data/lines.csv)</p></article>
+      <article class="chg"><h4>Plants at REE's connection voltage</h4>
+        <p><b>What it does.</b> 24 plants, among them Sagunto 1–3 and Arrubal 1–2, are connected at the voltage REE lists for them.</p>
+        <p><b>Why.</b> A plant at the wrong voltage level feeds the wrong part of the grid and changes which lines congest.</p>
+        <p class="src">REE access-capacity list, 1 Jul 2024</p></article>
+      <article class="chg"><h4>Missing border ties and France junctions</h4>
+        <p><b>What it does.</b> Adds the ties Vic–Baixas (France) and Aldeadávila–Pocinho ×2 (Portugal), reconnects Lagoaça, and rates the 220/225 kV label junctions to France at 2 GW.</p>
+        <p><b>Why.</b> Without them, power to and from the neighbours had to squeeze through too few lines, creating congestion that does not exist. These corrections run from a copy of the repo and wait for the group's agreement to enter the shared grid data.</p>
+        <p class="src">REE interconnection list · OpenStreetMap · PyPSA-Eur (Hörsch et al., 2018)</p></article>
+      <article class="chg"><h4>Balearic load held to the HVDC link</h4>
+        <p><b>What it does.</b> The Balearic Islands' load in the grid model is limited to what the link from the mainland carries.</p>
+        <p><b>Why.</b> OMIE's demand covers only the link's purchase; the islands' own plants are outside the peninsular market.</p>
+        <p class="src">OMIE demand definition</p></article>
+    </div>
+
+    <h3 class="grp">4 · Real time</h3>
+    <div class="cards">
+      <article class="chg"><h4>Starts for voltage in real time</h4>
+        <p><b>What it does.</b> In the real-time AC stage, a unit can be started at minimum load when voltage cannot be held otherwise. Units phase I committed stay committed.</p>
+        <p><b>Why.</b> REE also starts plants in real time for voltage and N-1, about 530 GWh in 2024.</p>
+        <p class="src">REE I90, real-time constraints by cause</p></article>
+      <article class="chg gap"><h4>Upward reserve: not in the model (documented gap)</h4>
+        <p><b>What it is.</b> 90 % of REE's real-time redispatch (4.9 TWh in 2024) is CCGTs started because too little upward reserve was online, at about 1 b€.</p>
+        <p><b>Status.</b> Rules from P.O. 1.5 were tested on 25 October and failed the agreed test; the year runs have none. A new rule from REE's forecasts against the after-intraday programme (step E2) is being tested against REE's own published reserve need (e·sios 1880).</p>
+        <p class="src">P.O. 1.5 · REE I90 (RSI) · e·sios 1788, 1880</p></article>
+    </div>
+
+    <h3 class="grp">Tried and set aside</h3>
+    <ul class="method">
+      <li><b>Preventive N-1 in phase I:</b> built with one circuit per outage and seasonal ratings; adds no phase I volume in tests, off in the year run.</li>
+      <li><b>Reserve rules in real time</b> (P.O. 1.5 tertiary, with different ways of counting headroom): from never binding to 2–5× too much; none passed.</li>
+      <li><b>Switchable reactors</b> and renewables' connection cables as capacitors: made results worse or had no effect.</li>
+      <li><b>Hand-set down prices,</b> down prices fitted on REE's accepted prices (gas turned down 10× REE), and offer curves in equal blocks: replaced by REE's offers.</li>
+    </ul>
+    <p class="note">Details, commands and every test: the branch's <code>redispatch_realism/README.md</code> and the vault pages §20 (redispatch the REE way) and §30 (phase I in the market chain). P.O. section numbers follow the vault's reading of the procedures.</p>
+  </section>
 
   <section class="block">
     <h2>How the numbers are made</h2>

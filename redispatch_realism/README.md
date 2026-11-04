@@ -1000,6 +1000,21 @@ REE's phase II received 83 €/MWh on average (52.7 M€ / 632 GWh) [open: why t
 REE's]. Intraday prices up: ID2 +2.6 (105.7 against real ≈ 110), ID3 +3.0, CID +6.1, BAL +9.2 €/MWh; day-ahead
 unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 
+**y24act / y24part (4 Nov): the 2024 year with the main settings, in-chain phase I (`9bf3094`).** GAS, MARKUP,
+HYDRO aligned_rc_observed, RES offered, PUMPING removed, PUMPLIMIT, IDSTARTS, HYDROTOPUP, BALANCING qualified;
+Active and Partial (PARTICIPATION measured_all); the combined December redispatch setup with the year's offer
+file; weeks in order with `solstorm_start_year_pipeline.sh` (2 nodes per run, ≈ 23 h). Both: 366 days, 8,784 hours,
+no fallback, no load shed, phase I solved every hour, real time unsolved 2 (Active) / 4 (Partial) hours. Active
+vs REE (`compare_ree.py`): phase I up 11.08 TWh vs 13.59 (82 %), phase I+II 1,391 M€ vs REE's net 1,224 M€ (114 %),
+123 vs 132 €/MWh up; 2–29 Dec 829 vs 769 GWh (108 %). By month: Jan 120 %, Feb 104 %, Mar 66 %, Apr 50 %,
+May 60 %, Jun 81 %, Jul–Sep 86–91 %, Oct–Dec 96–111 %: the model's phase I stays near 1 TWh a month, REE's peaks
+in spring (2.0 TWh in April). Daily correlation with REE 0.53. Real time 352 GWh vs REE's 5,424 (4,895 of it
+upward reserve, not modelled). Partial's phase I is within 0.2 % of Active's (phase I acts on the day-ahead,
+which the trading mode does not change; only the carry-over differs). Passive: weeks 46–53 rerunning (a stray
+FAILED marker from a second lane stopped week 46).
+Fixes found by the first year start (`9bf3094`): with IDSTARTS, ID2/ID3 enforce min up/down times and the
+carry-over on phase I's on-hours, and pumped storage keeps its reservoir rule; phase I now applies both.
+
 **cmbm_dec (3 Nov): merging main changes nothing with its options off.** cmb_dec's setup on the merged code
 (`c1057bb`, hydro top-up off): all 3,024 hour-stage prices identical to cmb_dec (largest difference 0.00 €/MWh); phase I
 volume, cost, turned-down mix by technology, binding hours and the one unsolved real-time hour (23 Dec h08) the

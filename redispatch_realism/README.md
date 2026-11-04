@@ -1019,6 +1019,13 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2, hydro share estimated out of sample (4 Nov, `e2_estimate_h.py`, fixed before running in `d840223`).** need =
+max(0, mFRR + aFRR + §4.4 gaps − thermal headroom − h × hydro headroom). January–June: the correlation is flat at
+0.34–0.35 for h = 0.2–0.55 (weakly identified); chosen h = 0.40 with the aFRR band. July–December: hourly corr 0.40,
+28 % of REE's need hours, volume 0.56× → FAIL (h = 0 gives 0.42 / 54 % / 2.0×). No share of hydro lifts the hourly
+match above about 0.4: REE's trigger depends on information outside these public series. Real-time reserve stays a
+documented gap; the remedy (P.O. 3.2) is known, the trigger is not.
+
 **Sources on insufficient upward reserve (4 Nov, after the E2 tests).** P.O. 3.2 (BOE-A-2024-6215, §6.1.3 c and the
 real-time section) prescribes REE's *remedy*: first, minimum-programme limits at technical minimum on every thermal
 unit already scheduled; if that is not enough, start further thermal units, ranked by the cost of running at technical

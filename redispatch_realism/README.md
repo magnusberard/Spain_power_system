@@ -1019,6 +1019,13 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2, additional test chosen after the others (4 Nov, `e2_test_ccgt_pumped.py`, fixed before running in `9d4d694`):
+CCGT + coal + pumped storage (turbine headroom and stoppable pumping, mean 1,314 MW), no reservoir hydro.** Best so far.
+January–June: corr 0.44 with the aFRR band. July–December: hourly corr **0.55**, daily 0.39, volume **0.89×**, 78 % of
+its alarms real, but only **44 %** of REE's need hours → FAIL on the 70 % mark (passes the other two). Chosen after
+seeing five earlier variants, so weaker evidence than the pre-registered tests; a candidate to test on another year
+(2023 or 2025 data), not a rule to build on now.
+
 **E2, hydro share estimated out of sample (4 Nov, `e2_estimate_h.py`, fixed before running in `d840223`).** need =
 max(0, mFRR + aFRR + §4.4 gaps − thermal headroom − h × hydro headroom). January–June: the correlation is flat at
 0.34–0.35 for h = 0.2–0.55 (weakly identified); chosen h = 0.40 with the aFRR band. July–December: hourly corr 0.40,

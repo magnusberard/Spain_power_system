@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase I Redispatch 2024</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: one reading column of analysis blocks; summary figures first, then year, months, average day, causes. */
+:root {
+  color-scheme: light;
+  --bg: #f6f6f3;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #85847f;
+  --rule: #e2e1dc;
+  --grid: #ecebe6;
+  --model: #2a78d6;
+  --ree: #eb6834;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86;
+    --rule: #2e2d2b; --grid: #262624; --model: #3987e5; --ree: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86;
+  --rule: #2e2d2b; --grid: #262624; --model: #3987e5; --ree: #d95926;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-body); }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.01em; }
+h2 { font-size: 19px; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--ink-2); }
+.meta { font: 12.5px/1.5 var(--font-mono); color: var(--ink-3); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; gap: 2px; }
+.tile .v { font: 600 26px/1.15 var(--font-display); font-variant-numeric: tabular-nums; }
+.tile .k { font-size: 13px; color: var(--ink-2); }
+.tile .s { font: 12px/1.4 var(--font-mono); color: var(--ink-3); }
+section.block { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 16px; display: grid; gap: 12px; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.sw.bar { height: 10px; width: 10px; border-radius: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg button { font: 500 12.5px var(--font-body); color: var(--ink-2); background: transparent; border: 0; padding: 5px 11px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button:focus-visible { outline: 2px solid var(--model); outline-offset: -2px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--ink-3); font: 11.5px var(--font-mono); }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; font: 12px/1.45 var(--font-mono); color: var(--ink); box-shadow: 0 4px 14px rgb(0 0 0 / 0.12); opacity: 0; transition: opacity .08s; white-space: nowrap; z-index: 2; }
+.tip b { font-weight: 500; color: var(--ink-2); }
+.tip .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.note { font-size: 13.5px; color: var(--ink-2); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font: 12.5px/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 500; }
+td.low { color: var(--ree); font-weight: 500; }
+details summary { cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
+details[open] summary { margin-bottom: 8px; }
+ul.method { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; color: var(--ink-2); max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header style="display:grid; gap:8px">
+    <p class="meta">Spain power-market model · 2024 · redispatch phase I, energy turned up</p>
+    <h1>Phase I redispatch: model against REE, 2024</h1>
+    <p class="lede">REE's phase I (technical constraints on the day-ahead schedule) against the model's REE-way phase I, run inside the market chain. Real time is left out: 90 % of REE's real-time redispatch is upward reserve, which the model does not hold.</p>
+    <p class="meta">Model: 2024 Active + REE-way redispatch (branch redispatch-realism, 9bf3094), 366 days · REE: e·sios, technical constraints phase I, upward (rt1_up)</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="block">
+    <div class="head">
+      <h2>Through the year</h2>
+      <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap">
+        <div class="legend"><span><i class="sw" style="background:var(--model)"></i>Model</span><span><i class="sw" style="background:var(--ree)"></i>REE</span></div>
+        <div class="seg" role="group" aria-label="Time step">
+          <button id="b-week" aria-pressed="true">Weekly average</button><button id="b-day" aria-pressed="false">Daily</button>
+        </div>
+      </div>
+    </div>
+    <p class="note">GWh turned up per day. The model follows REE's rises and falls through the year (weekly correlation <span id="c-week"></span>) but within a narrower band: its weekly average runs from 16 to 41 GWh a day, REE's from 17 to 78, with REE's peak in spring.</p>
+    <div class="chart" id="ch-year"></div>
+  </section>
+
+  <section class="block">
+    <div class="head">
+      <h2>By month</h2>
+      <div class="legend"><span><i class="sw bar" style="background:var(--model)"></i>Model</span><span><i class="sw bar" style="background:var(--ree)"></i>REE</span></div>
+    </div>
+    <p class="note">GWh turned up per month; the model's share of REE's volume under each month. From October to February the model is within 20 % of REE; from March to May it reaches only 50–66 %.</p>
+    <div class="chart" id="ch-month"></div>
+    <details>
+      <summary>Show the monthly numbers as a table</summary>
+      <div class="tablewrap"><table id="t-month"></table></div>
+    </details>
+  </section>
+
+  <div class="two">
+    <section class="block">
+      <div class="head">
+        <h2>The average day</h2>
+        <div class="legend"><span><i class="sw" style="background:var(--model)"></i>Model</span><span><i class="sw" style="background:var(--ree)"></i>REE</span></div>
+      </div>
+      <p class="note">MW turned up in each hour, averaged over the year. Same shape (correlation <span id="c-hod"></span>): both are highest from 03:00 to 06:00 and dip after sunrise. At night the model matches REE (92–106 %); from late morning to midnight it reaches only 65–75 %.</p>
+      <div class="chart" id="ch-hod"></div>
+    </section>
+    <section class="block">
+      <div class="head"><h2>Why REE turned plants up</h2></div>
+      <p class="note">Share of REE's phase I by the cause it reports (e·sios). The causes overlap and add up to 116 % of the volume, so the table shows shares. Voltage control is the largest, and it peaks in March–April, where the model falls short.</p>
+      <div class="tablewrap"><table id="t-cause"></table></div>
+    </section>
+  </div>
+
+  <section class="block">
+    <h2>How the numbers are made</h2>
+    <ul class="method">
+      <li>Model: upward energy of phase I per hour (rd_phase1_summary.csv, up_mwh), 53 weekly chunks run in order. Phase II's down side and the real-time AC stage are not included.</li>
+      <li>REE: e·sios hourly series of technical constraints, phase I, upward, for 2024 (as in the results viewer's reference data).</li>
+      <li>Correlation: Pearson, as for prices on the results viewer, on hourly values and on daily, weekly and monthly sums. Average day: the 24 hourly means over the year.</li>
+      <li>Monthly error: the sum of |model − REE| over the twelve months, as a share of REE's yearly volume.</li>
+      <li>Partial trading gives the same phase I within 0.2 % (<span id="part"></span>), since phase I acts on the day-ahead schedule, which the trading mode does not change.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const D = {"days": ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-06", "2024-01-07", "2024-01-08", "2024-01-09", "2024-01-10", "2024-01-11", "2024-01-12", "2024-01-13", "2024-01-14", "2024-01-15", "2024-01-16", "2024-01-17", "2024-01-18", "2024-01-19", "2024-01-20", "2024-01-21", "2024-01-22", "2024-01-23", "2024-01-24", "2024-01-25", "2024-01-26", "2024-01-27", "2024-01-28", "2024-01-29", "2024-01-30", "2024-01-31", "2024-02-01", "2024-02-02", "2024-02-03", "2024-02-04", "2024-02-05", "2024-02-06", "2024-02-07", "2024-02-08", "2024-02-09", "2024-02-10", "2024-02-11", "2024-02-12", "2024-02-13", "2024-02-14", "2024-02-15", "2024-02-16", "2024-02-17", "2024-02-18", "2024-02-19", "2024-02-20", "2024-02-21", "2024-02-22", "2024-02-23", "2024-02-24", "2024-02-25", "2024-02-26", "2024-02-27", "2024-02-28", "2024-02-29", "2024-03-01", "2024-03-02", "2024-03-03", "2024-03-04", "2024-03-05", "2024-03-06", "2024-03-07", "2024-03-08", "2024-03-09", "2024-03-10", "2024-03-11", "2024-03-12", "2024-03-13", "2024-03-14", "2024-03-15", "2024-03-16", "2024-03-17", "2024-03-18", "2024-03-19", "2024-03-20", "2024-03-21", "2024-03-22", "2024-03-23", "2024-03-24", "2024-03-25", "2024-03-26", "2024-03-27", "2024-03-28", "2024-03-29", "2024-03-30", "2024-03-31", "2024-04-01", "2024-04-02", "2024-04-03", "2024-04-04", "2024-04-05", "2024-04-06", "2024-04-07", "2024-04-08", "2024-04-09", "2024-04-10", "2024-04-11", "2024-04-12", "2024-04-13", "2024-04-14", "2024-04-15", "2024-04-16", "2024-04-17", "2024-04-18", "2024-04-19", "2024-04-20", "2024-04-21", "2024-04-22", "2024-04-23", "2024-04-24", "2024-04-25", "2024-04-26", "2024-04-27", "2024-04-28", "2024-04-29", "2024-04-30", "2024-05-01", "2024-05-02", "2024-05-03", "2024-05-04", "2024-05-05", "2024-05-06", "2024-05-07", "2024-05-08", "2024-05-09", "2024-05-10", "2024-05-11", "2024-05-12", "2024-05-13", "2024-05-14", "2024-05-15", "2024-05-16", "2024-05-17", "2024-05-18", "2024-05-19", "2024-05-20", "2024-05-21", "2024-05-22", "2024-05-23", "2024-05-24", "2024-05-25", "2024-05-26", "2024-05-27", "2024-05-28", "2024-05-29", "2024-05-30", "2024-05-31", "2024-06-01", "2024-06-02", "2024-06-03", "2024-06-04", "2024-06-05", "2024-06-06", "2024-06-07", "2024-06-08", "2024-06-09", "2024-06-10", "2024-06-11", "2024-06-12", "2024-06-13", "2024-06-14", "2024-06-15", "2024-06-16", "2024-06-17", "2024-06-18", "2024-06-19", "2024-06-20", "2024-06-21", "2024-06-22", "2024-06-23", "2024-06-24", "2024-06-25", "2024-06-26", "2024-06-27", "2024-06-28", "2024-06-29", "2024-06-30", "2024-07-01", "2024-07-02", "2024-07-03", "2024-07-04", "2024-07-05", "2024-07-06", "2024-07-07", "2024-07-08", "2024-07-09", "2024-07-10", "2024-07-11", "2024-07-12", "2024-07-13", "2024-07-14", "2024-07-15", "2024-07-16", "2024-07-17", "2024-07-18", "2024-07-19", "2024-07-20", "2024-07-21", "2024-07-22", "2024-07-23", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-27", "2024-07-28", "2024-07-29", "2024-07-30", "2024-07-31", "2024-08-01", "2024-08-02", "2024-08-03", "2024-08-04", "2024-08-05", "2024-08-06", "2024-08-07", "2024-08-08", "2024-08-09", "2024-08-10", "2024-08-11", "2024-08-12", "2024-08-13", "2024-08-14", "2024-08-15", "2024-08-16", "2024-08-17", "2024-08-18", "2024-08-19", "2024-08-20", "2024-08-21", "2024-08-22", "2024-08-23", "2024-08-24", "2024-08-25", "2024-08-26", "2024-08-27", "2024-08-28", "2024-08-29", "2024-08-30", "2024-08-31", "2024-09-01", "2024-09-02", "2024-09-03", "2024-09-04", "2024-09-05", "2024-09-06", "2024-09-07", "2024-09-08", "2024-09-09", "2024-09-10", "2024-09-11", "2024-09-12", "2024-09-13", "2024-09-14", "2024-09-15", "2024-09-16", "2024-09-17", "2024-09-18", "2024-09-19", "2024-09-20", "2024-09-21", "2024-09-22", "2024-09-23", "2024-09-24", "2024-09-25", "2024-09-26", "2024-09-27", "2024-09-28", "2024-09-29", "2024-09-30", "2024-10-01", "2024-10-02", "2024-10-03", "2024-10-04", "2024-10-05", "2024-10-06", "2024-10-07", "2024-10-08", "2024-10-09", "2024-10-10", "2024-10-11", "2024-10-12", "2024-10-13", "2024-10-14", "2024-10-15", "2024-10-16", "2024-10-17", "2024-10-18", "2024-10-19", "2024-10-20", "2024-10-21", "2024-10-22", "2024-10-23", "2024-10-24", "2024-10-25", "2024-10-26", "2024-10-27", "2024-10-28", "2024-10-29", "2024-10-30", "2024-10-31", "2024-11-01", "2024-11-02", "2024-11-03", "2024-11-04", "2024-11-05", "2024-11-06", "2024-11-07", "2024-11-08", "2024-11-09", "2024-11-10", "2024-11-11", "2024-11-12", "2024-11-13", "2024-11-14", "2024-11-15", "2024-11-16", "2024-11-17", "2024-11-18", "2024-11-19", "2024-11-20", "2024-11-21", "2024-11-22", "2024-11-23", "2024-11-24", "2024-11-25", "2024-11-26", "2024-11-27", "2024-11-28", "2024-11-29", "2024-11-30", "2024-12-01", "2024-12-02", "2024-12-03", "2024-12-04", "2024-12-05", "2024-12-06", "2024-12-07", "2024-12-08", "2024-12-09", "2024-12-10", "2024-12-11", "2024-12-12", "2024-12-13", "2024-12-14", "2024-12-15", "2024-12-16", "2024-12-17", "2024-12-18", "2024-12-19", "2024-12-20", "2024-12-21", "2024-12-22", "2024-12-23", "2024-12-24", "2024-12-25", "2024-12-26", "2024-12-27", "2024-12-28", "2024-12-29", "2024-12-30", "2024-12-31"], "d_act": [58.56, 38.52, 22.72, 23.85, 26.34, 28.7, 33.67, 33.15, 11.44, 11.93, 17.43, 16.31, 27.1, 38.36, 33.97, 27.44, 28.43, 29.16, 26.61, 26.14, 37.57, 34.55, 18.08, 18.19, 12.69, 25.52, 30.41, 38.56, 15.47, 11.75, 13.26, 12.81, 14.18, 16.91, 33.46, 33.56, 29.32, 28.13, 28.31, 22.75, 24.72, 33.24, 26.77, 19.1, 30.97, 29.36, 32.81, 34.03, 43.33, 39.15, 20.69, 21.14, 28.92, 26.83, 28.31, 35.22, 35.21, 29.28, 31.45, 32.67, 31.86, 31.77, 33.77, 32.54, 30.48, 31.83, 26.84, 30.13, 28.09, 39.9, 38.24, 39.89, 37.99, 35.9, 34.83, 38.14, 48.97, 22.56, 18.79, 32.68, 29.07, 31.28, 29.81, 33.28, 34.45, 27.33, 26.66, 34.68, 41.45, 42.76, 34.16, 34.96, 27.42, 28.32, 28.83, 29.88, 26.15, 41.29, 30.85, 28.83, 34.05, 30.95, 32.81, 41.7, 50.84, 45.23, 34.02, 34.03, 33.22, 29.84, 33.38, 46.78, 37.05, 31.89, 30.71, 30.71, 20.23, 35.86, 57.51, 15.56, 16.71, 37.84, 36.8, 30.83, 38.22, 47.03, 39.67, 39.59, 36.44, 29.02, 31.23, 43.37, 49.07, 31.06, 31.39, 32.86, 25.45, 13.04, 32.63, 46.53, 29.58, 18.13, 20.1, 17.77, 16.85, 37.97, 48.88, 46.37, 37.97, 33.0, 35.74, 38.81, 37.61, 38.87, 37.83, 36.11, 23.3, 34.68, 33.42, 36.87, 38.56, 38.29, 31.85, 34.11, 34.2, 35.16, 42.34, 43.38, 39.79, 30.52, 25.82, 18.43, 23.17, 33.55, 43.81, 30.69, 29.98, 1.67, 27.99, 27.23, 36.56, 41.44, 36.92, 24.14, 28.79, 25.01, 30.46, 31.98, 41.4, 34.88, 30.7, 26.19, 23.43, 30.6, 24.43, 33.35, 29.7, 26.14, 29.65, 19.29, 21.24, 33.99, 42.38, 33.78, 17.65, 16.08, 20.11, 18.15, 23.7, 30.06, 10.87, 15.3, 15.91, 18.8, 25.94, 28.7, 35.52, 25.55, 19.75, 23.79, 28.26, 21.85, 20.48, 38.59, 20.28, 16.29, 32.25, 32.59, 35.91, 34.81, 37.47, 30.89, 24.61, 16.99, 13.64, 15.01, 25.94, 24.59, 21.19, 14.8, 17.38, 10.12, 12.14, 17.11, 20.29, 15.79, 23.19, 26.45, 22.28, 23.98, 18.64, 42.14, 37.38, 24.12, 25.81, 28.5, 28.24, 27.36, 45.13, 36.79, 25.8, 22.18, 11.36, 13.33, 31.01, 41.57, 32.98, 29.27, 25.14, 18.74, 17.91, 31.08, 40.5, 35.48, 28.9, 28.93, 27.2, 31.01, 32.15, 35.52, 36.18, 31.09, 32.79, 28.89, 22.5, 36.21, 49.02, 44.45, 27.28, 32.19, 36.18, 33.75, 34.16, 35.17, 35.44, 30.04, 33.55, 33.62, 25.4, 45.43, 48.3, 44.56, 31.99, 33.15, 17.37, 51.68, 53.71, 56.84, 38.94, 11.83, 20.24, 23.81, 12.66, 46.23, 57.2, 46.25, 33.25, 29.46, 29.34, 33.23, 42.04, 56.01, 19.16, 21.28, 29.56, 33.2, 30.93, 35.34, 41.53, 41.24, 7.98, 11.59, 19.7, 27.42, 32.15, 42.07, 20.75, 8.84, 28.89, 27.05, 30.28, 42.0, 37.82, 45.82, 23.61, 11.15, 10.66, 10.94, 14.85, 49.86, 26.37, 8.01, 35.03, 35.91, 37.98, 38.61, 48.27, 43.91, 38.67, 58.61, 23.42, 12.24, 19.4, 39.64, 36.64, 40.06], "d_ree": [49.5, 32.87, 17.27, 16.82, 17.76, 20.22, 24.22, 20.4, 10.95, 12.39, 13.96, 12.56, 18.32, 28.86, 32.17, 16.84, 19.45, 24.43, 22.1, 18.69, 28.87, 24.82, 18.45, 18.67, 19.72, 22.12, 21.88, 27.39, 22.37, 21.75, 25.88, 26.37, 21.32, 17.32, 33.92, 26.98, 23.28, 25.28, 25.62, 18.27, 19.11, 23.16, 22.47, 22.25, 24.3, 25.28, 26.04, 24.96, 33.51, 36.85, 34.1, 28.94, 23.48, 19.14, 23.62, 28.79, 40.65, 41.11, 37.93, 36.32, 40.4, 32.08, 32.2, 34.67, 27.13, 29.86, 63.34, 65.83, 49.29, 66.93, 53.28, 45.41, 45.8, 47.71, 43.42, 45.43, 54.2, 32.49, 29.84, 38.08, 50.35, 55.8, 66.16, 65.87, 69.08, 64.2, 69.59, 56.69, 62.4, 68.09, 64.74, 71.12, 62.49, 60.54, 69.28, 69.02, 83.71, 81.52, 62.23, 66.28, 53.77, 46.26, 42.71, 51.69, 52.78, 76.16, 73.69, 70.65, 67.77, 76.51, 83.14, 95.94, 93.1, 87.36, 78.28, 65.38, 50.5, 56.53, 59.59, 33.71, 40.16, 65.21, 61.78, 51.65, 69.51, 67.87, 54.52, 60.68, 69.03, 41.61, 48.76, 57.44, 65.26, 64.44, 66.74, 64.51, 55.96, 48.0, 52.99, 59.67, 59.39, 48.54, 38.95, 33.27, 32.82, 49.21, 51.96, 57.4, 48.63, 49.54, 70.36, 85.84, 74.66, 63.05, 57.43, 32.05, 20.4, 30.45, 28.75, 34.61, 60.38, 44.79, 39.86, 48.44, 45.77, 49.15, 48.02, 57.15, 61.62, 36.29, 20.9, 21.58, 28.59, 54.99, 70.61, 48.86, 23.24, 0.0, 22.37, 22.64, 31.53, 41.34, 59.28, 53.72, 53.15, 26.45, 25.52, 26.62, 31.6, 32.23, 24.5, 20.73, 22.45, 31.16, 28.49, 35.53, 39.01, 31.14, 25.76, 23.82, 18.4, 31.09, 41.68, 31.48, 19.32, 18.04, 22.88, 22.21, 21.43, 25.53, 21.53, 21.94, 22.22, 24.18, 34.45, 32.37, 33.52, 28.13, 25.44, 30.47, 25.14, 24.16, 19.7, 30.57, 27.05, 25.18, 40.18, 41.56, 34.16, 33.88, 42.62, 31.07, 34.08, 28.77, 16.18, 18.25, 23.68, 29.35, 28.87, 19.62, 23.65, 16.13, 17.03, 22.02, 27.26, 29.82, 36.23, 47.97, 30.54, 33.88, 21.25, 33.5, 38.41, 36.31, 38.41, 37.36, 33.97, 19.84, 37.78, 39.24, 31.78, 23.06, 18.68, 19.05, 28.46, 37.61, 27.81, 24.94, 29.16, 37.71, 31.01, 26.92, 34.0, 30.7, 27.59, 31.66, 30.23, 26.6, 28.2, 32.42, 35.0, 30.37, 32.57, 26.31, 26.9, 25.54, 36.85, 34.06, 31.9, 29.22, 36.0, 33.04, 25.52, 33.09, 34.86, 30.6, 26.02, 39.63, 32.76, 32.45, 40.07, 41.38, 31.25, 29.49, 34.62, 40.08, 49.71, 48.73, 39.44, 26.57, 26.54, 31.23, 29.26, 38.89, 47.2, 40.44, 37.83, 35.77, 36.42, 36.98, 35.86, 47.12, 24.57, 17.97, 43.98, 41.71, 25.09, 32.01, 54.66, 40.33, 13.53, 21.28, 21.41, 24.17, 28.06, 36.98, 20.09, 20.35, 27.64, 24.42, 27.15, 47.66, 47.06, 45.75, 19.87, 3.75, 4.6, 5.14, 14.57, 36.88, 23.03, 14.74, 27.45, 32.77, 32.75, 31.12, 40.52, 37.6, 32.6, 46.69, 26.01, 15.23, 22.19, 40.9, 27.26, 24.5], "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], "m_act": [816.0, 823.0, 1030.0, 1000.0, 1053.0, 987.0, 826.0, 741.0, 822.0, 1042.0, 994.0, 947.0], "m_ree": [682.0, 790.0, 1570.0, 1982.0, 1752.0, 1220.0, 909.0, 861.0, 943.0, 986.0, 1037.0, 857.0], "m_part": [823.0, 823.0, 1030.0, 998.0, 1056.0, 987.0, 831.0, 735.0, 822.0, 1042.0, 1000.0, 953.0], "m_cause": {"Voltage (CT)": [71.0, 56.0, 36.0, 37.0, 46.0, 46.0, 40.0, 35.0, 37.0, 49.0, 55.0, 59.0], "N-1 (SCA)": [6.0, 17.0, 49.0, 44.0, 28.0, 26.0, 27.0, 31.0, 23.0, 14.0, 16.0, 13.0], "Distribution (RTD)": [22.0, 23.0, 10.0, 9.0, 10.0, 8.0, 15.0, 16.0, 22.0, 18.0, 10.0, 11.0], "Other": [0.0, 4.0, 5.0, 11.0, 16.0, 20.0, 18.0, 17.0, 18.0, 19.0, 19.0, 17.0]}, "y_cause": {"Voltage (CT)": 45, "N-1 (SCA)": 28, "Distribution (RTD)": 13, "Other": 14}, "hod_act": [1636.0, 1718.0, 1776.0, 1787.0, 1796.0, 1789.0, 1727.0, 1373.0, 1195.0, 1134.0, 1118.0, 1183.0, 1209.0, 1245.0, 1237.0, 1216.0, 1166.0, 1083.0, 977.0, 895.0, 815.0, 774.0, 734.0, 696.0], "hod_ree": [1547.0, 1667.0, 1797.0, 1943.0, 1944.0, 1935.0, 1823.0, 1445.0, 1368.0, 1459.0, 1525.0, 1622.0, 1668.0, 1672.0, 1676.0, 1676.0, 1650.0, 1582.0, 1453.0, 1286.0, 1136.0, 1107.0, 1083.0, 1064.0], "stats": {"hourly": 0.51, "daily": 0.53, "weekly": 0.62, "monthly": 0.68, "hod": 0.88, "volume": 82, "monthly_err": 23, "model_twh": 11.08, "ree_twh": 13.59, "part_twh": 11.1, "part_daily": 0.53}};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 0) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const S = D.stats;
+
+// tiles
+const tiles = [
+  ["Volume", `${S.volume} %`, `${fmt(S.model_twh, 2)} of ${fmt(S.ree_twh, 2)} TWh`],
+  ["Correlation, hourly", S.hourly.toFixed(2), `daily ${S.daily.toFixed(2)}`],
+  ["Correlation, weekly", S.weekly.toFixed(2), `monthly ${S.monthly.toFixed(2)}`],
+  ["Average-day shape", S.hod.toFixed(2), "correlation, 24 hours"],
+  ["Monthly error", `${S.monthly_err} %`, "of REE's yearly volume"],
+];
+document.getElementById("tiles").innerHTML = tiles.map(([k, v, s]) =>
+  `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join("");
+document.getElementById("c-week").textContent = S.weekly.toFixed(2);
+document.getElementById("c-hod").textContent = S.hod.toFixed(2);
+document.getElementById("part").textContent = `${fmt(S.part_twh, 2)} TWh, daily correlation ${S.part_daily.toFixed(2)}`;
+
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; }
+function tipFor(box) { const t = document.createElement("div"); t.className = "tip"; box.appendChild(t); return t; }
+function place(tip, box, x, y) {
+  const bw = box.clientWidth, tw = tip.offsetWidth;
+  tip.style.left = Math.min(Math.max(0, x + 14), bw - tw) + "px";
+  tip.style.top = Math.max(0, y - 10) + "px";
+  tip.style.opacity = 1;
+}
+
+// line chart (year, average day)
+function lineChart(id, xs, series, opts) {
+  const box = document.getElementById(id); box.innerHTML = "";
+  const W = 1000, H = opts.h || 300, m = { l: 44, r: 12, t: 10, b: 28 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label }, box);
+  const ymax = niceMax(Math.max(...series.flatMap(s => s.v)) * 1.04);
+  const X = i => m.l + (W - m.l - m.r) * i / (xs.length - 1);
+  const Y = v => H - m.b - (H - m.t - m.b) * v / ymax;
+  for (let k = 0; k <= 4; k++) {
+    const v = ymax * k / 4, y = Y(v);
+    el("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: css("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+  }
+  opts.ticks.forEach(([i, lab]) => { el("text", { x: X(i), y: H - 8, "text-anchor": "middle" }, svg).textContent = lab; });
+  series.forEach(s => {
+    const d = s.v.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    el("path", { d, fill: "none", stroke: css(s.c), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  });
+  const cross = el("line", { y1: m.t, y2: H - m.b, stroke: css("--ink-3"), "stroke-width": 1, opacity: 0 }, svg);
+  const dots = series.map(s => el("circle", { r: 4.5, fill: css(s.c), stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, svg));
+  const tip = tipFor(box);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+  function move(ev) {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(xs.length - 1, Math.round((sx - m.l) / (W - m.l - m.r) * (xs.length - 1))));
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 0.6);
+    series.forEach((s, k) => { dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.v[i])); dots[k].setAttribute("opacity", 1); });
+    const a = series[0].v[i], b = series[1].v[i];
+    tip.innerHTML = `<b>${opts.xlab(i)}</b><br>` + series.map(s => `<span class="d" style="background:${css(s.c)}"></span>${s.n} ${fmt(s.v[i], opts.dec)} ${opts.unit}`).join("<br>")
+      + (b > 0 ? `<br><b>model / REE ${fmt(100 * a / b)} %</b>` : "");
+    place(tip, box, (X(i) * r.width / W), (ev.clientY - r.top));
+  }
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerleave", () => { tip.style.opacity = 0; cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); });
+}
+
+// year chart: daily or weekly (Monday-start 7-day means)
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function dLabel(s) { const [y, mo, d] = s.split("-"); return `${+d} ${MON[+mo - 1]}`; }
+function drawYear(mode) {
+  let xs = D.days, a = D.d_act, r = D.d_ree, lab = i => dLabel(xs[i]);
+  if (mode === "week") {
+    const wx = [], wa = [], wr = [];
+    for (let i = 0; i < D.days.length; i += 7) {
+      const n = Math.min(7, D.days.length - i), sl = (v) => v.slice(i, i + n).reduce((p, q) => p + q, 0) / n;
+      wx.push(D.days[i]); wa.push(sl(D.d_act)); wr.push(sl(D.d_ree));
+    }
+    xs = wx; a = wa; r = wr; lab = i => `week of ${dLabel(xs[i])}`;
+  }
+  const ticks = [];
+  xs.forEach((s, i) => { if (s.slice(8) <= (mode === "week" ? "07" : "01") && (i === 0 || xs[i - 1].slice(5, 7) !== s.slice(5, 7))) ticks.push([i, MON[+s.slice(5, 7) - 1]]); });
+  lineChart("ch-year", xs, [{ n: "Model", v: a, c: "--model" }, { n: "REE", v: r, c: "--ree" }],
+    { h: 300, ticks, xlab: lab, unit: "GWh/day", dec: 1, label: "Phase I GWh turned up per day, model and REE, 2024" });
+}
+let yearMode = "week";
+const bw = document.getElementById("b-week"), bd = document.getElementById("b-day");
+function setMode(mode) { yearMode = mode; bw.setAttribute("aria-pressed", mode === "week"); bd.setAttribute("aria-pressed", mode === "day"); drawYear(mode); }
+bw.addEventListener("click", () => setMode("week")); bd.addEventListener("click", () => setMode("day"));
+
+// monthly paired bars
+function drawMonths() {
+  const box = document.getElementById("ch-month"); box.innerHTML = "";
+  const W = 1000, H = 300, m = { l: 48, r: 12, t: 10, b: 48 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Phase I GWh turned up per month, model and REE" }, box);
+  const ymax = niceMax(Math.max(...D.m_act, ...D.m_ree) * 1.05);
+  const Y = v => H - m.b - (H - m.t - m.b) * v / ymax;
+  for (let k = 0; k <= 4; k++) {
+    const v = ymax * k / 4, y = Y(v);
+    el("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: css("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+  }
+  const n = D.months.length, slot = (W - m.l - m.r) / n, bwid = Math.min(26, slot * 0.3), gap = 2;
+  const tip = tipFor(box);
+  D.months.forEach((mo, i) => {
+    const cx = m.l + slot * (i + 0.5);
+    [[D.m_act[i], "--model", -1], [D.m_ree[i], "--ree", 1]].forEach(([v, c, side]) => {
+      const x = side < 0 ? cx - gap / 2 - bwid : cx + gap / 2, y = Y(v), h = Y(0) - y, rr = Math.min(4, h);
+      el("path", { d: `M${x},${Y(0)}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + bwid - rr}Q${x + bwid},${y} ${x + bwid},${y + rr}V${Y(0)}Z`, fill: css(c) }, svg);
+    });
+    el("text", { x: cx, y: H - m.b + 16, "text-anchor": "middle" }, svg).textContent = mo;
+    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    const t = el("text", { x: cx, y: H - m.b + 33, "text-anchor": "middle" }, svg);
+    t.textContent = pct + " %"; t.style.fill = pct < 70 ? css("--ree") : css("--ink-2"); t.style.fontWeight = pct < 70 ? 500 : 400;
+    const hit = el("rect", { x: cx - slot / 2, y: m.t, width: slot, height: H - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", ev => {
+      const r = svg.getBoundingClientRect();
+      tip.innerHTML = `<b>${mo} 2024</b><br><span class="d" style="background:${css("--model")}"></span>Model ${fmt(D.m_act[i])} GWh<br><span class="d" style="background:${css("--ree")}"></span>REE ${fmt(D.m_ree[i])} GWh<br><b>model / REE ${pct} %</b>`;
+      place(tip, box, cx * r.width / W, ev.clientY - r.top);
+    });
+    hit.addEventListener("pointerleave", () => { tip.style.opacity = 0; });
+  });
+  el("text", { x: m.l - 8, y: H - m.b + 33, "text-anchor": "end" }, svg).textContent = "model/REE";
+}
+
+// tables
+function tables() {
+  const rows = D.months.map((mo, i) => {
+    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    return `<tr><td>${mo}</td><td>${fmt(D.m_act[i])}</td><td>${fmt(D.m_ree[i])}</td><td class="${pct < 70 ? "low" : ""}">${pct} %</td><td>${fmt(D.m_part[i])}</td></tr>`;
+  }).join("");
+  const ta = D.m_act.reduce((a, b) => a + b, 0), tr = D.m_ree.reduce((a, b) => a + b, 0), tp = D.m_part.reduce((a, b) => a + b, 0);
+  document.getElementById("t-month").innerHTML = `<thead><tr><th>Month</th><th>Model GWh</th><th>REE GWh</th><th>Model / REE</th><th>Partial GWh</th></tr></thead><tbody>${rows}</tbody>`
+    + `<tfoot><tr><th>Year</th><th>${fmt(ta)}</th><th>${fmt(tr)}</th><th>${Math.round(100 * ta / tr)} %</th><th>${fmt(tp)}</th></tr></tfoot>`;
+  const cs = Object.keys(D.m_cause);
+  const body = D.months.map((mo, i) => {
+    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    return `<tr><td>${mo}</td>${cs.map(c => `<td>${D.m_cause[c][i]} %</td>`).join("")}<td class="${pct < 70 ? "low" : ""}">${pct} %</td></tr>`;
+  }).join("");
+  document.getElementById("t-cause").innerHTML = `<thead><tr><th>Month</th>${cs.map(c => `<th>${c}</th>`).join("")}<th>Model / REE</th></tr></thead><tbody>${body}</tbody>`
+    + `<tfoot><tr><th>Year</th>${cs.map(c => `<th>${D.y_cause[c]} %</th>`).join("")}<th>${S.volume} %</th></tr></tfoot>`;
+}
+
+function drawAll() {
+  drawYear(yearMode); drawMonths();
+  lineChart("ch-hod", Array.from({ length: 24 }, (_, h) => h), [{ n: "Model", v: D.hod_act, c: "--model" }, { n: "REE", v: D.hod_ree, c: "--ree" }],
+    { h: 260, ticks: [0, 4, 8, 12, 16, 20, 23].map(h => [h, String(h).padStart(2, "0") + ":00"]), xlab: i => `${String(i).padStart(2, "0")}:00`, unit: "MW", dec: 0, label: "Average MW turned up by hour of the day" });
+}
+tables(); drawAll();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+</body>
+</html>

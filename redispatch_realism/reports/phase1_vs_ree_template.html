@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase I Redispatch 2024</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: one reading column of analysis blocks; summary figures first, then year, months, average day, causes. */
+:root {
+  color-scheme: light;
+  --bg: #f6f6f3;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #85847f;
+  --rule: #e2e1dc;
+  --grid: #ecebe6;
+  --model: #2a78d6;
+  --ree: #eb6834;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86;
+    --rule: #2e2d2b; --grid: #262624; --model: #3987e5; --ree: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86;
+  --rule: #2e2d2b; --grid: #262624; --model: #3987e5; --ree: #d95926;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-body); }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.01em; }
+h2 { font-size: 19px; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--ink-2); }
+.meta { font: 12.5px/1.5 var(--font-mono); color: var(--ink-3); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; gap: 2px; }
+.tile .v { font: 600 26px/1.15 var(--font-display); font-variant-numeric: tabular-nums; }
+.tile .k { font-size: 13px; color: var(--ink-2); }
+.tile .s { font: 12px/1.4 var(--font-mono); color: var(--ink-3); }
+section.block { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 16px; display: grid; gap: 12px; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.sw.bar { height: 10px; width: 10px; border-radius: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg button { font: 500 12.5px var(--font-body); color: var(--ink-2); background: transparent; border: 0; padding: 5px 11px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button:focus-visible { outline: 2px solid var(--model); outline-offset: -2px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--ink-3); font: 11.5px var(--font-mono); }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; font: 12px/1.45 var(--font-mono); color: var(--ink); box-shadow: 0 4px 14px rgb(0 0 0 / 0.12); opacity: 0; transition: opacity .08s; white-space: nowrap; z-index: 2; }
+.tip b { font-weight: 500; color: var(--ink-2); }
+.tip .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.note { font-size: 13.5px; color: var(--ink-2); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font: 12.5px/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 500; }
+td.low { color: var(--ree); font-weight: 500; }
+details summary { cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
+details[open] summary { margin-bottom: 8px; }
+ul.method { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; color: var(--ink-2); max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header style="display:grid; gap:8px">
+    <p class="meta">Spain power-market model · 2024 · redispatch phase I, energy turned up</p>
+    <h1>Phase I redispatch: model against REE, 2024</h1>
+    <p class="lede">REE's phase I (technical constraints on the day-ahead schedule) against the model's REE-way phase I, run inside the market chain. Real time is left out: 90 % of REE's real-time redispatch is upward reserve, which the model does not hold.</p>
+    <p class="meta">Model: 2024 Active + REE-way redispatch (branch redispatch-realism, 9bf3094), 366 days · REE: e·sios, technical constraints phase I, upward (rt1_up)</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="block">
+    <div class="head">
+      <h2>Through the year</h2>
+      <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap">
+        <div class="legend"><span><i class="sw" style="background:var(--model)"></i>Model</span><span><i class="sw" style="background:var(--ree)"></i>REE</span></div>
+        <div class="seg" role="group" aria-label="Time step">
+          <button id="b-week" aria-pressed="true">Weekly average</button><button id="b-day" aria-pressed="false">Daily</button>
+        </div>
+      </div>
+    </div>
+    <p class="note">GWh turned up per day. The model follows REE's rises and falls through the year (weekly correlation <span id="c-week"></span>) but within a narrower band: its weekly average runs from 16 to 41 GWh a day, REE's from 17 to 78, with REE's peak in spring.</p>
+    <div class="chart" id="ch-year"></div>
+  </section>
+
+  <section class="block">
+    <div class="head">
+      <h2>By month</h2>
+      <div class="legend"><span><i class="sw bar" style="background:var(--model)"></i>Model</span><span><i class="sw bar" style="background:var(--ree)"></i>REE</span></div>
+    </div>
+    <p class="note">GWh turned up per month; the model's share of REE's volume under each month. From October to February the model is within 20 % of REE; from March to May it reaches only 50–66 %.</p>
+    <div class="chart" id="ch-month"></div>
+    <details>
+      <summary>Show the monthly numbers as a table</summary>
+      <div class="tablewrap"><table id="t-month"></table></div>
+    </details>
+  </section>
+
+  <div class="two">
+    <section class="block">
+      <div class="head">
+        <h2>The average day</h2>
+        <div class="legend"><span><i class="sw" style="background:var(--model)"></i>Model</span><span><i class="sw" style="background:var(--ree)"></i>REE</span></div>
+      </div>
+      <p class="note">MW turned up in each hour, averaged over the year. Same shape (correlation <span id="c-hod"></span>): both are highest from 03:00 to 06:00 and dip after sunrise. At night the model matches REE (92–106 %); from late morning to midnight it reaches only 65–75 %.</p>
+      <div class="chart" id="ch-hod"></div>
+    </section>
+    <section class="block">
+      <div class="head"><h2>Why REE turned plants up</h2></div>
+      <p class="note">Share of REE's phase I by the cause it reports (e·sios). The causes overlap and add up to 116 % of the volume, so the table shows shares. Voltage control is the largest, and it peaks in March–April, where the model falls short.</p>
+      <div class="tablewrap"><table id="t-cause"></table></div>
+    </section>
+  </div>
+
+  <section class="block">
+    <h2>How the numbers are made</h2>
+    <ul class="method">
+      <li>Model: upward energy of phase I per hour (rd_phase1_summary.csv, up_mwh), 53 weekly chunks run in order. Phase II's down side and the real-time AC stage are not included.</li>
+      <li>REE: e·sios hourly series of technical constraints, phase I, upward, for 2024 (as in the results viewer's reference data).</li>
+      <li>Correlation: Pearson, as for prices on the results viewer, on hourly values and on daily, weekly and monthly sums. Average day: the 24 hourly means over the year.</li>
+      <li>Monthly error: the sum of |model − REE| over the twelve months, as a share of REE's yearly volume.</li>
+      <li>Partial trading gives the same phase I within 0.2 % (<span id="part"></span>), since phase I acts on the day-ahead schedule, which the trading mode does not change.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const D = __DATA__;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 0) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const S = D.stats;
+
+// tiles
+const tiles = [
+  ["Volume", `${S.volume} %`, `${fmt(S.model_twh, 2)} of ${fmt(S.ree_twh, 2)} TWh`],
+  ["Correlation, hourly", S.hourly.toFixed(2), `daily ${S.daily.toFixed(2)}`],
+  ["Correlation, weekly", S.weekly.toFixed(2), `monthly ${S.monthly.toFixed(2)}`],
+  ["Average-day shape", S.hod.toFixed(2), "correlation, 24 hours"],
+  ["Monthly error", `${S.monthly_err} %`, "of REE's yearly volume"],
+];
+document.getElementById("tiles").innerHTML = tiles.map(([k, v, s]) =>
+  `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join("");
+document.getElementById("c-week").textContent = S.weekly.toFixed(2);
+document.getElementById("c-hod").textContent = S.hod.toFixed(2);
+document.getElementById("part").textContent = `${fmt(S.part_twh, 2)} TWh, daily correlation ${S.part_daily.toFixed(2)}`;
+
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; }
+function tipFor(box) { const t = document.createElement("div"); t.className = "tip"; box.appendChild(t); return t; }
+function place(tip, box, x, y) {
+  const bw = box.clientWidth, tw = tip.offsetWidth;
+  tip.style.left = Math.min(Math.max(0, x + 14), bw - tw) + "px";
+  tip.style.top = Math.max(0, y - 10) + "px";
+  tip.style.opacity = 1;
+}
+
+// line chart (year, average day)
+function lineChart(id, xs, series, opts) {
+  const box = document.getElementById(id); box.innerHTML = "";
+  const W = 1000, H = opts.h || 300, m = { l: 44, r: 12, t: 10, b: 28 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label }, box);
+  const ymax = niceMax(Math.max(...series.flatMap(s => s.v)) * 1.04);
+  const X = i => m.l + (W - m.l - m.r) * i / (xs.length - 1);
+  const Y = v => H - m.b - (H - m.t - m.b) * v / ymax;
+  for (let k = 0; k <= 4; k++) {
+    const v = ymax * k / 4, y = Y(v);
+    el("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: css("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+  }
+  opts.ticks.forEach(([i, lab]) => { el("text", { x: X(i), y: H - 8, "text-anchor": "middle" }, svg).textContent = lab; });
+  series.forEach(s => {
+    const d = s.v.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    el("path", { d, fill: "none", stroke: css(s.c), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  });
+  const cross = el("line", { y1: m.t, y2: H - m.b, stroke: css("--ink-3"), "stroke-width": 1, opacity: 0 }, svg);
+  const dots = series.map(s => el("circle", { r: 4.5, fill: css(s.c), stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, svg));
+  const tip = tipFor(box);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+  function move(ev) {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(xs.length - 1, Math.round((sx - m.l) / (W - m.l - m.r) * (xs.length - 1))));
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 0.6);
+    series.forEach((s, k) => { dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.v[i])); dots[k].setAttribute("opacity", 1); });
+    const a = series[0].v[i], b = series[1].v[i];
+    tip.innerHTML = `<b>${opts.xlab(i)}</b><br>` + series.map(s => `<span class="d" style="background:${css(s.c)}"></span>${s.n} ${fmt(s.v[i], opts.dec)} ${opts.unit}`).join("<br>")
+      + (b > 0 ? `<br><b>model / REE ${fmt(100 * a / b)} %</b>` : "");
+    place(tip, box, (X(i) * r.width / W), (ev.clientY - r.top));
+  }
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerleave", () => { tip.style.opacity = 0; cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); });
+}
+
+// year chart: daily or weekly (Monday-start 7-day means)
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function dLabel(s) { const [y, mo, d] = s.split("-"); return `${+d} ${MON[+mo - 1]}`; }
+function drawYear(mode) {
+  let xs = D.days, a = D.d_act, r = D.d_ree, lab = i => dLabel(xs[i]);
+  if (mode === "week") {
+    const wx = [], wa = [], wr = [];
+    for (let i = 0; i < D.days.length; i += 7) {
+      const n = Math.min(7, D.days.length - i), sl = (v) => v.slice(i, i + n).reduce((p, q) => p + q, 0) / n;
+      wx.push(D.days[i]); wa.push(sl(D.d_act)); wr.push(sl(D.d_ree));
+    }
+    xs = wx; a = wa; r = wr; lab = i => `week of ${dLabel(xs[i])}`;
+  }
+  const ticks = [];
+  xs.forEach((s, i) => { if (s.slice(8) <= (mode === "week" ? "07" : "01") && (i === 0 || xs[i - 1].slice(5, 7) !== s.slice(5, 7))) ticks.push([i, MON[+s.slice(5, 7) - 1]]); });
+  lineChart("ch-year", xs, [{ n: "Model", v: a, c: "--model" }, { n: "REE", v: r, c: "--ree" }],
+    { h: 300, ticks, xlab: lab, unit: "GWh/day", dec: 1, label: "Phase I GWh turned up per day, model and REE, 2024" });
+}
+let yearMode = "week";
+const bw = document.getElementById("b-week"), bd = document.getElementById("b-day");
+function setMode(mode) { yearMode = mode; bw.setAttribute("aria-pressed", mode === "week"); bd.setAttribute("aria-pressed", mode === "day"); drawYear(mode); }
+bw.addEventListener("click", () => setMode("week")); bd.addEventListener("click", () => setMode("day"));
+
+// monthly paired bars
+function drawMonths() {
+  const box = document.getElementById("ch-month"); box.innerHTML = "";
+  const W = 1000, H = 300, m = { l: 48, r: 12, t: 10, b: 48 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Phase I GWh turned up per month, model and REE" }, box);
+  const ymax = niceMax(Math.max(...D.m_act, ...D.m_ree) * 1.05);
+  const Y = v => H - m.b - (H - m.t - m.b) * v / ymax;
+  for (let k = 0; k <= 4; k++) {
+    const v = ymax * k / 4, y = Y(v);
+    el("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: css("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+  }
+  const n = D.months.length, slot = (W - m.l - m.r) / n, bwid = Math.min(26, slot * 0.3), gap = 2;
+  const tip = tipFor(box);
+  D.months.forEach((mo, i) => {
+    const cx = m.l + slot * (i + 0.5);
+    [[D.m_act[i], "--model", -1], [D.m_ree[i], "--ree", 1]].forEach(([v, c, side]) => {
+      const x = side < 0 ? cx - gap / 2 - bwid : cx + gap / 2, y = Y(v), h = Y(0) - y, rr = Math.min(4, h);
+      el("path", { d: `M${x},${Y(0)}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + bwid - rr}Q${x + bwid},${y} ${x + bwid},${y + rr}V${Y(0)}Z`, fill: css(c) }, svg);
+    });
+    el("text", { x: cx, y: H - m.b + 16, "text-anchor": "middle" }, svg).textContent = mo;
+    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    const t = el("text", { x: cx, y: H - m.b + 33, "text-anchor": "middle" }, svg);
+    t.textContent = pct + " %"; t.style.fill = pct < 70 ? css("--ree") : css("--ink-2"); t.style.fontWeight = pct < 70 ? 500 : 400;
+    const hit = el("rect", { x: cx - slot / 2, y: m.t, width: slot, height: H - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", ev => {
+      const r = svg.getBoundingClientRect();
+      tip.innerHTML = `<b>${mo} 2024</b><br><span class="d" style="background:${css("--model")}"></span>Model ${fmt(D.m_act[i])} GWh<br><span class="d" style="background:${css("--ree")}"></span>REE ${fmt(D.m_ree[i])} GWh<br><b>model / REE ${pct} %</b>`;
+      place(tip, box, cx * r.width / W, ev.clientY - r.top);
+    });
+    hit.addEventListener("pointerleave", () => { tip.style.opacity = 0; });
+  });
+  el("text", { x: m.l - 8, y: H - m.b + 33, "text-anchor": "end" }, svg).textContent = "model/REE";
+}
+
+// tables
+function tables() {
+  const rows = D.months.map((mo, i) => {
+    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    return `<tr><td>${mo}</td><td>${fmt(D.m_act[i])}</td><td>${fmt(D.m_ree[i])}</td><td class="${pct < 70 ? "low" : ""}">${pct} %</td><td>${fmt(D.m_part[i])}</td></tr>`;
+  }).join("");
+  const ta = D.m_act.reduce((a, b) => a + b, 0), tr = D.m_ree.reduce((a, b) => a + b, 0), tp = D.m_part.reduce((a, b) => a + b, 0);
+  document.getElementById("t-month").innerHTML = `<thead><tr><th>Month</th><th>Model GWh</th><th>REE GWh</th><th>Model / REE</th><th>Partial GWh</th></tr></thead><tbody>${rows}</tbody>`
+    + `<tfoot><tr><th>Year</th><th>${fmt(ta)}</th><th>${fmt(tr)}</th><th>${Math.round(100 * ta / tr)} %</th><th>${fmt(tp)}</th></tr></tfoot>`;
+  const cs = Object.keys(D.m_cause);
+  const body = D.months.map((mo, i) => {
+    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    return `<tr><td>${mo}</td>${cs.map(c => `<td>${D.m_cause[c][i]} %</td>`).join("")}<td class="${pct < 70 ? "low" : ""}">${pct} %</td></tr>`;
+  }).join("");
+  document.getElementById("t-cause").innerHTML = `<thead><tr><th>Month</th>${cs.map(c => `<th>${c}</th>`).join("")}<th>Model / REE</th></tr></thead><tbody>${body}</tbody>`
+    + `<tfoot><tr><th>Year</th>${cs.map(c => `<th>${D.y_cause[c]} %</th>`).join("")}<th>${S.volume} %</th></tr></tfoot>`;
+}
+
+function drawAll() {
+  drawYear(yearMode); drawMonths();
+  lineChart("ch-hod", Array.from({ length: 24 }, (_, h) => h), [{ n: "Model", v: D.hod_act, c: "--model" }, { n: "REE", v: D.hod_ree, c: "--ree" }],
+    { h: 260, ticks: [0, 4, 8, 12, 16, 20, 23].map(h => [h, String(h).padStart(2, "0") + ":00"]), xlab: i => `${String(i).padStart(2, "0")}:00`, unit: "MW", dec: 0, label: "Average MW turned up by hour of the day" });
+}
+tables(); drawAll();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+</body>
+</html>

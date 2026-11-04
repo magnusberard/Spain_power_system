@@ -1019,6 +1019,15 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2, out-of-year test on 2023 (4 Nov, rule frozen on 2024 in `a936dc2`, test script `35102c1`).** Window ±1 h around
+the single-hour shortfall (CCGT + coal + pumped storage), window max. 2023: hourly corr **0.58** (passes; best of all
+tests, and out of year), daily 0.55, 73 % of its alarms real, but **59 %** of REE's need hours and volume **0.36×**
+→ FAIL on two marks. The volume mark does not carry across years: REE's need *size* has a level break between
+February and March 2024 (MW when a need is published: 2023 1.5–3.4 GW, Jan–Feb 2024 2.7–2.8 GW, Mar–Dec 2024
+0.66–0.9 GW) while the number of need hours stays alike (2023: 3,090; 2024: 3,609). The P.O. changes of BOE-A-2024-6215
+(27 Mar 2024) fall at that time; not checked. Reading: the rule reproduces *when* REE needs more reserve, also in a
+year it never saw; *how much* REE publishes changed in 2024 and is not reproducible from these inputs.
+
 **E2 step B, window rule (4 Nov, `e2_step_b_window.py`, fixed before running in `46812b6`).** need_t = largest
 single-hour shortfall in [t − (H − 1), t + L]; L = median declared hot start time of CCGTs for real time (I90DIA29,
 37 units, 226 min → 4 h), H = median run of REE's RSI-started units (9,004 blocks, 3 h). July–December: **86 %** of

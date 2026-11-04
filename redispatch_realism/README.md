@@ -1019,6 +1019,13 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**E2 step B, window rule (4 Nov, `e2_step_b_window.py`, fixed before running in `46812b6`).** need_t = largest
+single-hour shortfall in [t − (H − 1), t + L]; L = median declared hot start time of CCGTs for real time (I90DIA29,
+37 units, 226 min → 4 h), H = median run of REE's RSI-started units (9,004 blocks, 3 h). July–December: **86 %** of
+REE's need hours (passes) but hourly corr 0.39 and volume **2.9×** (fail); daily corr 0.45 (best so far). The
+sourced window is too wide: REE's periods start about 1 h before the shortfall (step A), not 4 h. Narrowing it to
+what step A showed would be fitted on 2024, so it can only be tested on another year (2023 or 2025).
+
 **E2 step A, multi-hour diagnostic (4 Nov, `e2_diag_multihour.py`, nothing fitted).** The best single-hour rule
 (CCGT + coal + pumped storage) finds **92 % of REE's need episodes** (539 of 589 blocks, holding 95 % of the need
 hours); what it misses is the length: REE's need blocks last median 5–6 h (84 % ≥ 4 h), the rule's shortfalls 2–3 h.

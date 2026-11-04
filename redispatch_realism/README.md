@@ -1003,7 +1003,7 @@ unchanged. One phase I AC-check hour (23 Dec h12) kept its DC result.
 **y24act / y24part (4 Nov): the 2024 year with the main settings, in-chain phase I (`9bf3094`).** GAS, MARKUP,
 HYDRO aligned_rc_observed, RES offered, PUMPING removed, PUMPLIMIT, IDSTARTS, HYDROTOPUP, BALANCING qualified;
 Active and Partial (PARTICIPATION measured_all); the combined December redispatch setup with the year's offer
-file; weeks in order with `solstorm_start_year_pipeline.sh` (2 nodes per run, ≈ 23 h). Both: 366 days, 8,784 hours,
+file; weeks in order with `solstorm_start_year_pipeline.sh` (2 nodes per run, 18:20 → 08:51, 14.5 h for Active). Both: 366 days, 8,784 hours,
 no fallback, no load shed, phase I solved every hour, real time unsolved 2 (Active) / 4 (Partial) hours. Active
 vs REE (`compare_ree.py`): phase I up 11.08 TWh vs 13.59 (82 %), phase I+II 1,391 M€ vs REE's net 1,224 M€ (114 %),
 123 vs 132 €/MWh up; 2–29 Dec 829 vs 769 GWh (108 %). By month: Jan 120 %, Feb 104 %, Mar 66 %, Apr 50 %,

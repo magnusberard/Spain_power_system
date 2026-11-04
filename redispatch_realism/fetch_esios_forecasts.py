@@ -93,7 +93,13 @@ def main():
         here = Path(*here.parts[:here.parts.index(".claude")])
     dflt =Path(os.environ["ESIOS_DIR"]) / "forecasts" if "ESIOS_DIR" in os.environ else here.parent / "esios_download" / "forecasts"
     ap.add_argument("--out", type=Path, default=dflt)
+    ap.add_argument("--only", help="comma-separated indicator ids instead of the list above; written to <out>/<--tag>/ "
+                    "(e.g. --only 1880,1881,626,630,631 --tag reserve: REE's real-time and P.O. 3.9/1.5 reserve needs)")
+    ap.add_argument("--tag", default="reserve")
     a = ap.parse_args()
+    inds = [int(x) for x in a.only.split(",")] if a.only else list(INDICATORS)
+    if a.only:
+        a.out = a.out / a.tag
     start, end = dt.date.fromisoformat(a.start), dt.date.fromisoformat(a.end)
     (a.out / "months").mkdir(parents=True, exist_ok=True)
     tok = token()
@@ -105,18 +111,18 @@ def main():
         f = a.out / "months" / f"{s:%Y-%m}.csv.gz"
         if not f.exists():
             rows = []
-            for ind in INDICATORS:
+            for ind in inds:
                 rows.append(month_rows(ind, s, e, tok))
                 time.sleep(0.3)
             df = pd.concat([r for r in rows if not r.empty], ignore_index=True)
             df.to_csv(f, index=False)
-            print(f"{s:%Y-%m}: {len(df):,} rows, {df.indicator.nunique()} of {len(INDICATORS)} indicators")
+            print(f"{s:%Y-%m}: {len(df):,} rows, {df.indicator.nunique()} of {len(inds)} indicators")
         else:
             print(f"{s:%Y-%m}: done already")
         parts.append(pd.read_csv(f))
         m = nxt
     allr = pd.concat(parts, ignore_index=True)
-    out = a.out / f"esios_forecasts_{start:%Y}.csv.gz"
+    out = a.out / (f"esios_{a.tag}_{start:%Y}.csv.gz" if a.only else f"esios_forecasts_{start:%Y}.csv.gz")
     allr.to_csv(out, index=False)
     print(f"\nwrote {out}: {len(allr):,} rows")
     print(allr.groupby(["indicator", "name"]).agg(rows=("value", "size"), first=("datetime_utc", "min"),

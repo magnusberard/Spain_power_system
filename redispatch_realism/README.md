@@ -1019,6 +1019,18 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**Sources on insufficient upward reserve (4 Nov, after the E2 tests).** P.O. 3.2 (BOE-A-2024-6215, §6.1.3 c and the
+real-time section) prescribes REE's *remedy*: first, minimum-programme limits at technical minimum on every thermal
+unit already scheduled; if that is not enough, start further thermal units, ranked by the cost of running at technical
+minimum in the short periods divided by (maximum available power × number of periods), cheapest first, within the
+lead time declared in their offer; each unit's contribution is its maximum available power; own redispatch code (RSI).
+The *trigger* (when reserve is insufficient) is not specified: "se identifique". REE's biennial report on balancing
+(Sept 2024): mFRR sized on demand and RES forecast errors and the largest thermal outage; aFRR 1,200 MW at the solar
+ramps, 800 MW otherwise. CNMC supervision report (13 Apr 2023): real-time constraint cost +259 % on 2020, mainly
+insufficient upward reserve, which the additional-reserve market (P.O. 3.9, ended Nov 2019) used to cover (hence no
+e·sios 626 data in 2024). An older CNMC supervision report lists hydro, pumped storage and CCGT as the reserve
+providers. No source found on how much hydro REE counts in the trigger.
+
 **E2 analysis, third and last test (4 Nov, `e2_analysis_hydro.py`, variants committed before the data in `a986abc`):
 headroom from the per-unit after-intraday programme (I90DIA36, 366 days).** No variant passes. Thermal only (T, mean
 3,752 MW): volume right (0.9–1.8×) but 43–59 % of REE's need hours, hourly corr 0.32–0.34. With running hydro (T+H,

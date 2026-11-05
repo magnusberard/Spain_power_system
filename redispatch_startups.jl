@@ -292,6 +292,7 @@ committed in `network`, so the hour's outputs show them.
 """
 function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                   label = nothing, date_str = "", hour = 0)
+    e2_prepare_hour!(network, su, date_str, sched)                   # step E2: before the minimum-load rule zeroes off units
     su_apply_min_load!(network, su)                                  # off ⇒ 0 MW unless started; on ⇒ ≥ minimum load
     su.phase1 === nothing || apply_phase1_commitments!(network, su, date_str, hour)   # RD8: phase I units stay on
     n_zone = apply_zone_mustrun!(network, su, date_str, hour)        # RD5, before any solve

@@ -31,20 +31,45 @@
 # storage are not ramp-limited, as in [da].ramp_limits).  Each hour's
 # requirement and headroom go to rd_reserve.csv.  Not yet included: §4.4's
 # supplementary reserve (REE's own forecasts against the market schedules), step E2.
+#
+# Step E2, `rule = "e2"` (off by default; best effort decided 5 Nov 2026, vault
+# real-time-reserve-trigger): REE's reserve mechanism with the trigger the E2 tests
+# came closest with (redispatch_realism/e2_rule.py, window from data/e2_window_2024.json):
+#   requirement_t = mFRR requirement (e·sios 1788) + assigned aFRR band (632)
+#                   + P.O. 1.5 §4.4 gaps (REE's D+1 forecasts against the after-intraday
+#                   programme), file from redispatch_realism/build_rt_reserve_requirement.py
+#   available_t   = from the model's own real-time starting schedule (balancing + phase I):
+#                   running CCGT/coal (> 1 MW): capacity − output; running pumped-storage
+#                   turbine: capacity − output; pumping pumped storage: the pumping (it can
+#                   stop).  Peninsular units only; reservoir hydro and gas turbines do not count.
+#   shortfall_t   = max(0, requirement_t − available_t);  x_t = max of the shortfall over
+#                   [t − window_back, t + window_ahead] (1 and 1: REE starts ahead and holds)
+# Remedy, P.O. 3.2: start offline CCGT/coal candidates at minimum load, cheapest start
+# per MW of headroom they add, until the hour's headroom is available_t + x_t; the solve
+# then keeps that headroom.  The trigger reproduced the timing of REE's identified need
+# (hourly corr 0.55 Jul–Dec 2024, 0.58 in 2023) but not its size (failed the pass marks);
+# results carry that caveat.  Every real-time hour is solved on its own, so the window is
+# taken per day before the hours are solved (e2_prepare_hour!), from the day's schedules.
 # ============================================================
 
 function load_rd_reserve(cfg)
     c = get(get(cfg, "redispatch", Dict()), "reserve", Dict())
     get(c, "enabled", false) || return nothing
-    f = String(c["requirement_file"])
+    rule = Symbol(get(c, "rule", "afrr"))
+    rule in (:afrr, :e2) || error("[redispatch.reserve].rule must be \"afrr\" or \"e2\", not \"$rule\"")
+    f = String(rule == :e2 ? get(c, "e2_requirement_file", "redispatch_realism/data/rt_reserve_requirement_2024.csv") :
+                             c["requirement_file"])
     f = isabspath(f) ? f : joinpath(@__DIR__, f)
+    col = rule == :e2 ? :requirement_mw : :afrr_up_mw
     req = Dict{Tuple{String,Int},Float64}()
     for r in eachrow(CSV.read(f, DataFrame))
-        req[(string(r.date), Int(r.hour))] = Float64(r.afrr_up_mw)
+        req[(string(r.date), Int(r.hour))] = Float64(r[col])
     end
-    @printf "  [redispatch.reserve] requirement for %d hours\n" length(req)
-    tertiary = Bool(get(c, "tertiary", false))
+    @printf "  [redispatch.reserve] rule %s: requirement for %d hours (%s)\n" rule length(req) basename(f)
+    tertiary = rule == :afrr && Bool(get(c, "tertiary", false))                 # E1 belongs to the aFRR rule
     return (req = req, scale = Float64(get(c, "scale", 1.0)), extra_mw = Float64(get(c, "extra_mw", 0.0)),
+            rule = rule,                                                             # step E2
+            window_ahead = Int(get(c, "window_ahead", 1)), window_back = Int(get(c, "window_back", 1)),
             offline_hydro = Bool(get(c, "offline_hydro_counts", true)),
             tertiary = tertiary,                                                     # step E1
             tertiary_share = Float64(get(c, "tertiary_demand_share", 0.02)),
@@ -89,6 +114,161 @@ rd_is_provider(rs, g) = lowercase(g["fuel"]) in rs.providers ||
 rd_provider_on(rs, g) = rd_is_provider(rs, g) &&
     (!su_is_off(g) || abs(get(g, "pg", 0.0)) > 1e-6 || (rs.offline_hydro && g["fuel"] == "Hydro"))
 
+# ── Step E2 (rule = "e2") ─────────────────────────────────────────────────────
+const E2_PROVIDERS = Set(["gas:combined_cycle", "coal", "hydro:pumped_storage"])
+const E2_UNITS = Dict{String,Tuple{Float64,Bool}}()     # unit → (capacity MW, pumped storage?), for E2_UNITS_DATE
+const E2_UNITS_DATE = Ref("")
+const E2_WINDOW = Dict{Tuple{String,Int},Float64}()     # (date, hour) → x_t, the window's shortfall (MW)
+const E2_AVAIL = Dict{Tuple{String,Int},Float64}()      # (date, hour) → available_t from the schedule (MW)
+const E2_SCHED = Ref{Any}(nothing)                      # the hour being solved: its starting schedule
+const E2_STARTED = Dict{String,Tuple{String,Int}}()     # unit → last (date, hour) this rule had it on
+
+e2_is_provider(g) = lowercase(String(g["fuel"])) in E2_PROVIDERS ||
+                    lowercase("$(g["fuel"]):$(g["technology"])") in E2_PROVIDERS
+
+# Available reserve of one unit at output p (MW), as in e2_rule.py.
+e2_head(cap_mw, pumped, p) = p > 1.0 ? max(cap_mw - p, 0.0) : (pumped && p < -1.0 ? -p : 0.0)
+
+# Real time's starting schedule for an hour, as the real-time loop builds it.
+function e2_sched(date_str, hour)
+    s = rd_sched_for(date_str, hour)
+    (s === nothing || RD_STARTUPS === nothing || RD_STARTUPS.phase1 === nothing) && return s
+    return phase1_anchor(s, date_str, hour)
+end
+
+e2_avail(s) = sum((e2_head(cap, pumped, Float64(get(s, n, 0.0))) for (n, (cap, pumped)) in E2_UNITS); init = 0.0)
+
+"""
+    e2_prepare_hour!(network, su, date_str, sched)
+
+Before the hour's commitments: keep the hour's schedule and, on a day's first hour, take the day's
+provider units from the network (capacity: installed MW for CCGT/coal, as a start gives them — coal is
+frozen at its schedule in real time; pumped storage its turbine maximum) and each hour's x_t from the
+day's schedules, with the neighbouring days' edge hours where their schedules exist.
+"""
+function e2_prepare_hour!(network, su, date_str, sched)
+    rs = su.reserve
+    (rs === nothing || rs.rule != :e2) && return
+    E2_SCHED[] = sched
+    E2_UNITS_DATE[] == date_str && return
+    empty!(E2_UNITS)
+    bus = network["bus"]
+    for (_, g) in network["gen"]
+        e2_is_provider(g) || continue
+        ISLAND_BUSES !== nothing && String(bus[string(g["gen_bus"])]["name"]) in ISLAND_BUSES && continue
+        pumped = lowercase(String(g["technology"])) == "pumped_storage"
+        cap = pumped ? g["pmax"] * BASEMVA : Float64(get(g, "installed_mw", g["pmax"] * BASEMVA))
+        E2_UNITS[String(g["name"])] = (cap, pumped)
+    end
+    E2_UNITS_DATE[] = date_str
+    d = Date(date_str)
+    A, B = rs.window_ahead, rs.window_back
+    keys_ = vcat([(string(d - Day(1)), h) for h in (24 - B):23], [(date_str, h) for h in 0:23],
+                 [(string(d + Day(1)), h) for h in 0:(A - 1)])
+    short = Dict{Int,Float64}()                      # position in keys_ → shortfall
+    for (i, (ds, h)) in enumerate(keys_)
+        r = get(rs.req, (ds, h), nothing)
+        s = r === nothing ? nothing : e2_sched(ds, h)
+        s === nothing && continue
+        a = e2_avail(s)
+        ds == date_str && (E2_AVAIL[(ds, h)] = a)
+        short[i] = max(rs.scale * r + rs.extra_mw - a, 0.0)
+    end
+    for h in 0:23
+        i = B + h + 1
+        haskey(short, i) || continue                 # no requirement or no schedule this hour
+        E2_WINDOW[(date_str, h)] = maximum(short[j] for j in (i - B):(i + A) if haskey(short, j))
+    end
+    @printf "    reserve (e2): %s, %d providers, shortfall > 0 in %d h, window > 0 in %d h\n" date_str length(E2_UNITS) count(h -> get(short, B + h + 1, 0.0) > 0, 0:23) count(h -> get(E2_WINDOW, (date_str, h), 0.0) > 0, 0:23)
+    return
+end
+
+# A provider's output in the hour being solved: its schedule, or, if started in this hour
+# (phase I's units, voltage zones), its minimum load; 0 when the minimum-load rule holds it off.
+function e2_output(g, s)
+    get(g, "pmax", 0.0) <= 0.0 && return 0.0
+    p = s === nothing ? 0.0 : Float64(get(s, String(g["name"]), 0.0))
+    abs(p) > 1.0 && return p
+    return (!su_is_off(g) && get(g, "pmin", 0.0) > 0.0) ? g["pg"] * BASEMVA : 0.0
+end
+
+function e2_commit!(network, su, date_str, hour)
+    rs = su.reserve
+    x = get(E2_WINDOW, (date_str, hour), 0.0)
+    a0 = get(E2_AVAIL, (date_str, hour), 0.0)
+    req = rs.scale * get(rs.req, (date_str, hour), 0.0) + rs.extra_mw
+    need = x > 0 ? a0 + x : 0.0                      # headroom to reach in this hour
+    RD_CURRENT_RESERVE[] = need
+    gens = network["gen"]
+    s = E2_SCHED[]
+    have = 0.0
+    for (_, g) in gens
+        u = get(E2_UNITS, String(g["name"]), nothing)
+        u === nothing || (have += e2_head(u[1], u[2], e2_output(g, s)))
+    end
+    have1 = have
+    n = 0
+    if have < need
+        add(g) = E2_UNITS[String(g["name"])][1] * (1 - su_terms(su, g)[1])
+        # Every real-time hour is solved on its own: a unit this rule started in the previous hour is still
+        # running, so keeping it costs no new start (P.O. 3.2 pays a start once) and it goes first.
+        prev = hour == 0 ? (string(Date(date_str) - Day(1)), 23) : (date_str, hour - 1)
+        held(g) = get(E2_STARTED, String(g["name"]), nothing) == prev
+        cost(g) = held(g) ? su_terms(su, g)[3] - su_terms(su, g)[2] : su_terms(su, g)[3]
+        cands = [g for (_, g) in gens if haskey(E2_UNITS, String(g["name"])) && !E2_UNITS[String(g["name"])][2] &&
+                 su_is_off(g) && su_is_candidate(su, g) && add(g) > 1.0]
+        sort!(cands; by = g -> cost(g) / add(g))                  # EUR per MW of headroom (P.O. 3.2)
+        for g in cands
+            have >= need && break
+            h = held(g)
+            pmin_mw, start = su_commit!(su, g)
+            have += add(g)
+            n += 1
+            E2_STARTED[String(g["name"])] = (date_str, hour)
+            push!(RD_STARTUP_ROWS, (date = date_str, hour = hour, round = -1, unit = g["name"],
+                                    fuel = g["fuel"], technology = g["technology"], bus_i = g["gen_bus"],
+                                    min_load_mw = round(pmin_mw; digits = 1),
+                                    start_cost_eur = h ? 0.0 : round(start; digits = 0),
+                                    trigger_bus_i = 0, trigger_slack_mvar = NaN, hops = -1,
+                                    zone = h ? "reserve_held" : "reserve",
+                                    zone_need = round(Int, need), zone_online = round(Int, have)))
+        end
+        have < need && @printf "    reserve (e2): %.0f of %.0f MW headroom after starting %d unit(s)\n" have need n
+    end
+    push!(RD_RESERVE_ROWS, (date = date_str, hour = hour, requirement_mw = round(req; digits = 1),
+                            available_mw = round(a0; digits = 1),
+                            shortfall_mw = round(max(req - a0, 0.0); digits = 1), window_mw = round(x; digits = 1),
+                            headroom_before_mw = round(have1; digits = 1), started = n,
+                            headroom_after_mw = round(have; digits = 1)))
+    return n
+end
+
+# In the solve: the providers keep the headroom reached (Σ h ≥ need), each h ≤ its maximum − output;
+# a unit frozen at its schedule (coal) counts with its fixed headroom.
+function rd_add_reserve_e2!(pm, gens, need_mw)
+    s = E2_SCHED[]
+    fixed = 0.0
+    hs = JuMP.AffExpr(0.0)
+    cap = 0.0
+    for (_, g) in gens
+        u = get(E2_UNITS, String(g["name"]), nothing)
+        u === nothing && continue
+        hmax = e2_head(u[1], u[2], e2_output(g, s)) / BASEMVA
+        hmax > 0 || continue
+        if g["pmax"] - g["pmin"] < 1e-6
+            fixed += hmax
+        else
+            h = JuMP.@variable(pm.model, lower_bound = 0.0, upper_bound = hmax)
+            JuMP.@constraint(pm.model, h <= g["pmax"] - PowerModels.var(pm, :pg, g["index"]))
+            JuMP.add_to_expression!(hs, h)
+            cap += min(hmax, g["pmax"] - g["pmin"])
+        end
+    end
+    rhs = min(need_mw / BASEMVA - fixed, 0.98 * cap)                # never more than exists
+    rhs > 0 && JuMP.@constraint(pm.model, hs >= rhs)
+    return
+end
+
 """
     commit_for_reserve!(network, su, date_str, hour) -> units started
 
@@ -98,6 +278,7 @@ Start the cheapest offline candidates until the running providers' headroom
 function commit_for_reserve!(network, su, date_str, hour)
     rs = su.reserve
     rs === nothing && return 0
+    rs.rule == :e2 && return e2_commit!(network, su, date_str, hour)            # step E2
     afrr = rd_reserve_need(rs, date_str, hour)
     loss, demand = rs.tertiary ? rd_tertiary_parts(network) : (0.0, 0.0)
     need = afrr + loss + rs.tertiary_share * demand * rs.tertiary            # step E1: + tertiary (P.O. 1.5 §4.3)
@@ -143,6 +324,7 @@ end
 """
 function rd_add_reserve!(pm, gens, rs, need_mw)
     (rs === nothing || need_mw <= 0) && return
+    rs.rule == :e2 && return rd_add_reserve_e2!(pm, gens, need_mw)              # step E2
     on = [g for (_, g) in gens if rd_provider_on(rs, g)]
     isempty(on) && return
     if rs.ramp15 === nothing
@@ -168,5 +350,6 @@ end
 function write_rd_reserve(dir)
     isempty(RD_RESERVE_ROWS) && return
     CSV.write(joinpath(dir, "rd_reserve.csv"), DataFrame(RD_RESERVE_ROWS))
-    @printf "  rd_reserve.csv   : %d hours (requirement: aFRR + largest loss + demand share; headroom)\n" length(RD_RESERVE_ROWS)
+    @printf "  rd_reserve.csv   : %d hours (%s)\n" length(RD_RESERVE_ROWS) (haskey(first(RD_RESERVE_ROWS), :window_mw) ?
+        "E2: requirement, available, shortfall, window, headroom, starts" : "requirement: aFRR + largest loss + demand share; headroom")
 end

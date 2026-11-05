@@ -1069,6 +1069,25 @@ The model decides up and down in one problem and prices every down MW as phase 2
 offered energy, the full DA price). Model y24act down 9.5 TWh: wind 3.6 (REE 3.6 in both phases), solar 2.0 (2.2),
 CHP 1.9 (1.3), hydro 1.0 (1.4), nuclear 0.7 (0.9), pumped storage 0.07 (REE 2.3: kept out of the model's phase II).
 
+**E2 in the model: real-time reserve, best-effort rule (5 Nov; decided 5 Nov, vault real-time-reserve-trigger).**
+`[redispatch.reserve].rule = "e2"` (`make_config.jl --rt-reserve-e2`; default `"afrr"` = RD7/E1 unchanged).
+Requirement per hour = mFRR need (e·sios 1788) + aFRR band (632) + P.O. 1.5 §4.4 gaps, from
+`build_rt_reserve_requirement.py` → `data/rt_reserve_requirement_2024.csv` (8,781 of 8,784 hours; mean 1,570 + 922 +
+1,191 = 3,683 MW; the file reproduces `e2_rule.shortfall` to 1e-12 MW when REE's headroom is subtracted, and carries
+REE's headroom, shortfall and need for comparison). Available reserve comes from the **model's own** real-time starting
+schedule (balancing + phase I): running CCGT/coal capacity − output, pumped-storage turbine headroom, stoppable pumping;
+peninsular units only. The shortfall's maximum over [t − 1, t + 1] (window from `data/e2_window_2024.json`) is taken
+per day before the hours are solved, then covered by starting CCGT/coal at minimum load, cheapest per MW of headroom
+(P.O. 3.2); the solve keeps that headroom. A unit the rule started in the previous hour is held at no new start cost
+(`zone = "reserve_held"` in rd_startups.csv), since each real-time hour is solved on its own and P.O. 3.2 pays a start once.
+Per-hour table: rd_reserve.csv. `test_rt_reserve_e2.jl`: 29 tests.
+Smoke test, 2 Dec 2024, standalone from an old saved BAL (`results/`, not the year setup), before the held-start fix:
+24/24 hours solved; the rule fired 06–20 h and 22–23 h (REE's published need: 07–12 h, 15–23 h). The model's available
+reserve is lower than REE's (mean ~3.4 vs ~6.0 GW: fewer CCGTs in its schedule), so its shortfall is 15.2 GWh vs REE's
+2.5 GWh and its window total 22.3 GWh vs REE's published need 11.9 GWh (1.9×); 43 rows, 6.2 GWh at minimum load,
+5.4 M€ start cost, mostly the same units restarted each hour, which the held-start fix removes. The rerun with the
+fix was stopped (machine low on memory); first measure in the setup = a Jan–Jun week, then December.
+
 **E2, out-of-year test on 2023 (4 Nov, rule frozen on 2024 in `a936dc2`, test script `35102c1`).** Window ±1 h around
 the single-hour shortfall (CCGT + coal + pumped storage), window max. 2023: hourly corr **0.58** (passes; best of all
 tests, and out of year), daily 0.55, 73 % of its alarms real, but **59 %** of REE's need hours and volume **0.36×**

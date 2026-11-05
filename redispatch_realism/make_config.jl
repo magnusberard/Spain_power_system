@@ -5,7 +5,7 @@
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
-#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req]
+#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req] [--rt-reserve-e2]
 #                                             [--uprate <csv of line_id,factor>] [--offers <csv>] [--sweep-a]
 #
 # The redispatch has to run with the market-side settings of the run whose
@@ -136,6 +136,10 @@ function main(args)
             # -hours: a running unit's whole headroom counts (reserve for the coming hours, which is why
             # REE starts CCGTs for it), not only what it reaches in 15 minutes
             "--sync-reserve-hours" in args && set!(cfg, "redispatch.reserve.tertiary_ramp15", false)
+        end
+        if "--rt-reserve-e2" in args                            # step E2: real-time reserve, best-effort rule (5 Nov)
+            set!(cfg, "redispatch.reserve.rule", "e2")
+            set!(cfg, "redispatch.reserve.tertiary", false)
         end
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         up = opt("--uprate")                                    # thermal uprate of listed lines/transformers

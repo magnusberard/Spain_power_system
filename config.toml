@@ -3881,6 +3881,15 @@ offline_hydro_counts = true
 tertiary              = false
 tertiary_demand_share = 0.02
 tertiary_ramp15       = true
+# Step E2, rule = "e2" (best effort, decided 5 Nov 2026): requirement = mFRR need (e·sios
+# 1788) + aFRR band (632) + P.O. 1.5 §4.4 gaps (e2_requirement_file, from
+# redispatch_realism/build_rt_reserve_requirement.py) against the headroom of the model's own
+# running CCGT/coal and pumped storage; the shortfall's maximum over [t − window_back,
+# t + window_ahead] is started as CCGT/coal at minimum load (P.O. 3.2).  "afrr" = RD7/E1 above.
+rule                = "afrr"
+e2_requirement_file = "redispatch_realism/data/rt_reserve_requirement_2024.csv"
+window_ahead        = 1
+window_back         = 1
 
 [redispatch.bids]
 # Prices for objective = "ree" (steps RD10/RD11, redispatch_objective.jl): REE's

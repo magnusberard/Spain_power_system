@@ -21,6 +21,18 @@ build(on) = (DOWN_ONLY[] = on ? Set(["Nuclear", "CHP", "CHP_Waste"]) : Set{Strin
         @test b[k]["pmax"] ≈ 0.9 * g["installed_mw"] / 100                  # never above the schedule
         @test b[k]["pmin"] ≈ 0.5 * g["installed_mw"] / 100                  # down to 50 % of installed
     end
+    BOTH_WAYS[] = Set(["Nuclear"])                                          # [redispatch].both_ways
+    c = Dict(g["name"] => g for (_, g) in prepare_network(da_dispatch = sched, frozen_fuels = ["Nuclear"]).network["gen"])
+    for g in nuc
+        k = g["name"]
+        @test c[k]["pmin"] ≈ 0.5 * g["installed_mw"] / 100                  # down to 50 % of installed
+        @test c[k]["pmax"] ≈ g["installed_mw"] / 100                        # up to the available capacity (availability 1.0)
+    end
+    mb = prepare_network(nuclear_da_dispatch = sched).network               # a market build: still frozen
+    BOTH_WAYS[] = Set{String}()
+    for (_, g) in mb["gen"]
+        g["fuel"] == "Nuclear" && haskey(sched, g["name"]) && @test g["pmin"] ≈ g["pmax"]
+    end
     DOWN_ONLY[] = Set(["Nuclear"])
     m = prepare_network(nuclear_da_dispatch = sched).network                # a market build: no anchor
     DOWN_ONLY[] = Set{String}()

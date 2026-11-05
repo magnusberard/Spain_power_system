@@ -124,7 +124,10 @@ function main(args)
         end
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
         "--no-rt-zones" in args && set!(cfg, "redispatch.mustrun.realtime", false)   # zones in phase I only
-        "--down-only" in args && set!(cfg, "redispatch.down_only", ["Nuclear", "CHP", "CHP_Waste"])   # may turn down
+        if "--down-only" in args                                # may turn down; nuclear also up (5 Nov 2026: REE raised
+            set!(cfg, "redispatch.down_only", ["CHP", "CHP_Waste"])            # 3.0 TWh of nuclear in 2024's phase I, I90)
+            set!(cfg, "redispatch.both_ways", ["Nuclear"])
+        end
         "--unit-req" in args && set!(cfg, "redispatch.phase1.unit_requirement_file",                   # fix 2
                                      "redispatch_realism/data/phase1_unit_requirement.csv")
         if "--sync-reserve" in args || "--sync-reserve-hours" in args   # E1 tertiary held by synchronised units only

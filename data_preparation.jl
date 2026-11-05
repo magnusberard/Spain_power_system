@@ -57,6 +57,12 @@ const SYNC_Q_FRAC             = Ref(0.0)
 const DOWN_ONLY               = Ref(Set{String}())
 const DOWN_ONLY_MIN_FRAC      = Ref(0.5)
 is_down_only(fuel, tech) = !isempty(DOWN_ONLY[]) && (fuel in DOWN_ONLY[] || tech in DOWN_ONLY[])
+# Both-ways units in the redispatch ([redispatch].both_ways, e.g. ["Nuclear"]): instead of frozen at the day-ahead
+# set-point they may be turned down (as down_only: to down_only_min_frac × installed) and up, to the day's available
+# capacity (pmax before freezing: installed × nuclear availability). REE raised 3.0 TWh of nuclear in 2024's phase I,
+# 2.5 TWh of it at Ascó 1–2 in March–June after the day-ahead had cut it (I90DIA03; 5 Nov 2026).
+const BOTH_WAYS               = Ref(Set{String}())
+is_both_ways(fuel, tech) = !isempty(BOTH_WAYS[]) && (fuel in BOTH_WAYS[] || tech in BOTH_WAYS[])
 
 """
     ab_duplicate_ids(line_df) -> Set{String}
@@ -816,6 +822,10 @@ function prepare_network(total_load_mw::Float64 = TOTAL_LOAD_MW,
         # nuclear_da_dispatch and must keep it frozen)
         if is_frozen && da_dispatch !== nothing && is_down_only(String(row.primary_fuel), String(row.technology))   # [redispatch].down_only
             pmin_g = min(frozen_pu, DOWN_ONLY_MIN_FRAC[] * cap_mw / BASEMVA)
+        end
+        if is_frozen && da_dispatch !== nothing && is_both_ways(String(row.primary_fuel), String(row.technology))   # [redispatch].both_ways
+            pmin_g = min(frozen_pu, DOWN_ONLY_MIN_FRAC[] * cap_mw / BASEMVA)
+            pmax_g = max(frozen_pu, pmax_pu)
         end
         pg_strt = frozen_pu !== nothing ? clamp(frozen_pu, pmin_free, pmax_pu) :
                   nuc_floor > 0.0       ? pmax_pu :

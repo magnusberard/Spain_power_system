@@ -1019,6 +1019,18 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**Spring diagnosis (5 Nov, `diagnostics/spring_*.py`): the phase I gap is nuclear, and it starts in the market.**
+Without nuclear the model's phase I is 105 % of REE's (11.08 vs 10.57 TWh), close in every month including spring
+(Mar 1,030 vs 877, Apr 999 vs 880, May 1,053 vs 1,054 GWh). REE raised 3.0 TWh of nuclear in phase I, 2.5 of it at
+Ascó 1–2 (Mar–Jun, 91 of 92 spring days, mostly cause SCA, 1.3–1.7 GW in the solar hours, at ~50 €/MWh); the model
+raises none. Why: in spring Ascó's day-ahead programme collapsed (April mean 284 MW for both units, ~120–170 MW at
+midday) and REE put it back to ~1.5 GW. The model's day-ahead keeps Ascó at ~1.0–1.25 GW, because nuclear
+availability is one daily factor for all seven units ([da.nuclear_availability_by_date]): the market cuts every
+plant evenly (555–595 MW each), so Catalonia's grid never sees Ascó low. Also: nuclear is down-only in our redispatch
+and phase I has no N-1 (RD6b off), so even a low Ascó would not be raised. Smaller: coal 1.5 vs 2.0 TWh (REE's coal
+phase I is all cause RTD, distribution-grid requests, which the model has no data for); CCGT 9.1 vs 8.5 TWh. Per-unit
+nuclear outages are missing too (Ascó Nov–Dec: REE 0.4–0.6 GW, model 1.4–1.6 GW).
+
 **Minimum load in the AC stages (5 Nov, `[redispatch.startups].enforce_min_load`, on in make_config).** In real time
 an off CCGT/coal candidate could produce without a start (y24act, every 6th week: 297 unit-hours, 18.6 GWh, median
 17 % of capacity). Now it gives 0 MW unless started (su_commit!: minimum load, start cost). Test 25 Mar 2024 (the

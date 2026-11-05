@@ -1019,6 +1019,15 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**Phase 1 vs phase 2 down: REE's split and prices (5 Nov, I90DIA03 codes; P.O. 3.2 Annex I §1.1.1 c).** REE's 2024
+down side: phase 1 (UPL*, security) 1.72 TWh, priced at the day-ahead marginal price (an annulment of the sale; I90:
+mean difference to the DA price 0.00 €/MWh, median ratio 1.000), causes SCA 741, SCB 640, RTD 269, PEV 67 GWh, mostly
+wind 860, solar 420 and unmapped renewable aggregators 276 GWh; phase 2 (ECO*, rebalancing) 11.9 TWh at the buy-back
+bids (median 0.96 × DA), largest pumped storage 2.3 TWh, wind 2.7, solar 1.8, hydro 1.4, CHP 1.2, nuclear 0.9.
+The model decides up and down in one problem and prices every down MW as phase 2 (DA − buy-back bid; beyond the
+offered energy, the full DA price). Model y24act down 9.5 TWh: wind 3.6 (REE 3.6 in both phases), solar 2.0 (2.2),
+CHP 1.9 (1.3), hydro 1.0 (1.4), nuclear 0.7 (0.9), pumped storage 0.07 (REE 2.3: kept out of the model's phase II).
+
 **E2, out-of-year test on 2023 (4 Nov, rule frozen on 2024 in `a936dc2`, test script `35102c1`).** Window ±1 h around
 the single-hour shortfall (CCGT + coal + pumped storage), window max. 2023: hourly corr **0.58** (passes; best of all
 tests, and out of year), daily 0.55, 73 % of its alarms real, but **59 %** of REE's need hours and volume **0.36×**

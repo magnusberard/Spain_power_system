@@ -1019,6 +1019,15 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**Offer rule, out-of-year test and final estimate (5 Nov).** 2023's offer books (fetch_i90_offers.py, 365 days) and
+OMIE day-ahead prices (fetch_omie_prices.py, 355 of 365 days; OMIE has no file for 10) give 2023's curves. Estimated on
+2023, tested on 2024 (fixed before, `a9b3a28`): ratio form again (2023 error 10.1 vs 32.8 €/MWh); 2024 error 11.6 €/MWh
+on a real mean of 70.6 (16 %, as Jan–Jun → Jul–Dec 2024: 17 %); the rule 11 % too expensive on average; technology
+order 0.81. Wind, CHP, coal, nuclear close; hydro, run-of-river, mini hydro, biomass too expensive as before; solar
+thermal changed its offers between the years (2024 cheap tail, 2023 none: rule 80 vs real 16 €/MWh). The method holds
+across years, so the **final rule is the same method on 2023 + 2024** (707 days; `--fit 2023+2024`; 2024 fit 10.9
+€/MWh, order 0.91): `data/phase2_offer_rule.csv`.
+
 **Phase II offer rule for 2035 (5 Nov, `build_offer_rule.py` → `data/phase2_offer_rule.csv`; `make_config --offer-rule`).**
 Per fuel:technology, the buy-back price at 1, 2, 5, 10, 20, 50 and 100 % of a unit's volume as a ratio of the hour's
 day-ahead price, medians of 2024's offers (Jan–Jun, p_DA ≥ 10 €/MWh); form chosen on Jan–Jun (ratio: error 6.4 €/MWh,

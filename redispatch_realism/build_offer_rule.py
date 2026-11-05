@@ -14,6 +14,7 @@ technology (fuel:technology), edge, share (segment width), ratio, discount, n.
 
     python redispatch_realism/build_offer_rule.py --fit 2023 --test 2024
     python redispatch_realism/build_offer_rule.py --fit 2024H1 --test 2024H2
+    python redispatch_realism/build_offer_rule.py --fit 2023+2024 --test 2024   # final rule, all data (test in-sample)
 """
 import argparse, os, sys
 from pathlib import Path
@@ -34,7 +35,10 @@ def tech_of(k):
     return f"{gen.primary_fuel.get(k, '?')}:{gen.technology.get(k, '?')}" if k in gen.index else "?"
 
 def edge_points(period):
-    """Price at each edge of every curve in a period ("2023", "2024", "2024H1", "2024H2"), with that hour's p_DA."""
+    """Price at each edge of every curve in a period ("2023", "2024", "2024H1", "2024H2", or several joined by "+",
+    e.g. "2023+2024" for the final rule on all data), with that hour's p_DA."""
+    if "+" in period:
+        return pd.concat([edge_points(p) for p in period.split("+")], ignore_index=True)
     year, half = period[:4], period[4:]
     o = pd.read_csv(OFFERS[year])
     if half:

@@ -34,6 +34,7 @@ function load_rd_bids(cfg)
         table[lowercase(String(row["type"]))] = (Float64(get(row, "up_markup", 0.0)), Float64(get(row, "down_markup", 0.0)))
     end
     load_rd_offers!(String(get(b, "offers_file", "")), cfg)
+    load_rd_offer_rule!(String(get(b, "offers_rule", "")))
     return (up_markup     = Float64(get(b, "up_markup", 0.0)),
             down_markup   = Float64(get(b, "down_markup", 0.0)),
             down_refund   = lowercase(String(get(b, "down_refund", "da"))),
@@ -76,17 +77,41 @@ function load_rd_offers!(f, cfg)
     @printf "Phase II offers : %d curves (%d segments) from %s (REE I90DIA17, step 4)\n" length(RD_OFFERS) n f
 end
 
-"""
-    rd_down_curve(g, key) -> [(share, €/MWh)] or nothing
+# The rule for runs without REE's offers (2035): [redispatch.bids].offers_rule, built by build_offer_rule.py from 2024's
+# offers (estimated Jan–Jun, tested Jul–Dec; ratio form): per fuel:technology, segments (share of the unit's schedule,
+# buy-back price = ratio × p_DA), highest price first. Used where a unit and hour have no curve from offers_file.
+const RD_OFFER_RULE = Dict{String,Vector{Tuple{Float64,Float64}}}()     # "fuel:technology" ⇒ [(share, ratio)]
+function load_rd_offer_rule!(f)
+    (isempty(f) || !isempty(RD_OFFER_RULE)) && return
+    f = isabspath(f) ? f : joinpath(@__DIR__, f)
+    for r in CSV.File(f; types = Dict(:technology => String))
+        push!(get!(RD_OFFER_RULE, lowercase(r.technology), Tuple{Float64,Float64}[]), (Float64(r.share), Float64(r.ratio)))
+    end
+    for v in values(RD_OFFER_RULE)
+        sort!(v; by = last, rev = true)
+    end
+    @printf "Phase II offer rule: %d technologies from %s (build_offer_rule.py)\n" length(RD_OFFER_RULE) f
+end
 
-The unit's own buy-back curve for (date, hour), else its fuel:technology's pooled curve, else nothing.
 """
-function rd_down_curve(g, key)
-    (key === nothing || isempty(RD_OFFERS)) && return nothing
+    rd_down_curve(g, key, p_da = NaN) -> [(share, €/MWh)] or nothing
+
+The unit's own buy-back curve for (date, hour), else its fuel:technology's pooled curve, else (with p_da and an
+[redispatch.bids].offers_rule) the rule's curve for its fuel:technology at that day-ahead price, else nothing.
+"""
+function rd_down_curve(g, key, p_da = NaN)
+    key === nothing && return nothing
     (g["fuel"] == "Hydro" && lowercase(g["technology"]) == "pumped_storage") && return nothing
-    c = get(RD_OFFERS, (key[1], key[2], lowercase(String(g["name"]))), nothing)
-    c === nothing || return c
-    return get(RD_OFFERS, (key[1], key[2], lowercase("tech:$(g["fuel"]):$(g["technology"])")), nothing)
+    if !isempty(RD_OFFERS)
+        c = get(RD_OFFERS, (key[1], key[2], lowercase(String(g["name"]))), nothing)
+        c === nothing || return c
+        c = get(RD_OFFERS, (key[1], key[2], lowercase("tech:$(g["fuel"]):$(g["technology"])")), nothing)
+        c === nothing || return c
+    end
+    (isempty(RD_OFFER_RULE) || isnan(p_da)) && return nothing
+    r = get(RD_OFFER_RULE, lowercase("$(g["fuel"]):$(g["technology"])"), nothing)
+    r === nothing && return nothing
+    return [(s, max(q * p_da, 0.0)) for (s, q) in r]
 end
 
 """
@@ -97,7 +122,7 @@ at most share_i × its schedule, at p_DA − min(price_i, p_DA) + tie), otherwis
 A last segment at the full p_DA keeps the problem feasible if the shares round below 1.
 """
 function rd_add_down_cost!(model, obj, dn, g, tgt_pu, p_da, p_dn, tie, key)
-    c = rd_down_curve(g, key)
+    c = rd_down_curve(g, key, p_da)
     if c === nothing || tgt_pu <= 1e-9
         JuMP.add_to_expression!(obj, (p_da - p_dn + tie) * BASEMVA, dn)
         return
@@ -119,7 +144,7 @@ end
 The cost of turning g down by `down_mw` from `sched_mw`, as rd_add_down_cost! prices it (for the reports).
 """
 function rd_down_cost_eur(g, down_mw, sched_mw, p_da, p_dn, key)
-    c = rd_down_curve(g, key)
+    c = rd_down_curve(g, key, p_da)
     (c === nothing || sched_mw <= 1e-6) && return down_mw * (p_da - p_dn)
     left, cost = down_mw, 0.0
     for (s, pr) in c

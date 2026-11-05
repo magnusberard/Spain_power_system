@@ -144,6 +144,8 @@ function main(args)
         "--sweep-a" in args && set!(cfg, "redispatch.unit_bus_override", "redispatch_realism/data/unit_bus_override_sweep.csv")
         of = opt("--offers")                                    # step 4: phase II from REE's buy-back offers
         of === nothing || set!(cfg, "redispatch.bids.offers_file", of)        # (build_phase2_offers.py)
+        orl = opt("--offer-rule")                               # runs without REE's offers (2035): the rule
+        orl === nothing || set!(cfg, "redispatch.bids.offers_rule", orl)       # (build_offer_rule.py)
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)
         sq === nothing || set!(cfg, "generators.sync_q_frac", parse(Float64, sq))
         r = opt("--res-mvar")                                   # renewables' connection networks

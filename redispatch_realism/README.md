@@ -1019,6 +1019,17 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**Phase II offer rule for 2035 (5 Nov, `build_offer_rule.py` → `data/phase2_offer_rule.csv`; `make_config --offer-rule`).**
+Per fuel:technology, the buy-back price at 1, 2, 5, 10, 20, 50 and 100 % of a unit's volume as a ratio of the hour's
+day-ahead price, medians of 2024's offers (Jan–Jun, p_DA ≥ 10 €/MWh); form chosen on Jan–Jun (ratio: error 6.4 €/MWh,
+fixed discount 24.9). Test Jul–Dec: mean error in the system cost of turning a MWh down 13.9 €/MWh (real mean 82.8);
+technology order kept (rank correlation 0.87); the cheap tail where REE works is kept for wind, CHP and solar thermal
+(1–5 %: rule 3–25, real 2–19 €/MWh); too expensive for reservoir hydro, run-of-river, gas turbines and biomass (their
+Jan–Jun median offer is 0 €/MWh), so a run on the rule turns down less hydro than one on REE's offers. Used where a unit
+and hour have no curve from offers_file; pumped storage stays out. `test_offer_rule.jl`: 10 tests.
+**N-1 in the chain (5 Nov):** no code change needed (one circuit per outage, halving the a/b duplicates; seasonal ratings;
+soft limits): `--n1 on`. Test weeks 8–14 Apr and 2–8 Dec 2024, with and without, on Solstorm.
+
 **Spring diagnosis (5 Nov, `diagnostics/spring_*.py`): the phase I gap is nuclear, and it starts in the market.**
 Without nuclear the model's phase I is 105 % of REE's (11.08 vs 10.57 TWh), close in every month including spring
 (Mar 1,030 vs 877, Apr 999 vs 880, May 1,053 vs 1,054 GWh). REE raised 3.0 TWh of nuclear in phase I, 2.5 of it at

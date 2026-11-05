@@ -48,6 +48,11 @@ function load_rd_startups(cfg)
     co = get(uc, "coal", Dict())
     usd(x) = Float64(x) * Float64(get(uc, "usd_inflator_to_2024", 1.1953)) / Float64(get(uc, "usd_per_eur", 1.0824))
     return (startups             = Bool(get(c, "enabled", false)),   # RD9 loop on failed hours
+            # thermal candidates in the AC stages: off ⇒ 0 MW unless started, running ⇒ ≥ minimum load (su_apply_min_load!)
+            enforce_min_load     = Bool(get(c, "enforce_min_load", false)),
+            # also floor running candidates at their minimum load: costs ~4x the Ipopt time per AC hour (1 Jan 2024
+            # test: 27 vs 7 s) and running CCGTs already stay above it (y24act: 20 of ~139,000 unit-hours below)
+            min_load_floor_running = Bool(get(c, "min_load_floor_running", false)),
             mustrun              = mr,                                # RD5 zones, or nothing
             reserve              = rs,                                # RD7 requirement, or nothing
             phase1               = p1,                                # RD8 daily stage, or nothing
@@ -147,6 +152,38 @@ su_is_candidate(su, g) = (lowercase(g["fuel"]) in su.candidates ||
 
 # A candidate is off when RD3 has taken its reactive power away (qmin = qmax = 0).
 su_is_off(g) = g["qmax"] == 0.0 && g["qmin"] == 0.0 && get(g, "pmax", 0.0) >= 0.0
+
+"""
+    su_apply_min_load!(network, su) -> (units held off, units given a minimum-load floor)
+
+[redispatch.startups].enforce_min_load: in an AC stage (real time, phase I's AC check) a start-up candidate
+(CCGT or coal of at least `candidate_min_mw`) that is off in the schedule the stage starts from produces nothing
+unless it is started (su_commit!: minimum load, start cost paid). With `min_load_floor_running` a running one also
+stays at or above its minimum load (su_terms: CCGT 0.39 / 0.18 of capacity, REE's I90 medians; coal 0.40); off by
+default, as it costs ~4x the solve time and running units already keep their minimum load in practice. A thermal unit runs between its technical
+minimum and its maximum or is off (P.O. 3.2 programmes starts to technical minimum). Without the rule the AC stage
+gave off CCGTs output without a start, at a median 17 % of capacity (y24act: 297 unit-hours, 18.6 GWh in every
+6th week). Call before the stage's commitments (phase I's units, zones, reserve, voltage starts), which undo it per unit.
+"""
+function su_apply_min_load!(network, su)
+    su.enforce_min_load || return (0, 0)
+    n_off = n_floor = 0
+    for (_, g) in network["gen"]
+        su_is_candidate(su, g) || continue
+        if su_is_off(g)
+            g["pmax"] = 0.0; g["pmin"] = 0.0; g["pg"] = 0.0
+            n_off += 1
+        elseif su.min_load_floor_running
+            inst = Float64(get(g, "installed_mw", g["pmax"] * BASEMVA)) / BASEMVA
+            floor_pu = min(su_terms(su, g)[1] * inst, g["pmax"])
+            if floor_pu > g["pmin"] + 1e-9
+                g["pmin"] = floor_pu
+                n_floor += 1
+            end
+        end
+    end
+    return (n_off, n_floor)
+end
 
 """
     su_terms(su, g) -> (min_load_fraction, start_cost_eur, hour_cost_eur)
@@ -255,6 +292,7 @@ committed in `network`, so the hour's outputs show them.
 """
 function solve_hour_with_startups(network, gens, optimizer_for, sched, su;
                                   label = nothing, date_str = "", hour = 0)
+    su_apply_min_load!(network, su)                                  # off ⇒ 0 MW unless started; on ⇒ ≥ minimum load
     su.phase1 === nothing || apply_phase1_commitments!(network, su, date_str, hour)   # RD8: phase I units stay on
     n_zone = apply_zone_mustrun!(network, su, date_str, hour)        # RD5, before any solve
     n_zone > 0 && @printf "    must-run: %d unit(s) started for voltage zones\n" n_zone

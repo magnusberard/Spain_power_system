@@ -1019,6 +1019,15 @@ Likely cause: the day-ahead programme, while REE checks the programme after the 
 forecast gaps are already traded away; same for headroom. Next: the programme after intraday (e·sios P48/PHF by
 technology), before any rule goes into the model.
 
+**Minimum load in the AC stages (5 Nov, `[redispatch.startups].enforce_min_load`, on in make_config).** In real time
+an off CCGT/coal candidate could produce without a start (y24act, every 6th week: 297 unit-hours, 18.6 GWh, median
+17 % of capacity). Now it gives 0 MW unless started (su_commit!: minimum load, start cost). Test 25 Mar 2024 (the
+year run's worst day), same start with and without: off CCGT output without a start 30 unit-hours / 1.7 GWh → 0;
+24/24 hours solved, no load shed; real-time up 7.3 → 7.4 GWh (other units take over, so the real-time volume does
+not fall); AC solve 11.4 → 13.7 s per hour. Flooring *running* units at their minimum load as well
+(`min_load_floor_running`, off) made AC hours ~4× slower (1–2 Jan: 27 vs 7 s) for 20 of ~139,000 unit-hours below it,
+so it stays off. `test_min_load_rt.jl`: 12 tests.
+
 **Phase 1 vs phase 2 down: REE's split and prices (5 Nov, I90DIA03 codes; P.O. 3.2 Annex I §1.1.1 c).** REE's 2024
 down side: phase 1 (UPL*, security) 1.72 TWh, priced at the day-ahead marginal price (an annulment of the sale; I90:
 mean difference to the DA price 0.00 €/MWh, median ratio 1.000), causes SCA 741, SCB 640, RTD 269, PEV 67 GWh, mostly

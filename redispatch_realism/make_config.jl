@@ -102,6 +102,9 @@ function main(args)
         set!(cfg, "redispatch.junction_rating_mw", 2000.0)      # 220/225 kV label junctions (PyPSA-Eur convention)
         set!(cfg, "redispatch.startups.min_load_1x1", 0.39)     # REE's started CCGTs, I90 Jan-Jun 2024 median
         set!(cfg, "redispatch.startups.min_load_2x1", 0.18)
+        # AC stages: an off CCGT/coal unit gives 0 MW unless started, a running one stays at or above its minimum load
+        # (su_apply_min_load!; 5 Nov 2026, after off CCGTs ran at 4-20 % of capacity without a start in real time)
+        set!(cfg, "redispatch.startups.enforce_min_load", true)
         set!(cfg, "redispatch.phase1.n1", opt("--n1") == "on")
         if opt("--n1") == "on"
             set!(cfg, "redispatch.phase1.n1_outage", "element")

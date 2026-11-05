@@ -68,6 +68,9 @@ section.block { background: var(--surface); border: 1px solid var(--rule); borde
 .tip b { font-weight: 500; color: var(--ink-2); }
 .tip .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 .note { font-size: 13.5px; color: var(--ink-2); }
+.viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.vlab { font-size: 13.5px; color: var(--ink-2); }
+.vnote { border-left: 3px solid var(--ree); padding: 4px 0 4px 12px; max-width: 80ch; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
 .tablewrap { overflow-x: auto; }
@@ -100,6 +103,13 @@ code { font: 12.5px var(--font-mono); }
     <p class="meta">Model: 2024 Active + REE-way redispatch (branch redispatch-realism, 9bf3094), 366 days · REE: e·sios, technical constraints phase I, upward (rt1_up)</p>
   </header>
 
+  <div class="viewbar">
+    <span class="vlab">Compare the model with</span>
+    <div class="seg" role="group" aria-label="Which REE series">
+      <button id="v-all" aria-pressed="true">REE, all of phase I</button><button id="v-nn" aria-pressed="false">REE without nuclear</button>
+    </div>
+  </div>
+  <p class="note vnote" id="v-note"></p>
   <div class="tiles" id="tiles"></div>
 
   <section class="block">
@@ -287,9 +297,16 @@ code { font: 12.5px var(--font-mono); }
 const D = __DATA__;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const fmt = (v, d = 0) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-const S = D.stats;
-
-// tiles
+let NN = false;                                    // false: all of REE phase I; true: REE phase I without its nuclear raise
+const view = () => NN ? { d: D.d_ree_nn, m: D.m_ree_nn, h: D.hod_ree_nn, s: D.stats_nn }
+                      : { d: D.d_ree, m: D.m_ree, h: D.hod_ree, s: D.stats };
+let S = D.stats;
+const NOTE = {
+  all: "REE's whole phase I. In March–June REE also raised 3.0 TWh of nuclear, mostly Ascó 1–2 in Catalonia, after the day-ahead market had cut it; the model cannot do this (its nuclear is held after the day-ahead, and its day-ahead never cuts Ascó that far). Switch to see the comparison without it.",
+  nn: "REE's phase I without its nuclear raise (3.0 TWh, mostly Ascó 1–2 in March–June). This is the part the model's redispatch can reproduce: the gap that remains with nuclear included comes from the market side, where the model's day-ahead keeps every nuclear plant at the same share of its capacity."
+};
+function renderTiles() {
+S = view().s;
 const tiles = [
   ["Volume", `${S.volume} %`, `${fmt(S.model_twh, 2)} of ${fmt(S.ree_twh, 2)} TWh`],
   ["Correlation, hourly", S.hourly.toFixed(2), `daily ${S.daily.toFixed(2)}`],
@@ -301,7 +318,9 @@ document.getElementById("tiles").innerHTML = tiles.map(([k, v, s]) =>
   `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join("");
 document.getElementById("c-week").textContent = S.weekly.toFixed(2);
 document.getElementById("c-hod").textContent = S.hod.toFixed(2);
-document.getElementById("part").textContent = `${fmt(S.part_twh, 2)} TWh, daily correlation ${S.part_daily.toFixed(2)}`;
+document.getElementById("part").textContent = `${fmt(D.stats.part_twh, 2)} TWh, daily correlation ${D.stats.part_daily.toFixed(2)}`;
+document.getElementById("v-note").textContent = NN ? NOTE.nn : NOTE.all;
+}
 
 const NS = "http://www.w3.org/2000/svg";
 function el(tag, attrs, parent) {
@@ -359,12 +378,12 @@ function lineChart(id, xs, series, opts) {
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dLabel(s) { const [y, mo, d] = s.split("-"); return `${+d} ${MON[+mo - 1]}`; }
 function drawYear(mode) {
-  let xs = D.days, a = D.d_act, r = D.d_ree, lab = i => dLabel(xs[i]);
+  let xs = D.days, a = D.d_act, r = view().d, lab = i => dLabel(xs[i]);
   if (mode === "week") {
     const wx = [], wa = [], wr = [];
     for (let i = 0; i < D.days.length; i += 7) {
       const n = Math.min(7, D.days.length - i), sl = (v) => v.slice(i, i + n).reduce((p, q) => p + q, 0) / n;
-      wx.push(D.days[i]); wa.push(sl(D.d_act)); wr.push(sl(D.d_ree));
+      wx.push(D.days[i]); wa.push(sl(D.d_act)); wr.push(sl(view().d));
     }
     xs = wx; a = wa; r = wr; lab = i => `week of ${dLabel(xs[i])}`;
   }
@@ -383,7 +402,8 @@ function drawMonths() {
   const box = document.getElementById("ch-month"); box.innerHTML = "";
   const W = 1000, H = 300, m = { l: 48, r: 12, t: 10, b: 48 };
   const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Phase I GWh turned up per month, model and REE" }, box);
-  const ymax = niceMax(Math.max(...D.m_act, ...D.m_ree) * 1.05);
+  const R = view().m;
+  const ymax = niceMax(Math.max(...D.m_act, ...R) * 1.05);
   const Y = v => H - m.b - (H - m.t - m.b) * v / ymax;
   for (let k = 0; k <= 4; k++) {
     const v = ymax * k / 4, y = Y(v);
@@ -394,18 +414,18 @@ function drawMonths() {
   const tip = tipFor(box);
   D.months.forEach((mo, i) => {
     const cx = m.l + slot * (i + 0.5);
-    [[D.m_act[i], "--model", -1], [D.m_ree[i], "--ree", 1]].forEach(([v, c, side]) => {
+    [[D.m_act[i], "--model", -1], [R[i], "--ree", 1]].forEach(([v, c, side]) => {
       const x = side < 0 ? cx - gap / 2 - bwid : cx + gap / 2, y = Y(v), h = Y(0) - y, rr = Math.min(4, h);
       el("path", { d: `M${x},${Y(0)}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + bwid - rr}Q${x + bwid},${y} ${x + bwid},${y + rr}V${Y(0)}Z`, fill: css(c) }, svg);
     });
     el("text", { x: cx, y: H - m.b + 16, "text-anchor": "middle" }, svg).textContent = mo;
-    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    const pct = Math.round(100 * D.m_act[i] / view().m[i]);
     const t = el("text", { x: cx, y: H - m.b + 33, "text-anchor": "middle" }, svg);
     t.textContent = pct + " %"; t.style.fill = pct < 70 ? css("--ree") : css("--ink-2"); t.style.fontWeight = pct < 70 ? 500 : 400;
     const hit = el("rect", { x: cx - slot / 2, y: m.t, width: slot, height: H - m.t - m.b, fill: "transparent" }, svg);
     hit.addEventListener("pointermove", ev => {
       const r = svg.getBoundingClientRect();
-      tip.innerHTML = `<b>${mo} 2024</b><br><span class="d" style="background:${css("--model")}"></span>Model ${fmt(D.m_act[i])} GWh<br><span class="d" style="background:${css("--ree")}"></span>REE ${fmt(D.m_ree[i])} GWh<br><b>model / REE ${pct} %</b>`;
+      tip.innerHTML = `<b>${mo} 2024</b><br><span class="d" style="background:${css("--model")}"></span>Model ${fmt(D.m_act[i])} GWh<br><span class="d" style="background:${css("--ree")}"></span>REE ${fmt(view().m[i])} GWh<br><b>model / REE ${pct} %</b>`;
       place(tip, box, cx * r.width / W, ev.clientY - r.top);
     });
     hit.addEventListener("pointerleave", () => { tip.style.opacity = 0; });
@@ -416,15 +436,15 @@ function drawMonths() {
 // tables
 function tables() {
   const rows = D.months.map((mo, i) => {
-    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
-    return `<tr><td>${mo}</td><td>${fmt(D.m_act[i])}</td><td>${fmt(D.m_ree[i])}</td><td class="${pct < 70 ? "low" : ""}">${pct} %</td><td>${fmt(D.m_part[i])}</td></tr>`;
+    const pct = Math.round(100 * D.m_act[i] / view().m[i]);
+    return `<tr><td>${mo}</td><td>${fmt(D.m_act[i])}</td><td>${fmt(view().m[i])}</td><td class="${pct < 70 ? "low" : ""}">${pct} %</td><td>${fmt(D.m_nuc[i])}</td><td>${fmt(D.m_part[i])}</td></tr>`;
   }).join("");
-  const ta = D.m_act.reduce((a, b) => a + b, 0), tr = D.m_ree.reduce((a, b) => a + b, 0), tp = D.m_part.reduce((a, b) => a + b, 0);
-  document.getElementById("t-month").innerHTML = `<thead><tr><th>Month</th><th>Model GWh</th><th>REE GWh</th><th>Model / REE</th><th>Partial GWh</th></tr></thead><tbody>${rows}</tbody>`
-    + `<tfoot><tr><th>Year</th><th>${fmt(ta)}</th><th>${fmt(tr)}</th><th>${Math.round(100 * ta / tr)} %</th><th>${fmt(tp)}</th></tr></tfoot>`;
+  const ta = D.m_act.reduce((a, b) => a + b, 0), tr = view().m.reduce((a, b) => a + b, 0), tn = D.m_nuc.reduce((a, b) => a + b, 0), tp = D.m_part.reduce((a, b) => a + b, 0);
+  document.getElementById("t-month").innerHTML = `<thead><tr><th>Month</th><th>Model GWh</th><th id="t-ree-h">REE GWh</th><th>Model / REE</th><th>REE nuclear GWh</th><th>Partial GWh</th></tr></thead><tbody>${rows}</tbody>`
+    + `<tfoot><tr><th>Year</th><th>${fmt(ta)}</th><th>${fmt(tr)}</th><th>${Math.round(100 * ta / tr)} %</th><th>${fmt(tn)}</th><th>${fmt(tp)}</th></tr></tfoot>`;
   const cs = Object.keys(D.m_cause);
   const body = D.months.map((mo, i) => {
-    const pct = Math.round(100 * D.m_act[i] / D.m_ree[i]);
+    const pct = Math.round(100 * D.m_act[i] / view().m[i]);
     return `<tr><td>${mo}</td>${cs.map(c => `<td>${D.m_cause[c][i]} %</td>`).join("")}<td class="${pct < 70 ? "low" : ""}">${pct} %</td></tr>`;
   }).join("");
   document.getElementById("t-cause").innerHTML = `<thead><tr><th>Month</th>${cs.map(c => `<th>${c}</th>`).join("")}<th>Model / REE</th></tr></thead><tbody>${body}</tbody>`
@@ -433,10 +453,14 @@ function tables() {
 
 function drawAll() {
   drawYear(yearMode); drawMonths();
-  lineChart("ch-hod", Array.from({ length: 24 }, (_, h) => h), [{ n: "Model", v: D.hod_act, c: "--model" }, { n: "REE", v: D.hod_ree, c: "--ree" }],
+  lineChart("ch-hod", Array.from({ length: 24 }, (_, h) => h), [{ n: "Model", v: D.hod_act, c: "--model" }, { n: "REE", v: view().h, c: "--ree" }],
     { h: 260, ticks: [0, 4, 8, 12, 16, 20, 23].map(h => [h, String(h).padStart(2, "0") + ":00"]), xlab: i => `${String(i).padStart(2, "0")}:00`, unit: "MW", dec: 0, label: "Average MW turned up by hour of the day" });
 }
-tables(); drawAll();
+function render() { renderTiles(); tables(); drawAll(); }
+const vAll = document.getElementById("v-all"), vNn = document.getElementById("v-nn");
+function setView(nn) { NN = nn; vAll.setAttribute("aria-pressed", !nn); vNn.setAttribute("aria-pressed", nn); render(); }
+vAll.addEventListener("click", () => setView(false)); vNn.addEventListener("click", () => setView(true));
+render();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
 new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 </script>

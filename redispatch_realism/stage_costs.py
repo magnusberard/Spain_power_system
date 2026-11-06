@@ -10,7 +10,9 @@ separately, so the thesis can say which one a number is:
   redispatch   phase I + II and real time, energy and extra cost as REE settles it (P.O. 14.4 §17.15,
                §18.8: up at the bid, down refunded, both against the day-ahead price). Phase I from
                rd_phase1_summary.csv (the model's own objective, start-ups included), real time from
-               settle.py with the run's own rule; REE: e·sios rt1 (phase I), rt2 (phase II), rtr (real time)
+               settle.py with the run's own rule; REE: e·sios rt1 (phase I), rt2 (phase II); real time as
+               P.O. 14.4 §19.10 defines it (ree_rt_cost.py: I90 energy over the day-ahead price + start-ups;
+               e·sios rtr 1723/1724 are gross payments, used until 6 Nov, reported alongside)
   resource     Σ unit cost × output for the day-ahead schedule and for the final dispatch; the difference
                is the physical cost of every adjustment after the day-ahead (redispatch included)
 
@@ -64,8 +66,18 @@ def ree_hourly(path, days):
                              ree_bal_up_mwh=bal_up, ree_bal_down_mwh=bal_dn, ree_bal_value_eur=bal_val,
                              ree_ph1_up_mwh=v("rt1_up", i), ree_ph1_cost_eur=v("rt1_up_cost", i) - v("rt1_down_cost", i),
                              ree_ph2_cost_eur=v("rt2_up_cost", i) - v("rt2_down_cost", i),
-                             ree_rt_up_mwh=v("rtr_up", i), ree_rt_cost_eur=v("rtr_up_cost", i) + v("rtr_down_cost", i)))
+                             ree_rt_up_mwh=v("rtr_up", i)))
     return pd.DataFrame(rows)
+
+
+def ree_rt_hourly(a, days):
+    """REE's real-time cost per hour as P.O. 14.4 §19.10 defines it (ree_rt_cost.py, F1 6 Nov); e·sios
+    1723/1724 (gross payments, used here until 6 Nov) kept as ree_rt_gross_eur."""
+    from ree_rt_cost import rt_cost_hourly
+    h = rt_cost_hourly(a.i90, a.real, a.esios)
+    h = h[h.date.isin(days)]
+    return h.rename(columns={"cost_eur": "ree_rt_cost_eur", "gross_esios_eur": "ree_rt_gross_eur"})[
+        ["date", "hour", "ree_rt_cost_eur", "ree_rt_gross_eur"]]
 
 
 def one_run(run, a, bus_region, cost_by):
@@ -157,8 +169,10 @@ def main():
         hrs.append(h); regs.append(g)
     hourly = pd.concat(hrs, ignore_index=True).sort_values(["date", "hour"])
     real = pd.read_csv(a.real, usecols=["date", "hour", "price"]).rename(columns={"price": "real_da"})
-    hourly = hourly.merge(real, on=["date", "hour"], how="left").merge(ree_hourly(a.esios, sorted(hourly.date.unique())),
-                                                                       on=["date", "hour"], how="left")
+    days = sorted(hourly.date.unique())
+    hourly = (hourly.merge(real, on=["date", "hour"], how="left")
+              .merge(ree_hourly(a.esios, days), on=["date", "hour"], how="left")
+              .merge(ree_rt_hourly(a, days), on=["date", "hour"], how="left"))
     by_region = pd.concat(regs).groupby(level=0).sum()
     # REE's phase I up per region over the same days: I90 per unit (UPO..., Subir), units the crosswalk maps to a
     # model unit (renewable portfolios are not mapped, so this covers the thermal side)
@@ -193,6 +207,7 @@ def main():
             ("phase I + II extra cost, M€", meur("ph1_cost_eur"), meur("ree_ph1_cost_eur") + meur("ree_ph2_cost_eur")),
             ("real-time up, GWh", gwh("rt_up_mwh"), gwh("ree_rt_up_mwh")),
             ("real-time extra cost, M€", meur("rt_cost_eur"), meur("ree_rt_cost_eur")),
+            ("  REE real-time gross payments (e·sios 1723/1724), M€", np.nan, meur("ree_rt_gross_eur")),
             ("redispatch extra cost, all phases, M€", meur("ph1_cost_eur") + meur("rt_cost_eur"),
              meur("ree_ph1_cost_eur") + meur("ree_ph2_cost_eur") + meur("ree_rt_cost_eur")),
             ("resource cost, day-ahead schedule, M€", meur("da_resource_eur"), np.nan),

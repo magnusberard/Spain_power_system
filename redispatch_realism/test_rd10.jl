@@ -3,6 +3,7 @@
 #
 #     julia --project redispatch_realism/test_rd10.jl
 using Test, JuMP          # JuMP: its macros in rd_ree_objective! expand when the file loads
+using Printf             # the offers loaders print with @printf (missing here since step 4)
 const BASEMVA = 100.0
 include(joinpath(@__DIR__, "..", "redispatch_objective.jl"))
 
@@ -31,7 +32,8 @@ p_da = 100.0
                                              Dict("type" => "Gas:Combined_cycle", "up_markup" => 0.75, "down_markup" => 0.1)])))
     @test rd_bid_prices(b1, unit("Gas", "Combined_cycle", 120.0), p_da) == (120.0 * 1.75, 120.0 * 0.9)
     @test rd_bid_prices(b1, unit("Coal", "Coal", 110.0), p_da) == (110.0 * 1.5, 110.0)
-    @test rd_bid_prices(b1, unit("Gas", "Gas_turbine", 150.0), p_da) == (150.0 * 1.1, 150.0 * 0.8)
+    # a technology missing from the table takes its fuel's mean mark-ups (rule of 26 Oct, rd_markups), not the default
+    @test rd_bid_prices(b1, unit("Gas", "Gas_turbine", 150.0), p_da) == (150.0 * 1.75, 150.0 * 0.9)
 
     # every swap costs money under the phase I rule: (up − p_DA) + (p_DA − refund) ≥ 0 for any pair
     for cu in (40.0, 100.0, 180.0), cd in (20.0, 90.0, 150.0)
@@ -39,4 +41,14 @@ p_da = 100.0
         _, dn = rd_bid_prices(b0, unit("Gas", "Combined_cycle", cd), p_da)
         @test (up - p_da) + (p_da - dn) >= 0
     end
+
+    # F2 (6 Nov): real time's own up mark-up; phase I (rt = false) keeps by_type
+    b2 = load_rd_bids(cfg(Dict("by_type" => [Dict("type" => "Gas:Combined_cycle", "up_markup" => 0.451, "down_markup" => 0.058)],
+                               "rt_by_type" => [Dict("type" => "Gas:Combined_cycle", "up_markup" => 1.387)])))
+    ccgt = unit("Gas", "Combined_cycle", 90.0)
+    @test rd_bid_prices(b2, ccgt, p_da)[1] ≈ 100.0 * 1.451                 # phase I: max(90, 100)·1.451
+    @test rd_bid_prices(b2, ccgt, p_da; rt = true)[1] ≈ 100.0 * 2.387      # real time: max(90, 100)·2.387
+    @test rd_bid_prices(b2, ccgt, p_da; rt = true)[2] == rd_bid_prices(b2, ccgt, p_da)[2]   # down side unchanged
+    @test rd_bid_prices(b2, unit("Coal", "Coal", 110.0), p_da; rt = true)[1] ≈ 110.0      # no rt row: by_type (none: 0)
+    @test rd_bid_prices(b0, ccgt, p_da; rt = true) == rd_bid_prices(b0, ccgt, p_da)        # no rt_by_type: unchanged
 end

@@ -90,8 +90,26 @@ def phase1_in_chain(rdir):
     return bool(c.get("redispatch", {}).get("phase1", {}).get("in_chain", False))
 
 
-def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=False, units=False):
-    """units=True: also return the per-unit rows (date, hour, unit_name, type, up, down, ec, ...) as a fifth value."""
+def run_rt_markups(rdir):
+    """The run's real-time up mark-ups ([redispatch.bids].rt_by_type in config_used.toml, F2): {(fuel, tech): m}."""
+    f = Path(rdir) / "config_used.toml"
+    if not f.exists():
+        return {}
+    with open(f, "rb") as fh:
+        rows = tomllib.load(fh).get("redispatch", {}).get("bids", {}).get("rt_by_type", [])
+    return {tuple(r["type"].split(":", 1)): float(r["up_markup"]) for r in rows}
+
+
+def load_rt_bids(path):
+    """data/rt_bids.csv (fuel, technology, up_markup) → {(fuel, tech): m}, to settle a run as if it had them."""
+    b = pd.read_csv(path)
+    return {(r.fuel, r.technology): float(r.up_markup) for r in b.itertuples(index=False)}
+
+
+def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=False, units=False, rt_markups=None):
+    """units=True: also return the per-unit rows (date, hour, unit_name, type, up, down, ec, ...) as a fifth value.
+    rt_markups: real time's own up mark-ups {(fuel, tech): m}; None = the run's own (config_used.toml)."""
+    rt_markups = run_rt_markups(rdir) if rt_markups is None else rt_markups
     summ = pd.read_csv(rdir / "summary.csv")
     summ = summ[summ.status.isin(SOLVED)]
     keys = summ[["date", "hour"]]
@@ -132,7 +150,11 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
             c = c.where(~pd.Series([k in STORAGE for k in zip(ch.fuel, ch.technology)], index=ch.index), ch.p_da)
         mk = [markups.get(k, (0.0, 0.0)) for k in zip(ch.fuel, ch.technology)]
         mu = np.array([m[0] for m in mk]); md = np.array([m[1] for m in mk])
-        p_up = c * (1 + mu)
+        if rt_markups:                      # F2: real time's own up mark-ups ([redispatch.bids].rt_by_type)
+            mu = np.array([rt_markups.get(k, m) for k, m in zip(zip(ch.fuel, ch.technology), mu)])
+        # the model's rule (redispatch_objective.jl rd_bid_prices): a unit bids at least the day-ahead price,
+        # bid_up = max(c, p_DA)·(1 + up_markup); until 6 Nov this line used c·(1 + up_markup)
+        p_up = np.maximum(c, ch.p_da) * (1 + mu)
         # "da" phase I refund; "bid_da" phase II's down bids as a share of the day-ahead price
         # (fit_phase2_bids.py, RD12); "bid" a cost-based down bid
         p_dn = ch.p_da if down_refund == "da" else (ch.p_da * (1 - md) if down_refund == "bid_da" else c * (1 - md))
@@ -171,7 +193,7 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
     return hourly, monthly, by_type, hod
 
 
-def ree_same_hours(esios_js, hourly):
+def ree_same_hours(esios_js, hourly, i90=None, da=None):
     """REE's 2024 redispatch over the same hours, pooled as the results viewer pools it."""
     t = Path(esios_js).read_text(encoding="utf-8")
     e = json.loads(t[t.index("=") + 1:].rstrip().rstrip(";"))
@@ -180,8 +202,17 @@ def ree_same_hours(esios_js, hourly):
     s = lambda k: float(np.nansum(np.array([np.nan if x is None else x for x in e["series"][k]], float)[idx]))
     ph1 = (s("rt1_up"), s("rt1_down"), s("rt1_up_cost") - s("rt1_down_cost"))
     ph2 = (s("rt2_up"), s("rt2_down"), s("rt2_up_cost") - s("rt2_down_cost"))
-    rt = (s("rtr_up"), s("rtr_down"), s("rtr_up_cost") + s("rtr_down_cost"))
-    return {"Phase I": ph1, "Phase II": ph2, "Real time": rt}, len(idx)
+    # e·sios 1723/1724 are REE's GROSS real-time payments, not its cost; with i90 and da given the cost is
+    # P.O. 14.4 §19.10's (ree_rt_cost.py, F1 6 Nov 2026), otherwise the gross figure is printed as such
+    rt_cost = s("rtr_up_cost") + s("rtr_down_cost")
+    label = "Real time (gross)"
+    if i90 is not None and da is not None:
+        from ree_rt_cost import rt_cost_hourly
+        h = rt_cost_hourly(i90, da, esios_js)
+        rt_cost = float(h.merge(hourly[["date", "hour"]], on=["date", "hour"]).cost_eur.sum())
+        label = "Real time"
+    rt = (s("rtr_up"), s("rtr_down"), rt_cost)
+    return {"Phase I": ph1, "Phase II": ph2, label: rt}, len(idx)
 
 
 def main():
@@ -195,10 +226,14 @@ def main():
     ap.add_argument("--storage-at-da", action="store_true",
                     help="price reservoir/pumped hydro and batteries at the day-ahead price (RD11, objective = \"ree\")")
     ap.add_argument("--esios", type=Path, help="spain-model-runs/reference/esios_2024.js, to print REE over the same hours")
+    ap.add_argument("--rt-bids", type=Path, help="real-time up mark-ups (data/rt_bids.csv, F2); default: the run's own")
+    ap.add_argument("--i90", type=Path, help="I90 folder (fetch_i90.py): with --da, REE's real time as P.O. 14.4 costs it")
+    ap.add_argument("--da", type=Path, help="real day-ahead price per hour (date, hour, price), e.g. real_hourly_2024.csv.gz")
     ap.add_argument("--out", type=Path, help="output folder (default: <run>/settlement)")
     a = ap.parse_args()
 
-    hourly, monthly, by_type, hod = settle(a.run, a.anchor, a.bids, a.down_refund, a.storage_at_da)
+    hourly, monthly, by_type, hod = settle(a.run, a.anchor, a.bids, a.down_refund, a.storage_at_da,
+                                           rt_markups=load_rt_bids(a.rt_bids) if a.rt_bids else None)
     out = a.out or a.run / "settlement"
     out.mkdir(parents=True, exist_ok=True)
     hourly.to_csv(out / "hourly.csv", index=False)
@@ -222,7 +257,7 @@ def main():
     for t, r in by_type.iterrows():
         print(f"    {t:16s} {r.up_gwh:8.1f} {r.down_gwh:8.1f} {r.extra_cost_meur:9.2f}")
     if a.esios:
-        ree, n = ree_same_hours(a.esios, hourly)
+        ree, n = ree_same_hours(a.esios, hourly, a.i90, a.da)
         print(f"\n  REE over the same {n} hours (GWh up / down, extra cost M€):")
         for k, (u, d, c) in ree.items():
             print(f"    {k:16s} {u / 1e3:8.1f} {d / 1e3:8.1f} {c / 1e6:9.2f}")

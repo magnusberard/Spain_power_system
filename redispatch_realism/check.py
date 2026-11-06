@@ -91,16 +91,20 @@ def logic():
         check("up/down per hour", np.allclose([h0.up_mwh, h0.down_mwh, h1.up_mwh, h1.down_mwh], [40, 30, 25, 25]),
               f"h0 {h0.up_mwh:.0f}/{h0.down_mwh:.0f}, h1 {h1.up_mwh:.0f}/{h1.down_mwh:.0f}")
         check("border and pseudo-units left out", np.isclose(h0.up_mwh, 40))
-        # EC = up·(c − p_DA) + down·(p_DA − c):  h0 40·20 + 30·60 = 2600;  h1 25·(0−50) + 25·(50−100) = −2500
-        check("extra cost, down at own bid", np.allclose([h0.extra_cost_eur, h1.extra_cost_eur], [2600, -2500]),
+        # EC = up·(max(c, p_DA) − p_DA) + down·(p_DA − c):  h0 40·20 + 30·60 = 2600;
+        # h1 25·(max(0, 50) − 50) + 25·(50 − 100) = −1250  (a unit bids at least the day-ahead price, as in the
+        # model's objective: raising the 0 €/MWh unit costs 0 over p_DA, not −50; until 6 Nov this was −2500)
+        check("extra cost, down at own bid", np.allclose([h0.extra_cost_eur, h1.extra_cost_eur], [2600, -1250]),
               f"{h0.extra_cost_eur:.0f}, {h1.extra_cost_eur:.0f}")
-        check("marginal = extra cost + p_DA·(up − down)",
-              np.allclose(hourly.marginal_eur, hourly.extra_cost_eur + hourly.p_da * (hourly.up_mwh - hourly.down_mwh)))
+        # marginal = EC + p_DA·(up − down) − Σ up·(max(c, p_DA) − c): in h1 the 0 €/MWh unit's 25 MWh up add 25·50
+        check("marginal = extra cost + p_DA·(up − down) − up below p_DA",
+              np.allclose(hourly.marginal_eur, hourly.extra_cost_eur + hourly.p_da * (hourly.up_mwh - hourly.down_mwh)
+                          - np.array([0.0, 1250.0])))
         check("up − down = losses when the borders net out", np.isclose(h0.up_mwh - h0.down_mwh, h0.losses_mw))
         hourly_da, *_ = settle.settle(d, down_refund="da")
-        # phase I rule: down refunded at p_DA, so the down term is 0:  h0 40·20 = 800;  h1 25·(0−50) = −1250
+        # phase I rule: down refunded at p_DA, so the down term is 0:  h0 40·20 = 800;  h1 25·(max(0,50)−50) = 0
         check("extra cost, down refunded at the day-ahead price",
-              np.allclose(hourly_da.extra_cost_eur, [800, -1250]), f"{list(hourly_da.extra_cost_eur.round())}")
+              np.allclose(hourly_da.extra_cost_eur, [800, 0]), f"{list(hourly_da.extra_cost_eur.round())}")
         bids = d / "bids.csv"
         pd.DataFrame([dict(fuel="Gas", technology="Combined_cycle", up_markup=0.5, down_markup=0.0)]).to_csv(bids, index=False)
         hourly_mk, *_ = settle.settle(d, bids=bids)
@@ -114,7 +118,7 @@ def logic():
                            trigger_slack_mvar=-80.0, hops=0)]).to_csv(d / "rd_startups.csv", index=False)
         hourly_su, *_ = settle.settle(d)
         check("start-up cost added to its hour only (RD9)",
-              np.allclose(hourly_su.extra_cost_eur, [2600 + 5000, -2500]) and hourly_su.starts.tolist() == [1, 0],
+              np.allclose(hourly_su.extra_cost_eur, [2600 + 5000, -1250]) and hourly_su.starts.tolist() == [1, 0],
               f"{list(hourly_su.extra_cost_eur.round())}")
 
 

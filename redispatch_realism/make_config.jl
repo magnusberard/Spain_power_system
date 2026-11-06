@@ -5,7 +5,7 @@
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
-#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req] [--rt-reserve-e2]
+#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req] [--rt-reserve-e2] [--rt-markup]
 #                                             [--uprate <csv of line_id,factor>] [--offers <csv>] [--sweep-a]
 #
 # The redispatch has to run with the market-side settings of the run whose
@@ -148,6 +148,16 @@ function main(args)
         "--sweep-a" in args && set!(cfg, "redispatch.unit_bus_override", "redispatch_realism/data/unit_bus_override_sweep.csv")
         of = opt("--offers")                                    # step 4: phase II from REE's buy-back offers
         of === nothing || set!(cfg, "redispatch.bids.offers_file", of)        # (build_phase2_offers.py)
+        if "--rt-markup" in args                                # F2: real time's own up mark-ups (data/rt_bids.csv,
+            # fit_rt_upmarkup.py: CCGT 1.387, REE real-time I90). Tested 6 Nov, NOT adopted: it overshoots REE's
+            # real-time cost per MWh by 28-45 % because the model's day-ahead price is too low (README, F2)
+            rows = Dict{String,Any}[]
+            for l in readlines(joinpath(@__DIR__, "data", "rt_bids.csv"))[2:end]
+                f, t, u = split(strip(l), ",")
+                push!(rows, Dict("type" => "$f:$t", "up_markup" => parse(Float64, u)))
+            end
+            set!(cfg, "redispatch.bids.rt_by_type", rows)
+        end
         orl = opt("--offer-rule")                               # runs without REE's offers (2035): the rule
         orl === nothing || set!(cfg, "redispatch.bids.offers_rule", orl)       # (build_offer_rule.py)
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)

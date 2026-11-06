@@ -1069,6 +1069,31 @@ The model decides up and down in one problem and prices every down MW as phase 2
 offered energy, the full DA price). Model y24act down 9.5 TWh: wind 3.6 (REE 3.6 in both phases), solar 2.0 (2.2),
 CHP 1.9 (1.3), hydro 1.0 (1.4), nuclear 0.7 (0.9), pumped storage 0.07 (REE 2.3: kept out of the model's phase II).
 
+**Real-time pricing: F1 adopted, F2 tested and dropped, F3 stated (6 Nov).**
+*F1, REE's benchmark.* e·sios 1723/1724, used as "REE real-time cost" until 6 Nov, are REE's **gross** real-time
+payments: 1,295 M€ in 2024, more than REE paid for all the real-time energy (I90: 1,147 M€). P.O. 14.4 §19.10
+(BOE-A-2024-6215, p. 138) defines the cost as payments minus the energy at a reference price (the day-ahead price in
+2024), as the model does. `ree_rt_cost.py` builds it: I90 energy over the real day-ahead price (701 M€) + start-ups
+estimated as 1723 − I90 gross (148 M€) = **849 M€** for 2024. Checks: with REE's phase I/II (e·sios) 2.07 b€ against
+2,057 M€ reported by REE for 2024; for 2023 the I90 energy part (690 M€) + the same ~148 M€ ≈ CNMC's 837 M€ (supervision
+report 28 Jan 2025, p. 59). `compare_ree.py`, `stage_costs.py` and `settle.py --i90 --da` use it; the gross figure is
+printed alongside. The start-up estimate is negative in 587 of 8,784 hours (REE spreads start-ups over the day): use sums.
+*Settlement rule.* `settle.py` priced up at c·(1 + m); the model's objective uses max(c, p_DA)·(1 + m) (a unit bids at
+least the day-ahead price, REE never redispatches for profit). Settlement now follows the objective; `check.py logic`
+updated (h1: −2500 → −1250, the cheap unit's up costs 0 over p_DA, not −50).
+*F2, a real-time CCGT mark-up* (`fit_rt_upmarkup.py`, method committed before running in `69c3cac`): REE paid CCGTs
+213 €/MWh in real time vs 156 in phase I. Fit Jan–Jun on REE's real-time I90 prices against the model's
+max(c, p_DA) (y24act): m_rt = 1.387; test Jul–Dec, error in the paid price 22.0 vs 76.8 €/MWh with 0.451 → passed its
+own test. But settled on the test weeks against F1's benchmark, the real-time cost per MWh went from 0.74/0.95/0.88×
+REE (Jan/Apr/Dec, phase I mark-up) to 1.40/1.28/1.45×: the reported cost is paid − p_DA, and the model's day-ahead
+price is too low in winter, so a mark-up that gets the paid level right overshoots the cost. **Not adopted**; the switch
+(`--rt-markup`, `[redispatch.bids].rt_by_type`, used in real time only) stays off. `test_rd10.jl`: 23 tests (it did not
+load since step 4: `using Printf` added; the gas-turbine expectation updated to the 26 Oct fuel-mean rule).
+*F3, start-ups.* Real-time weeks: REE 164–230 RSI episodes a week (3.3–3.9 h) at ≈ 16.5 k€ each (2024: 8,985, 148 M€);
+the model 41–67 starts held longer at 98–122 k€ each; totals 1.1/3.0/1.5× REE's. Changing it needs REE's start offers
+(I90DIA17/18, step 5, dropped 5 Nov): stated limitation.
+With F1, the test weeks' total redispatch cost is 94 / 87 / 103 % of REE's (Jan/Apr/Dec) and real time 49 / 33 / 82 %.
+
 **E2 in the model: real-time reserve, best-effort rule (5 Nov; decided 5 Nov, vault real-time-reserve-trigger).**
 `[redispatch.reserve].rule = "e2"` (`make_config.jl --rt-reserve-e2`; default `"afrr"` = RD7/E1 unchanged).
 Requirement per hour = mFRR need (e·sios 1788) + aFRR band (632) + P.O. 1.5 §4.4 gaps, from

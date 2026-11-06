@@ -48,12 +48,24 @@ def ree_esios(path, days):
                          ree_ph12_meur=(g("rt1_up_cost") - g("rt1_down_cost") + g("rt2_up_cost") - g("rt2_down_cost")) / 1e6,
                          ree_ph1_meur=(g("rt1_up_cost") - g("rt1_down_cost")) / 1e6,
                          ree_ph2_meur=(g("rt2_up_cost") - g("rt2_down_cost")) / 1e6,
-                         ree_rt_meur=(g("rtr_up_cost") + g("rtr_down_cost")) / 1e6,
+                         # e·sios 1723/1724: REE's GROSS real-time payments (energy at offer price + start-ups),
+                         # not the cost of P.O. 14.4 §19.10; the cost is built in ree_rt_cost() (F1, 6 Nov)
+                         ree_rt_gross_meur=(g("rtr_up_cost") + g("rtr_down_cost")) / 1e6,
                          # phase I up by cause (e·sios): CT voltage, SCA N-1, RTD distribution, the rest other
                          ree_ph1_volt_gwh=g("rt1_up_ct") / 1e3, ree_ph1_n1_gwh=g("rt1_up_sca") / 1e3,
                          ree_ph1_dist_gwh=g("rt1_up_rtd") / 1e3,
                          ree_ph1_other_gwh=(g("rt1_up_scb") + g("rt1_up_rsi") + g("rt1_up_otros")) / 1e3))
     return pd.DataFrame(rows)
+
+
+def ree_rt_cost(i90_dir, da_path, esios_js, days):
+    """REE's real-time cost per day as P.O. 14.4 §19.10 defines it (ree_rt_cost.py, F1 6 Nov): I90 energy
+    over the day-ahead price + start-ups (e·sios 1723 − I90 gross), instead of e·sios's gross payments."""
+    from ree_rt_cost import rt_cost_hourly
+    h = rt_cost_hourly(i90_dir, da_path, esios_js)
+    d = h[h.date.isin(days)].groupby("date")[["cost_eur", "energy_eur", "startup_eur"]].sum() / 1e6
+    d.columns = ["ree_rt_meur", "ree_rt_energy_meur", "ree_rt_startup_meur"]
+    return d.reindex(days, fill_value=0.0).reset_index(names="date")
 
 
 def run_down_refund(run):
@@ -119,6 +131,10 @@ def main():
     ap.add_argument("--storage-at-da", action="store_true")
     ap.add_argument("--esios", type=Path, default=REPO.parent / "spain-model-runs" / "reference" / "esios_2024.js")
     ap.add_argument("--i90", type=Path, default=Path(os.environ.get("ESIOS_DIR") or REPO.parent / "esios_download") / "i90")
+    ap.add_argument("--da", type=Path, default=REPO.parent / "spain-model-runs" / "reference" / "real_hourly_2024.csv.gz",
+                    help="real day-ahead price per hour (OMIE; columns date, hour, price): REE's real-time cost reference")
+    ap.add_argument("--rt-bids", type=Path, help="settle real time with these up mark-ups (data/rt_bids.csv, F2) instead of "
+                    "the run's own [redispatch.bids].rt_by_type: to preview F2 on runs made without it")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--profile-out", type=Path, help="hour-of-day profile of MW turned up, model and REE")
     ap.add_argument("--zones", action="store_true", help="phase I starts per voltage zone, model vs REE")
@@ -137,7 +153,8 @@ def main():
     days_rows = []
     hour_rows = []
     for run in runs:
-        hourly, *_ = settle.settle(run, bids=a.bids, down_refund=run_down_refund(run), storage_at_da=a.storage_at_da)
+        hourly, *_ = settle.settle(run, bids=a.bids, down_refund=run_down_refund(run), storage_at_da=a.storage_at_da,
+                                   rt_markups=settle.load_rt_bids(a.rt_bids) if a.rt_bids else None)
         hour_rows.append(hourly[["date", "hour", "up_mwh"]].rename(columns={"up_mwh": "rt_up_mw"}))
         if (run / "rd_phase1_summary.csv").exists():
             p1h = pd.read_csv(run / "rd_phase1_summary.csv")[["date", "hour", "up_mwh"]]
@@ -161,6 +178,7 @@ def main():
     m = pd.concat(days_rows, ignore_index=True).sort_values("date")
     days = m.date.tolist()
     r = ree_esios(a.esios, days)
+    r = r.merge(ree_rt_cost(a.i90, a.da, a.esios, days), on="date")              # F1: P.O. 14.4 cost, not e·sios gross
     u, ph = ree_units(a.i90, days)
     t = m.merge(r, on="date").merge(u, on="date", how="left")
     t["ree_units_per_h"] = [ph[ph.date == d].groupby("hour").ree_unit.nunique().mean() for d in t.date]
@@ -194,7 +212,9 @@ def main():
               f"REE phase I + II: up {s.ree_ph1_up_gwh:.1f} / down {s.ree_ph1_down_gwh + s.ree_ph2_down_gwh:.1f} GWh "
               f"(phase II down {s.ree_ph2_down_gwh:.1f}), {s.ree_ph1_meur + s.ree_ph2_meur:.2f} M€ "
               f"(phase I {s.ree_ph1_meur:.2f}, phase II {s.ree_ph2_meur:.2f}) → model / REE {s.ph1_meur / (s.ree_ph1_meur + s.ree_ph2_meur):.0%}")
-    print(f"real time: model up {s.rt_up_gwh:.1f} GWh, {s.rt_meur:.2f} M€ | REE up {s.ree_rt_up_gwh:.1f} GWh, {s.ree_rt_meur:.2f} M€")
+    print(f"real time: model up {s.rt_up_gwh:.1f} GWh, {s.rt_meur:.2f} M€ | REE up {s.ree_rt_up_gwh:.1f} GWh, {s.ree_rt_meur:.2f} M€ "
+          f"(P.O. 14.4: energy over the day-ahead price {s.ree_rt_energy_meur:.2f} + start-ups ≈ {s.ree_rt_startup_meur:.2f}; "
+          f"e·sios gross payments {s.ree_rt_gross_meur:.2f}) → model / REE {s.rt_meur / max(s.ree_rt_meur, 1e-9):.0%}")
     cause = {k: s[f"ree_ph1_{k}_gwh"] for k in ("volt", "n1", "dist", "other")}
     print("REE phase I up by cause: " + ", ".join(f"{k} {v:.1f} GWh ({v / max(sum(cause.values()), 1e-9):.0%})"
                                                  for k, v in cause.items())

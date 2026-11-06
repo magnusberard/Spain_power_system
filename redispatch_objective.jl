@@ -33,13 +33,24 @@ function load_rd_bids(cfg)
     for row in get(b, "by_type", Any[])
         table[lowercase(String(row["type"]))] = (Float64(get(row, "up_markup", 0.0)), Float64(get(row, "down_markup", 0.0)))
     end
+    # F2 (6 Nov 2026): real time's own up mark-ups, [[redispatch.bids.rt_by_type]] type = … up_markup = …
+    # (fit_rt_upmarkup.py: CCGT 1.387 from REE's real-time I90 prices Jan-Jun 2024; Jul-Dec error in the PAID price
+    # 22 vs 77 EUR/MWh with phase I's 0.451). Used only in real time (RD_OFFER_KEY[] === nothing). NOT ADOPTED:
+    # the reported cost is paid − p_DA, and with the model's day-ahead price too low in winter it overshot REE's
+    # real-time cost per MWh by 28-45 % in the Jan/Apr/Dec test weeks (0.74-0.95x without it). Off unless set.
+    rt_table = Dict{String,Float64}()
+    for row in get(b, "rt_by_type", Any[])
+        rt_table[lowercase(String(row["type"]))] = Float64(row["up_markup"])
+    end
+    isempty(rt_table) || println("  [redispatch.bids] real-time up mark-ups: ", join(("$k $(v)" for (k, v) in rt_table), ", "))
     load_rd_offers!(String(get(b, "offers_file", "")), cfg)
     load_rd_offer_rule!(String(get(b, "offers_rule", "")))
     return (up_markup     = Float64(get(b, "up_markup", 0.0)),
             down_markup   = Float64(get(b, "down_markup", 0.0)),
             down_refund   = lowercase(String(get(b, "down_refund", "da"))),
             tie_break     = Float64(get(b, "tie_break_eur_mwh", 0.5)),
-            by_type       = table)
+            by_type       = table,
+            rt_by_type    = rt_table)
 end
 
 # ------------------------------------------------------------
@@ -201,8 +212,11 @@ end
 """
     rd_bid_prices(bids, g, p_da) -> (price paid per MWh up, refund per MWh down)
 """
-function rd_bid_prices(bids, g, p_da)
+function rd_bid_prices(bids, g, p_da; rt::Bool = false)
     mu, md = rd_markups(bids, g)
+    if rt && !isempty(get(bids, :rt_by_type, Dict{String,Float64}()))                # F2: real time's own up mark-up
+        mu = get(bids.rt_by_type, lowercase("$(g["fuel"]):$(g["technology"])"), mu)
+    end
     c = rd_is_storage(g) ? p_da : g["cost"][1] / BASEMVA
     up = max(c, p_da) * (1 + mu)
     # "da": phase I's refund at the day-ahead price; "bid": the unit's cost-based down bid;
@@ -234,7 +248,7 @@ function rd_ree_objective!(pm, gens, sched, bids, p_da, xb_ct_cost)
         up   = JuMP.@variable(pm.model, lower_bound = 0.0)
         down = JuMP.@variable(pm.model, lower_bound = 0.0)
         JuMP.@constraint(pm.model, pg == tgt + up - down)
-        p_up, p_dn = rd_bid_prices(bids, g, p_da)
+        p_up, p_dn = rd_bid_prices(bids, g, p_da; rt = RD_OFFER_KEY[] === nothing)    # F2: not in phase I's AC check
         JuMP.add_to_expression!(obj, (p_up - p_da + bids.tie_break) * BASEMVA, up)
         # step 4: REE's buy-back offers in phase I's AC check (RD_OFFER_KEY set); real time keeps the bids
         rd_add_down_cost!(pm.model, obj, down, g, tgt, p_da, p_dn, bids.tie_break, RD_OFFER_KEY[])

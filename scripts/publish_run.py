@@ -455,9 +455,20 @@ def corridors(rdir):
 def line_loading(rdir, hours, corr_of, n):
     """Highest loading (%) per corridor and hour; 255 = no result (failed AC hour)."""
     load = np.full((n, hours.H), -1.0)
+    skipped = 0
     for ch in pd.read_csv(rdir / "branch_flows.csv", chunksize=CHUNK, usecols=["date", "hour", "branch_name", "loading_pct"]):
         ch = ch[ch.date.isin(hours.day_i)]
-        np.maximum.at(load, (ch.branch_name.map(corr_of).to_numpy(), hours.of(ch)), ch.loading_pct.to_numpy())
+        # a malformed line (a row cut in two when the file was written; seen once in y24pas, week of 12 Feb
+        # 2024) is skipped and counted instead of stopping the whole package
+        hr = pd.to_numeric(ch.hour, errors="coerce")
+        ci = ch.branch_name.map(corr_of)
+        lp = pd.to_numeric(ch.loading_pct, errors="coerce")
+        ok = hr.notna() & (hr == hr.round()) & (hr >= 0) & (hr < 24) & ci.notna() & lp.notna()
+        skipped += int((~ok).sum())
+        ch = ch[ok].assign(hour=hr[ok].astype(int))
+        np.maximum.at(load, (ci[ok].astype(int).to_numpy(), hours.of(ch)), lp[ok].to_numpy())
+    if skipped:
+        print(f"  branch_flows.csv: {skipped} malformed row(s) skipped")
     return np.where(load >= 0, np.clip(np.rint(load), 0, 254), 255).astype(np.uint8)
 
 

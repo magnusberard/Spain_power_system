@@ -131,7 +131,7 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
         anc = anc.merge(p1, on=["date", "hour", "unit_name"], how="outer")
         anc["anchor_mw"] = anc.anchor_mw.fillna(0.0) + anc.delta.fillna(0.0)
         anc = anc.drop(columns="delta").merge(keys, on=["date", "hour"])
-    markups = load_bids(bids)
+    markups = bids if isinstance(bids, dict) else load_bids(bids)     # a dict: {(fuel, tech): (up, down)} (rd_phases.py)
 
     rows = []
     for ch in pd.read_csv(rdir / "gen_dispatch.csv", chunksize=CHUNK,

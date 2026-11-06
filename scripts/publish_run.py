@@ -647,6 +647,13 @@ def build(rdir, runs_repo, args):
         sel = types == ty
         redispatch["up_by"][ty] = r1(np.where(okh, np.clip(dlt[sel], 0, None).sum(axis=0), np.nan))
         redispatch["down_by"][ty] = r1(np.where(okh, np.clip(-dlt[sel], 0, None).sum(axis=0), np.nan))
+    # REE-way runs: phase I/II and real time apart, each as REE's extra cost over the market (P.O. 14.4), for the
+    # viewer's per-phase charts and costs (redispatch_realism/rd_phases.py, 6 Nov 2026)
+    if (rdir / "rd_phase1_summary.csv").exists():
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "redispatch_realism"))
+        from rd_phases import phase_frames, phase_series
+        redispatch["phases"] = phase_series(*phase_frames(rdir), hours)
+        print(f"  redispatch by phase: {', '.join(redispatch['phases'])}")
 
     # plant map groups: units of one fuel at one substation
     bus = pd.read_csv(MODEL_REPO / "Data/Bus_Data.csv", encoding="utf-8-sig").set_index("bus_id")

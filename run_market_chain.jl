@@ -1019,7 +1019,7 @@ end
 if RD_STARTUPS !== nothing && RD_STARTUPS.reserve !== nothing && RD_STARTUPS.reserve.po15 !== nothing
     let rq = [rd_reserve_po15_base!(RD_STARTUPS.reserve, string(r.date), Int(r.hour), Float64(r.load_mw), Float64(r.wind_mw),
                                     Float64(r.solar_mw)) for r in eachrow(hourly_da)]
-        @printf "RT reserve     : P.O. 1.5 requirement without the largest unit, %.0f MW per hour (%.0f-%.0f)\n" sum(rq) / max(1, length(rq)) minimum(rq; init = 0.0) maximum(rq; init = 0.0)
+        @printf "RT reserve     : P.O. 1.5 requirement without the largest unit, %.0f MW per hour (%.0f-%.0f)\n" sum(rq) / max(1, length(rq)) minimum(rq; init = Inf) maximum(rq; init = -Inf)
     end
 end
 

@@ -27,6 +27,12 @@ Scores on 2023 (and, for reference, in sample on 2024):
   prec / recall   zone-hours with raised > 0, rule vs REE
 Choice: the best 2023 corr; if two are within 0.02, the one with |log ratio| closer to 0; if still tied, the simpler (C, R0, R1).
 
+Version 2 (9 Nov, after the first run, before any version-2 result): REE coded its causes differently in 2023. Most of
+its 2023 voltage and N-1 phase I sits under RTT (5.4 TWh), a code 2024 does not use (2024: SOT + COT voltage, SCA N-1).
+Voltage alone is therefore not the same set of records in both years. Version 2 scores "transmission-grid needs" in
+both years: 2024 causes SOT, COT, SCA, SCB; 2023 causes RTT, SOT, COT, SCA, SCB. Every rule is refitted on 2024 with
+that definition; zones, candidates, scores and choice as above.
+
     python redispatch_realism/zone_rule_test_2023.py
 """
 import os, sys
@@ -41,12 +47,15 @@ I90 = {2024: D / "i90", 2023: D / "i90_2023"}
 P_MIN, ONLINE = 0.4, 1.0
 
 
+CAUSES = {2024: ["SOT", "COT", "SCA", "SCB"], 2023: ["RTT", "SOT", "COT", "SCA", "SCB"]}   # version 2
+
+
 def truth(year, zu, xw):
     ph = pd.read_csv(I90[year] / "i90_tc_phase.csv.gz")
     up = ph[ph.Redespacho.str.startswith("UPO") & (ph.Sentido == "Subir")].copy()
     up["unit"] = up["Unidad de Programación"].str.strip().map(xw)
     up = up.dropna(subset=["unit"]).merge(zu, left_on="unit", right_on="unit_id")
-    volt = up[up["Tipo Restricción"].isin(["SOT", "COT"])]
+    volt = up[up["Tipo Restricción"].isin(CAUSES[year])]
     raised = volt.groupby(["date", "hour", "zone"]).unit.nunique().rename("n_raised")
     up_mwh = up.groupby(["date", "hour", "unit"]).mwh.sum()
     pv = pd.read_csv(I90[year] / "i90_pdvp.csv.gz")
@@ -111,12 +120,12 @@ def main():
     print(out.to_string())
     test = out.xs("2023 (test)", level=1)
     test = test.assign(gap=np.abs(np.log(test.ratio.astype(float))))
-    best = test.corr.astype(float).max()
-    close = test[test.corr.astype(float) >= best - 0.02].sort_values("gap")
+    best = test["corr"].astype(float).max()
+    close = test[test["corr"].astype(float) >= best - 0.02].sort_values("gap")
     order = {"C scheduled units": 0, "R0 load": 1, "R1 net load": 2}
     close = close.assign(o=[order[i] for i in close.index]).sort_values(["gap", "o"])
     print(f"\nchosen (rule fixed beforehand): {close.index[0]}")
-    out.to_csv(HERE / "data" / "zone_rule_test_2023.csv")
+    out.to_csv(HERE / "data" / "zone_rule_test_2023_v2.csv")
 
 
 if __name__ == "__main__":

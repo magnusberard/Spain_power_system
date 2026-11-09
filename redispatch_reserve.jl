@@ -57,18 +57,33 @@ function load_rd_reserve(cfg)
     get(c, "enabled", false) || return nothing
     rule = Symbol(get(c, "rule", "afrr"))
     rule in (:afrr, :e2) || error("[redispatch.reserve].rule must be \"afrr\" or \"e2\", not \"$rule\"")
-    f = String(rule == :e2 ? get(c, "e2_requirement_file", "redispatch_realism/data/rt_reserve_requirement_2024.csv") :
-                             c["requirement_file"])
-    f = isabspath(f) ? f : joinpath(@__DIR__, f)
-    col = rule == :e2 ? :requirement_mw : :afrr_up_mw
     req = Dict{Tuple{String,Int},Float64}()
-    for r in eachrow(CSV.read(f, DataFrame))
-        req[(string(r.date), Int(r.hour))] = Float64(r[col])
+    po15 = nothing
+    if rule == :e2 && String(get(c, "e2_requirement", "file")) == "po15"
+        # runs without REE's published requirement (2035; 9 Nov 2026): P.O. 1.5's own terms, build_rt_reserve_formula.py.
+        # rd_reserve_po15_base! fills req per hour from the DA demand, wind and solar (aFRR by hour + 2 % of demand +
+        # forecast gaps); e2_req adds §4.3's largest single loss, the largest scheduled nuclear/CCGT/coal unit
+        f = String(get(c, "e2_formula_file", "redispatch_realism/data/rt_reserve_formula.csv"))
+        f = isabspath(f) ? f : joinpath(@__DIR__, f)
+        t = CSV.read(f, DataFrame)
+        par(p) = Float64(only(t.value[t.part .== p]))
+        afrr = [Float64(only(t.value[(t.part .== "afrr") .& (t.hour .== h)])) for h in 0:23]
+        po15 = (afrr = afrr, share = par("demand_share"), g_d = par("gap_demand"), g_w = par("gap_wind"), g_s = par("gap_solar"))
+        @printf "  [redispatch.reserve] rule e2, requirement from P.O. 1.5's terms (%s): aFRR %.0f-%.0f MW, %.1f %% of demand + gaps %.2f / %.2f / %.2f %% of demand / wind / solar + the largest scheduled unit\n" basename(f) minimum(afrr) maximum(afrr) 100 * po15.share 100 * po15.g_d 100 * po15.g_w 100 * po15.g_s
+    else
+        f = String(rule == :e2 ? get(c, "e2_requirement_file", "redispatch_realism/data/rt_reserve_requirement_2024.csv") :
+                                 c["requirement_file"])
+        f = isabspath(f) ? f : joinpath(@__DIR__, f)
+        col = rule == :e2 ? :requirement_mw : :afrr_up_mw
+        for r in eachrow(CSV.read(f, DataFrame))
+            req[(string(r.date), Int(r.hour))] = Float64(r[col])
+        end
+        @printf "  [redispatch.reserve] rule %s: requirement for %d hours (%s)\n" rule length(req) basename(f)
     end
-    @printf "  [redispatch.reserve] rule %s: requirement for %d hours (%s)\n" rule length(req) basename(f)
     tertiary = rule == :afrr && Bool(get(c, "tertiary", false))                 # E1 belongs to the aFRR rule
     return (req = req, scale = Float64(get(c, "scale", 1.0)), extra_mw = Float64(get(c, "extra_mw", 0.0)),
             rule = rule,                                                             # step E2
+            po15 = po15,                                                             # P.O. 1.5 terms, or nothing
             window_ahead = Int(get(c, "window_ahead", 1)), window_back = Int(get(c, "window_back", 1)),
             offline_hydro = Bool(get(c, "offline_hydro_counts", true)),
             tertiary = tertiary,                                                     # step E1
@@ -138,6 +153,23 @@ end
 
 e2_avail(s) = sum((e2_head(cap, pumped, Float64(get(s, n, 0.0))) for (n, (cap, pumped)) in E2_UNITS); init = 0.0)
 
+const E2_BIG = Set{String}()     # po15: the units whose loss §4.3 counts (nuclear, CCGT, coal), for E2_UNITS_DATE
+
+"P.O. 1.5 mode: the hour's requirement without the largest loss, from the DA demand, wind and solar (MW)."
+function rd_reserve_po15_base!(rs, date_str, hour, load_mw, wind_mw, solar_mw)
+    (rs === nothing || !hasproperty(rs, :po15) || rs.po15 === nothing) && return 0.0
+    p = rs.po15
+    rs.req[(date_str, hour)] = p.afrr[hour + 1] + (p.share + p.g_d) * load_mw + p.g_w * wind_mw + p.g_s * solar_mw
+end
+
+"The hour's E2 requirement (MW, before scale and extra), or nothing: with po15, plus the largest scheduled unit in s."
+function e2_req(rs, ds, h, s)
+    r = get(rs.req, (ds, h), nothing)
+    (r === nothing || !hasproperty(rs, :po15) || rs.po15 === nothing) && return r
+    big = s === nothing ? 0.0 : maximum((Float64(get(s, n, 0.0)) for n in E2_BIG); init = 0.0)
+    return r + big
+end
+
 """
     e2_prepare_hour!(network, su, date_str, sched)
 
@@ -151,11 +183,13 @@ function e2_prepare_hour!(network, su, date_str, sched)
     (rs === nothing || rs.rule != :e2) && return
     E2_SCHED[] = sched
     E2_UNITS_DATE[] == date_str && return
-    empty!(E2_UNITS)
+    empty!(E2_UNITS); empty!(E2_BIG)
     bus = network["bus"]
     for (_, g) in network["gen"]
-        e2_is_provider(g) || continue
         ISLAND_BUSES !== nothing && String(bus[string(g["gen_bus"])]["name"]) in ISLAND_BUSES && continue
+        (String(g["fuel"]) in ("Nuclear", "Coal") || (String(g["fuel"]) == "Gas" && String(g["technology"]) == "Combined_cycle")) &&
+            startswith(String(g["name"]), "G") && push!(E2_BIG, String(g["name"]))
+        e2_is_provider(g) || continue
         pumped = lowercase(String(g["technology"])) == "pumped_storage"
         cap = pumped ? g["pmax"] * BASEMVA : Float64(get(g, "installed_mw", g["pmax"] * BASEMVA))
         E2_UNITS[String(g["name"])] = (cap, pumped)
@@ -167,9 +201,10 @@ function e2_prepare_hour!(network, su, date_str, sched)
                  [(string(d + Day(1)), h) for h in 0:(A - 1)])
     short = Dict{Int,Float64}()                      # position in keys_ → shortfall
     for (i, (ds, h)) in enumerate(keys_)
-        r = get(rs.req, (ds, h), nothing)
-        s = r === nothing ? nothing : e2_sched(ds, h)
+        haskey(rs.req, (ds, h)) || continue
+        s = e2_sched(ds, h)
         s === nothing && continue
+        r = e2_req(rs, ds, h, s)
         a = e2_avail(s)
         ds == date_str && (E2_AVAIL[(ds, h)] = a)
         short[i] = max(rs.scale * r + rs.extra_mw - a, 0.0)
@@ -196,11 +231,11 @@ function e2_commit!(network, su, date_str, hour)
     rs = su.reserve
     x = get(E2_WINDOW, (date_str, hour), 0.0)
     a0 = get(E2_AVAIL, (date_str, hour), 0.0)
-    req = rs.scale * get(rs.req, (date_str, hour), 0.0) + rs.extra_mw
+    s = E2_SCHED[]
+    req = rs.scale * something(e2_req(rs, date_str, hour, s), 0.0) + rs.extra_mw
     need = x > 0 ? a0 + x : 0.0                      # headroom to reach in this hour
     RD_CURRENT_RESERVE[] = need
     gens = network["gen"]
-    s = E2_SCHED[]
     have = 0.0
     for (_, g) in gens
         u = get(E2_UNITS, String(g["name"]), nothing)

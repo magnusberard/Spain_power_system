@@ -24,6 +24,10 @@
 #   redispatch_realism/solstorm_start_year_pipeline.sh <out> k/N
 #
 #   FROM, TO (default 2024-01-01 .. 2024-12-31), DAYS (7), LANES (4 per node), IPOPT (ma57), DRY=1 (plan only)
+#   SCENARIO=trinity|necp: a 2035 run (scripts/make_run_config.jl --scenario: EMPIRE fleet, 52 study weeks on the
+#     2024 calendar with weather year 2015, TO defaults to 2024-12-29). Leave GAS, MARKUP and HYDRO out (the scenario
+#     sets its own switches) and PUMPING too (2024's real pumping). EXTRA for 2035: no --offers (REE's 2024 offers),
+#     --offer-rule redispatch_realism/data/phase2_offer_rule.csv instead; --zone-rule; --rt-reserve-e2 --rt-reserve-po15.
 # Watch:   tail -n 2 <out>/lane-*.log ; ls <out>/*/uc_state.json | wc -l (weeks through the markets) ;
 #          ls <out>/*/summary.csv | wc -l (weeks finished)
 # Restart: the same command; finished weeks are skipped, a week with no summary.csv is run again.
@@ -32,7 +36,14 @@ set -u
 OUT="$1"; PART="$2"
 K="${PART%%/*}"; N="${PART##*/}"
 [ "$K" -ge 1 ] && [ "$K" -le "$N" ] || { echo "part must be k/N with 1 <= k <= N"; exit 1; }
-FROM="${FROM:-2024-01-01}"; TO="${TO:-2024-12-31}"; DAYS="${DAYS:-7}"; LANES="${LANES:-4}"; IPOPT="${IPOPT:-ma57}"
+SCENARIO="${SCENARIO:-}"
+case "$SCENARIO" in ""|trinity|necp) ;; *) echo "SCENARIO must be trinity or necp"; exit 1 ;; esac
+if [ -n "$SCENARIO" ]; then
+    for v in HYDRO PUMPING PUMPLIMIT; do [ -n "${!v:-}" ] && { echo "SCENARIO=$SCENARIO: leave $v out (2024 only)"; exit 1; }; done
+    for v in GAS MARKUP; do [ "${!v:-off}" = "off" ] || { echo "SCENARIO=$SCENARIO: leave $v out (the scenario sets it)"; exit 1; }; done
+    case " ${EXTRA:-} " in *" --offers "*|*" --unit-req "*) echo "SCENARIO=$SCENARIO: --offers / --unit-req are REE's 2024 data"; exit 1 ;; esac
+fi
+FROM="${FROM:-2024-01-01}"; TO="${TO:-$([ -n "$SCENARIO" ] && echo 2024-12-29 || echo 2024-12-31)}"; DAYS="${DAYS:-7}"; LANES="${LANES:-4}"; IPOPT="${IPOPT:-ma57}"
 GAS="${GAS:-off}"; MARKUP="${MARKUP:-off}"
 EXTRA="${EXTRA:?set EXTRA to the redispatch flags (make_config.jl), e.g. the combined December setup}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -48,6 +59,7 @@ ARGS=()
 [ -n "${PUMPLIMIT:-}" ] && ARGS+=(--pump-limits "$PUMPLIMIT")
 [ -n "${HYDROTOPUP:-}" ] && ARGS+=(--hydro-topup "$HYDROTOPUP")
 [ -n "${IDSTARTS:-}" ] && ARGS+=(--intraday-starts "$IDSTARTS")
+[ -n "$SCENARIO" ] && ARGS+=(--scenario "$SCENARIO")
 
 # chunks of DAYS days in FROM .. TO (every part computes the same list)
 chunks=()

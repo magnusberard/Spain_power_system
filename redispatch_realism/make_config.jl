@@ -146,6 +146,10 @@ function main(args)
         if "--rt-reserve-e2" in args                            # step E2: real-time reserve, best-effort rule (5 Nov)
             set!(cfg, "redispatch.reserve.rule", "e2")
             set!(cfg, "redispatch.reserve.tertiary", false)
+            # --rt-reserve-po15: the requirement from P.O. 1.5's terms instead of REE's 2024 series (runs without it,
+            # 2035; build_rt_reserve_formula.py, 9 Nov): Jul-Dec 2024 size 0.99x, hourly r 0.36 (FAILED the 0.50 mark:
+            # the forecast-gap part's timing is REE's forecast noise, r 0.25; mFRR r 0.96)
+            "--rt-reserve-po15" in args && set!(cfg, "redispatch.reserve.e2_requirement", "po15")
         end
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         up = opt("--uprate")                                    # thermal uprate of listed lines/transformers

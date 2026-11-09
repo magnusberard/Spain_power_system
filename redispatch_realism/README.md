@@ -1129,6 +1129,28 @@ reserve is lower than REE's (mean ~3.4 vs ~6.0 GW: fewer CCGTs in its schedule),
 5.4 M€ start cost, mostly the same units restarted each hour, which the held-start fix removes. The rerun with the
 fix was stopped (machine low on memory); first measure in the setup = a Jan–Jun week, then December.
 
+**E2's requirement from P.O. 1.5's own terms, for 2035 (9 Nov, `build_rt_reserve_formula.py`, method and marks
+committed before running).** P.O. 1.5 (BOE-A-2024-11535): §4.3 mFRR up = largest loss by a single failure + 2 % of the
+forecast demand; §4.2 aFRR up set by REE (≥ 500 MW, no formula); §4.4 REE's forecasts vs the programmes. In the model:
+largest scheduled nuclear/CCGT/coal unit + 2 % of DA demand; REE's 2024 aFRR band by hour of day (Jan–Jun, 795–981 MW);
+gaps 1.05 % of demand + 7.22 % of wind + 7.67 % of solar (Jan–Jun ratios). The physical largest unit matters: with I90
+programme units (COF1, DUER bundle hydro plants) §4.3 is 16 % high; with nuclear/CCGT/coal it gives 1,576 vs 1,570 MW,
+r 0.83 against e·sios 1788. Jul–Dec 2024 test against the published requirement: size 0.96× (REE's inputs) / 0.99×
+(the model's own, y24rtact) — pass; hourly r 0.37 / 0.36 — **FAILS the 0.50 mark**. Per part: mFRR r 0.96, aFRR 0.55,
+gaps 0.25 (the gaps' hour-to-hour spread, 837 MW, is REE's forecast noise; with the published gaps the rest gives
+r 0.98). So the formula gets the size, not the timing of the forecast-error part; no 2035 input can know that timing.
+In the model: `[redispatch.reserve] e2_requirement = "po15"` (`make_config.jl --rt-reserve-po15`, needs
+`--rt-reserve-e2`): the chain fills each hour's base from its DA demand, wind and solar (`rd_reserve_po15_base!`),
+`e2_req` adds the largest scheduled unit. `test_rt_reserve_po15.jl`: 6 tests, all 8,784 hours equal the formula.
+Use in 2035 open (decision: with the timing limit stated, or no real-time reserve in 2035).
+
+**2035 in the year pipeline (9 Nov).** `SCENARIO=trinity|necp redispatch_realism/solstorm_start_year_pipeline.sh`:
+`make_run_config.jl --scenario` (EMPIRE fleet, 52 study weeks on the 2024 calendar, weather year 2015, its own water
+values `Data/*_sddp4_<label>.csv`), TO defaults to 2024-12-29; refuses GAS/MARKUP/HYDRO/PUMPING/PUMPLIMIT (2024 only;
+the chain stops on the last two in scenario runs) and `--offers` / `--unit-req` (REE's 2024 data). The REE-hour inputs
+and what replaces them: zone needs → `--zone-rule`; real-time reserve → `--rt-reserve-po15`; phase II's offers →
+`--offer-rule data/phase2_offer_rule.csv`; named units (fix 2) → dropped (9 Nov).
+
 **E2, out-of-year test on 2023 (4 Nov, rule frozen on 2024 in `a936dc2`, test script `35102c1`).** Window ±1 h around
 the single-hour shortfall (CCGT + coal + pumped storage), window max. 2023: hourly corr **0.58** (passes; best of all
 tests, and out of year), daily 0.55, 73 % of its alarms real, but **59 %** of REE's need hours and volume **0.36×**

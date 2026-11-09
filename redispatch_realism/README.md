@@ -939,6 +939,22 @@ a 2035 run points `[redispatch.mustrun].requirement_file` at it. Assumes the 202
 (more solar and new lines in 2035 can shift it; to state). Also usable on 2024 itself, to test phase I without
 REE's own hourly needs (removes the circularity of step 6).
 
+*Out of year (9 Nov, `zone_rule_test_2023.py`, committed before running):* fitted on 2024, tested on 2023 against
+REE's transmission-grid needs (2023 codes most voltage and N-1 as RTT, so voltage alone is not the same records in both
+years): R0 load hourly r 0.66 at 1.02× REE's size; R1 net load 0.49 (0.95×); C "units already scheduled" 0.48
+(2.22×). R0 kept. *The named units (fix 2) as a rule* (`unit_rule_test.py`): right size, weak timing (Jul–Dec r 0.27,
+2023 0.21). REE's causes show why: Aboño 2 is raised 100 % for distribution-grid requests (RTD, 1.94 of 2.05 TWh),
+Besós 5 46 % for N-1, the others for voltage at the plant itself. **Decided 9 Nov: fix 2 is dropped** (REE's choices,
+not costs; the model's own performance is shown without it).
+
+*In the model (`--zone-rule`, 9 Nov):* `[redispatch.mustrun].rule_file` = `data/zone_need_rule_model_load.csv`, the
+rule refitted on the **model's own DA demand** (`data/model_load_2024.csv`, from the year run's da_profiles; the
+model's demand is 4 % below OMIE's physical generation and the bins are deciles, so OMIE's edges put only 38 % of
+model hours in the same bin). Jan–Jun fit, Jul–Dec test: 7.1 vs 6.9 units/h, r = 0.71, precision 68 %, recall 69 %.
+The chain fills the zone needs from each study day's DA demand before any stage (`rd_mustrun_from_rule!`), so one
+mechanism serves 2024 and 2035 (2035 demand above 2024's peak falls in the top bin: one zone with a need). Test
+`test_zone_rule.jl`: all 37,176 zone-hours of 2024 equal Python's `apply_rule`.
+
 **Grid data checked against REE (step L, 1 Nov): plants at REE's connection voltage, border junctions.** Source: REE,
 "Capacidad de acceso ocupada por posición de conexión" (1 Jul 2024; existing conventional positions "EvCo_Exist").
 Of 30 large thermal units matched by site and size, 15 (10.1 GW) sat at another voltage than REE's, plus El Fangal

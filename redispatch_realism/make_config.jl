@@ -123,6 +123,12 @@ function main(args)
             set!(cfg, "redispatch.phase1.ac_check_zones", !("--no-zones" in args))
         end
         "--no-zones" in args && set!(cfg, "redispatch.mustrun.enabled", false)
+        # --zone-rule: RD5's zone needs from the zone rule and the run's own DA demand, not REE's 2024 hours (9 Nov 2026;
+        # the 2024 rule runs and 2035). Fitted Jan-Jun 2024 on the model's demand: Jul-Dec r = 0.71, 7.1 vs 6.9 units/h
+        if "--zone-rule" in args
+            set!(cfg, "redispatch.mustrun.rule_file", "redispatch_realism/data/zone_need_rule_model_load.csv")
+            set!(cfg, "redispatch.mustrun.rule_p_min", 0.4)
+        end
         "--no-rt-zones" in args && set!(cfg, "redispatch.mustrun.realtime", false)   # zones in phase I only
         if "--down-only" in args                                # may turn down; nuclear also up (5 Nov 2026: REE raised
             set!(cfg, "redispatch.down_only", ["CHP", "CHP_Waste"])            # 3.0 TWh of nuclear in 2024's phase I, I90)

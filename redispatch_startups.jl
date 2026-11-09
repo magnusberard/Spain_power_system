@@ -96,19 +96,49 @@ function load_rd_mustrun(cfg)
     get(c, "enabled", false) || return nothing
     resolve(p) = isabspath(p) ? p : joinpath(@__DIR__, p)
     zu  = CSV.read(resolve(String(c["zones_file"])), DataFrame)
-    req = CSV.read(resolve(String(c["requirement_file"])), DataFrame)
     members = Dict{String,Vector{String}}()
     for r in eachrow(zu)
         push!(get!(members, String(r.zone), String[]), String(r.unit_id))
     end
     need = Dict{Tuple{String,Int},Vector{Tuple{String,Int}}}()
     scale = Float64(get(c, "scale", 1.0))
+    rf = String(get(c, "rule_file", ""))
+    if rf != ""
+        # the zone rule instead of REE's hours (9 Nov 2026; any year, 2035 included): build_zone_need_rule.py --load,
+        # fitted on the model's own 2024 demand; rd_mustrun_from_rule! fills `need` from each day's DA demand
+        rr = CSV.read(resolve(rf), DataFrame)
+        edges = sort(unique(vcat(Float64.(rr.load_lo_mw), Float64.(rr.load_hi_mw))))
+        p_min = Float64(get(c, "rule_p_min", 0.4))
+        tab = Dict((String(r.zone), Int(r.bin)) => round(Int, scale * r.n_online) for r in eachrow(rr) if r.p_need >= p_min)
+        @printf "  [redispatch.mustrun] %d zones, %d member units, ZONE RULE %s (%d load bins, p_need >= %.2f: %d zone-bins with a need)\n" length(members) nrow(zu) rf (length(edges) - 1) p_min length(tab)
+        return (members = members, need = need, rule = (edges = edges, tab = tab, zones = sort(unique(String.(rr.zone)))))
+    end
+    req = CSV.read(resolve(String(c["requirement_file"])), DataFrame)
     for r in eachrow(req)
         n = round(Int, scale * r.n_online)
         n > 0 && push!(get!(need, (string(r.date), Int(r.hour)), Tuple{String,Int}[]), (String(r.zone), n))
     end
     @printf "  [redispatch.mustrun] %d zones, %d member units, requirements in %d hours\n" length(members) nrow(zu) length(need)
-    return (members = members, need = need)
+    return (members = members, need = need, rule = nothing)
+end
+
+"""
+    rd_mustrun_from_rule!(mr, date_str, hour, load_mw) -> number of zones with a need
+
+The zone rule for one hour: the load bin of the day-ahead demand, then every zone whose bin has p_need >= rule_p_min
+needs its n_online units (as build_zone_need_rule.py's apply_rule).
+"""
+function rd_mustrun_from_rule!(mr, date_str, hour, load_mw)
+    (mr === nothing || mr.rule === nothing) && return 0
+    e = mr.rule.edges
+    b = clamp(searchsortedlast(e, load_mw) - 1, 0, length(e) - 2)
+    v = Tuple{String,Int}[]
+    for z in mr.rule.zones
+        n = get(mr.rule.tab, (z, b), 0)
+        n > 0 && push!(v, (z, n))
+    end
+    isempty(v) ? delete!(mr.need, (date_str, hour)) : (mr.need[(date_str, hour)] = v)
+    return length(v)
 end
 
 """

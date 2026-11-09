@@ -998,6 +998,12 @@ else
             push!(hourly_bal_rows, (date=date_str, hour=h, load_mw=load_bal[h+1], solar_mw=solar_bal[h+1], wind_mw=wind_bal[h+1]))
         end
     end
+    # [redispatch.mustrun].rule_file: the zone needs from the zone rule and this run's own DA demand (2024 and 2035)
+    if RD_STARTUPS !== nothing && RD_STARTUPS.mustrun !== nothing && RD_STARTUPS.mustrun.rule !== nothing
+        nz = sum(rd_mustrun_from_rule!(RD_STARTUPS.mustrun, r.date, r.hour, r.load_mw) for r in hourly_da_rows; init = 0)
+        nu = sum(sum(last, v) for v in values(RD_STARTUPS.mustrun.need); init = 0)
+        @printf "Zone rule      : %d zone-hours with a need in %d hours (%.1f units required per hour)\n" nz length(hourly_da_rows) nu / max(1, length(hourly_da_rows))
+    end
     hourly_da  = DataFrame(hourly_da_rows);  sort!(hourly_da,  [:date, :hour])
     hourly_id2 = DataFrame(hourly_id2_rows); sort!(hourly_id2, [:date, :hour])
     hourly_id3 = DataFrame(hourly_id3_rows); sort!(hourly_id3, [:date, :hour])

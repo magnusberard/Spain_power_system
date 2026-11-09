@@ -28,6 +28,8 @@ REPO = HERE.parent
 
 def national_load(real):
     r = pd.read_csv(real)
+    if "load_mw" in r.columns:                                      # the model's own demand (da_profiles)
+        return r[["date", "hour", "load_mw"]]
     ph = [c for c in r.columns if c.startswith("phys_")]
     return r.assign(load_mw=r[ph].sum(axis=1))[["date", "hour", "load_mw"]]
 
@@ -43,6 +45,9 @@ def apply_rule(rule, load, p_min):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--real", type=Path, default=REPO.parent / "spain-model-runs" / "reference" / "real_hourly_2024.csv.gz")
+    # --load: the model's own 2024 demand instead (date, hour, load_mw; e.g. the year run's da_profiles.csv joined), so
+    # the model can apply the rule to its own demand in any year (2024 and 2035 alike); 9 Nov 2026
+    ap.add_argument("--load", type=Path)
     ap.add_argument("--fit", nargs=2, default=["2024-01-01", "2024-06-30"])
     ap.add_argument("--test", nargs=2, default=["2024-07-01", "2024-12-31"])
     ap.add_argument("--bins", type=int, default=10)
@@ -54,7 +59,7 @@ def main():
     ap.add_argument("--apply-out", type=Path)
     a = ap.parse_args()
     zr = pd.read_csv(HERE / "data" / "voltage_zone_requirement.csv")
-    load = national_load(a.real)
+    load = national_load(a.load or a.real)
     zones = sorted(zr.zone.unique())
     fit = load[(load.date >= a.fit[0]) & (load.date <= a.fit[1])]
     edges = np.quantile(fit.load_mw, np.linspace(0, 1, a.bins + 1))

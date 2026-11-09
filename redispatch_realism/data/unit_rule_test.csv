@@ -1,0 +1,7 @@
+,,prec,recall,size,corr
+U1 zone-triggered,Jan-Jun 2024 (fit),0.55,0.65,1.17,0.472
+U1 zone-triggered,Jul-Dec 2024 (test),0.53,0.61,1.15,0.266
+U1 zone-triggered,2023 (out of year),0.27,0.51,1.89,0.21
+U2 own load pattern,Jan-Jun 2024 (fit),0.6,0.92,1.53,0.444
+U2 own load pattern,Jul-Dec 2024 (test),0.53,0.84,1.58,0.215
+U2 own load pattern,2023 (out of year),0.38,0.95,2.49,0.189

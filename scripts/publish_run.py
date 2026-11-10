@@ -272,13 +272,17 @@ def detect_trading_features(rdir):
 
 
 def phase1_in_chain(rdir):
-    """True if the run's redispatch phase I ran inside the market chain ([redispatch.phase1].in_chain)."""
+    """True if the run's redispatch phase I ran inside the market chain ([redispatch.phase1].in_chain), or if real time
+    was replayed on such a run (replay_saved, 10 Nov 2026: in_chain is off in the replay's config, but phase I's changes
+    are in bal_dispatch.csv all the same; without this the overall redispatch left phase I out, 5.6 instead of 14.3 TWh
+    up in y24rule_rt). Same rule as redispatch_realism/settle.py."""
     import tomllib
     path = next((p for p in (rdir / "config_used_market.toml", rdir / "config_used.toml") if p.exists()), None)
     if path is None:
         return False
     c = tomllib.loads(path.read_text(encoding="utf-8"))
-    return bool(c.get("redispatch", {}).get("phase1", {}).get("in_chain", False))
+    p1 = c.get("redispatch", {}).get("phase1", {})
+    return bool(p1.get("in_chain", False)) or bool(p1.get("replay_saved", False))
 
 
 def read_run_info(rdir, args, hours, status):

@@ -81,13 +81,16 @@ STORAGE = {("Hydro", "reservoir"), ("Hydro", "pumped_storage"), ("Battery", "Li-
 
 
 def phase1_in_chain(rdir):
-    """True if phase I ran inside the market chain ([redispatch.phase1].in_chain in the run's config)."""
+    """True if phase I ran inside the market chain ([redispatch.phase1].in_chain in the run's config), or if real time
+    was replayed on such a week (replay_saved, 10 Nov 2026: in_chain is off there, but bal_dispatch.csv already holds
+    phase I's DC changes; adding rd_phase1.csv again counted them twice, 12.6 TWh of real-time up in y24rule_rt)."""
     f = rdir / "config_used.toml"
     if not f.exists():
         return False
     with open(f, "rb") as fh:
         c = tomllib.load(fh)
-    return bool(c.get("redispatch", {}).get("phase1", {}).get("in_chain", False))
+    p1 = c.get("redispatch", {}).get("phase1", {})
+    return bool(p1.get("in_chain", False)) or bool(p1.get("replay_saved", False))
 
 
 def run_rt_markups(rdir):

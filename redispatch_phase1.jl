@@ -137,6 +137,9 @@ function load_rd_phase1(cfg)
     get(c, "enabled", false) || return nothing
     uc = get(cfg, "unit_commitment", Dict())
     return (in_chain     = Bool(get(c, "in_chain", false)),               # after the DA, before ID2
+            # real time only, on a saved in-chain week ([redispatch].from_saved = "BAL"; 10 Nov 2026):
+            # phase I's effects come from its rd_phase1*.csv (rd_phase1_replay!), phase I is not solved again
+            replay_saved = Bool(get(c, "replay_saved", false)),
             security_limits = Bool(get(c, "security_limits", false)),     # in_chain: ID2–BAL keep phase I's changes
             security_limits_rt = Bool(get(c, "security_limits_rt", false)),  # ... and real time too
             ramp_limits  = Bool(get(c, "ramp_limits", false)),            # the markets' [da].ramp_limits in phase I too
@@ -1081,6 +1084,65 @@ function phase1_ac_check_day!(su, date_str)
     end
     RD_OFFER_KEY[] = nothing                             # real time keeps the [redispatch.bids] values
     @printf "  phase I AC check %s: %d of %d hours solved, %d unit-hours started for voltage\n" date_str n_ok nrow(day_ts) n_new
+end
+
+"""
+    rd_phase1_replay!(dir, su) -> (hours, unit-hours kept on, AC changes, limits)
+
+[redispatch.phase1].replay_saved: rebuild what real time takes from an in-chain week's phase I, from that week's files,
+as phase1_in_chain! and phase1_ac_check_day! left it: RD_PHASE1_DELTA = the AC check's own changes (rd_phase1_ac.csv;
+phase I's DC changes are already in bal_dispatch.csv), RD_PHASE1_ON = the units committed after the AC check
+(rd_phase1.csv `committed`), RD_PHASE1_LIMITS = phase I's limits for real time (security_limits_rt), from the DC change
+= phase1_mw − ac_mw − da_mw: turned down ⇒ at most its post-DC output, raised ⇒ at least it (|change| > 0.5 MW).
+Files are rounded to 0.1 MW, so real time may differ from the original run by that much per unit.
+"""
+function rd_phase1_replay!(dir, su)
+    p = CSV.read(joinpath(dir, "rd_phase1.csv"), DataFrame)
+    acf = joinpath(dir, "rd_phase1_ac.csv")
+    ac = isfile(acf) ? CSV.read(acf, DataFrame) : DataFrame(date = String[], hour = Int[], unit = String[], ac_mw = Float64[])
+    acd = Dict{Tuple{String,Int,String},Float64}()
+    for r in eachrow(ac)
+        k = (string(r.date), Int(r.hour))
+        d = get!(RD_PHASE1_DELTA, k, Dict{String,Float64}())
+        d[String(r.unit)] = Float64(r.ac_mw)
+        acd[(k..., String(r.unit))] = Float64(r.ac_mw)
+    end
+    n_on = n_lim = 0
+    for r in eachrow(p)
+        k = (string(r.date), Int(r.hour))
+        u = String(r.unit)
+        if r.committed === true || string(r.committed) == "true"
+            push!(get!(RD_PHASE1_ON, k, Set{String}()), u)
+            n_on += 1
+        end
+        if su.phase1.security_limits_rt
+            post_dc = Float64(r.phase1_mw) - get(acd, (k..., u), 0.0)
+            dc = post_dc - Float64(r.da_mw)
+            if abs(dc) > 0.5
+                get!(RD_PHASE1_LIMITS, k, Dict{String,Tuple{Float64,Float64}}())[u] = dc < 0 ? (NaN, post_dc) : (post_dc, NaN)
+                n_lim += 1
+            end
+        end
+    end
+    # the AC check's own start-ups stay in rd_startups.csv (zone "phase I AC…"); real time adds its rows after them
+    n_su = 0
+    sf = joinpath(dir, "rd_startups.csv")
+    days = isdefined(Main, :TARGET_DAYS) ? Set(string.(Main.TARGET_DAYS)) : nothing    # SPAIN_DAYS may pick a few days
+    if isfile(sf)
+        for r in eachrow(CSV.read(sf, DataFrame; types = Dict(:zone => String)))
+            startswith(coalesce(r.zone, ""), "phase I AC") || continue
+            days === nothing || string(r.date) in days || continue
+            push!(RD_STARTUP_ROWS, (date = string(r.date), hour = Int(r.hour), round = Int(r.round), unit = String(r.unit),
+                                    fuel = String(r.fuel), technology = String(r.technology), bus_i = Int(r.bus_i),
+                                    min_load_mw = Float64(r.min_load_mw), start_cost_eur = Float64(r.start_cost_eur),
+                                    trigger_bus_i = Int(r.trigger_bus_i), trigger_slack_mvar = Float64(r.trigger_slack_mvar),
+                                    hops = Int(r.hops), zone = String(r.zone), zone_need = Int(r.zone_need),
+                                    zone_online = Int(r.zone_online)))
+            n_su += 1
+        end
+    end
+    @printf "  phase I replayed from %s: %d hours, %d unit-hours kept on, %d AC-check changes, %d real-time limits, %d AC-check start rows kept\n" basename(dir) length(unique(zip(p.date, p.hour))) n_on nrow(ac) n_lim n_su
+    return n_on
 end
 
 function write_rd_phase1(dir)

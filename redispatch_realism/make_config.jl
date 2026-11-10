@@ -150,6 +150,8 @@ function main(args)
             # 2035; build_rt_reserve_formula.py, 9 Nov): Jul-Dec 2024 size 0.99x, hourly r 0.36 (FAILED the 0.50 mark:
             # the forecast-gap part's timing is REE's forecast noise, r 0.25; mFRR r 0.96)
             "--rt-reserve-po15" in args && set!(cfg, "redispatch.reserve.e2_requirement", "po15")
+            # fix A (10 Nov): a unit is started for reserve only if its bus can export its minimum load (on from now)
+            set!(cfg, "redispatch.reserve.e2_deliverable", !("--rt-undeliverable" in args))
         end
         "--dedup-ab" in args && set!(cfg, "network.dedup_ab_lines", true)   # a/b duplicate lines once
         up = opt("--uprate")                                    # thermal uprate of listed lines/transformers

@@ -1144,6 +1144,22 @@ In the model: `[redispatch.reserve] e2_requirement = "po15"` (`make_config.jl --
 `e2_req` adds the largest scheduled unit. `test_rt_reserve_po15.jl`: 6 tests, all 8,784 hours equal the formula.
 Use in 2035 open (decision: with the timing limit stated, or no real-time reserve in 2035).
 
+**Fix A: reserve only where it can be delivered, and real time replayed on a saved year (10 Nov).** y24rule (no
+named units, zone rule) left 149 real-time hours unsolved (y24rtact 17), all with Besós 5 (G0790) started or held for
+reserve: no longer a named unit, phase I ran it 261 h (was 4,747), so E2 picked it as the cheapest reserve per MW in
+4,738 h, behind the single 393 MW line (LTGES1146) that is ES01113's only branch (Besós 3–5, 1,671 MW). Phase I and its
+AC check solved every hour. Fix A (`[redispatch.reserve].e2_deliverable`, on with `--rt-reserve-e2` unless
+`--rt-undeliverable`): `e2_bus_room` = ratings of a bus's in-service branches − (scheduled generation − load); a unit is
+started only if its minimum load fits, and its headroom counts only as far as the bus can export it (P.O. 3.2's
+remedy holds reserve the system can use). Test `test_rt_deliverable.jl` (3), E2 tests 29/29 unchanged.
+*Replay* (`[redispatch.phase1].replay_saved`, `make_rt_replay_config.jl`, `solstorm_start_rt_replay.sh`): real time
+only, from a saved in-chain week: anchor `bal_dispatch.csv` (`from_saved = "BAL"`, phase I's DC changes included), the
+AC check's own changes from `rd_phase1_ac.csv`, units kept on and real-time limits from `rd_phase1.csv`, the AC check's
+start rows kept in rd_startups.csv (`rd_phase1_replay!`). Weeks run in parallel (real time does not feed back).
+Check on 4 Apr 2024 (y24rule, 6 unsolved hours): without fix A the replay reproduces the run (status 24/24 hours the
+same, reserve starts 102 = 102, requirement identical, cost of the solved hours −0.5 %, files rounded to 0.1 MW); with
+fix A 24/24 hours solved, Besós 5 skipped twice, cost of the same 18 hours +1.2 %.
+
 **2035 in the year pipeline (9 Nov).** `SCENARIO=trinity|necp redispatch_realism/solstorm_start_year_pipeline.sh`:
 `make_run_config.jl --scenario` (EMPIRE fleet, 52 study weeks on the 2024 calendar, weather year 2015, its own water
 values `Data/*_sddp4_<label>.csv`), TO defaults to 2024-12-29; refuses GAS/MARKUP/HYDRO/PUMPING/PUMPLIMIT (2024 only;

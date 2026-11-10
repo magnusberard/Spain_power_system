@@ -84,6 +84,8 @@ function load_rd_reserve(cfg)
     return (req = req, scale = Float64(get(c, "scale", 1.0)), extra_mw = Float64(get(c, "extra_mw", 0.0)),
             rule = rule,                                                             # step E2
             po15 = po15,                                                             # P.O. 1.5 terms, or nothing
+            # fix A (10 Nov 2026): start a unit for reserve only if its bus can export its minimum load (e2_bus_room)
+            deliverable = Bool(get(c, "e2_deliverable", false)),
             window_ahead = Int(get(c, "window_ahead", 1)), window_back = Int(get(c, "window_back", 1)),
             offline_hydro = Bool(get(c, "offline_hydro_counts", true)),
             tertiary = tertiary,                                                     # step E1
@@ -227,6 +229,35 @@ function e2_output(g, s)
     return (!su_is_off(g) && get(g, "pmin", 0.0) > 0.0) ? g["pg"] * BASEMVA : 0.0
 end
 
+"""
+    e2_bus_room(network, s) -> Dict(bus => MW)
+
+Fix A (10 Nov 2026): what each bus can still send out, MW = the ratings of its in-service branches − (its scheduled
+generation − its load). P.O. 3.2's remedy starts units to hold reserve the system can use; a unit whose bus cannot
+export its minimum load gives none, and in the model it made the hour infeasible (y24rule: Besós 5 behind the single
+393 MW line out of ES01113 in all 149 unsolved real-time hours).
+"""
+function e2_bus_room(network, s)
+    cap = Dict{Int,Float64}()
+    for (_, br) in network["branch"]
+        Int(get(br, "br_status", 1)) == 0 && continue
+        r = Float64(get(br, "rate_a", 0.0)) * BASEMVA
+        for b in (Int(br["f_bus"]), Int(br["t_bus"]))
+            cap[b] = get(cap, b, 0.0) + r
+        end
+    end
+    net = Dict{Int,Float64}()
+    for (_, g) in network["gen"]
+        p = e2_output(g, s)
+        p == 0.0 || (net[Int(g["gen_bus"])] = get(net, Int(g["gen_bus"]), 0.0) + p)
+    end
+    for (_, l) in network["load"]
+        b = Int(l["load_bus"])
+        net[b] = get(net, b, 0.0) - Float64(l["pd"]) * BASEMVA
+    end
+    return Dict(b => c - get(net, b, 0.0) for (b, c) in cap)
+end
+
 function e2_commit!(network, su, date_str, hour)
     rs = su.reserve
     x = get(E2_WINDOW, (date_str, hour), 0.0)
@@ -243,6 +274,8 @@ function e2_commit!(network, su, date_str, hour)
     end
     have1 = have
     n = 0
+    n_skip = 0
+    room = (have < need && hasproperty(rs, :deliverable) && rs.deliverable) ? e2_bus_room(network, s) : nothing
     if have < need
         add(g) = E2_UNITS[String(g["name"])][1] * (1 - su_terms(su, g)[1])
         # Every real-time hour is solved on its own: a unit this rule started in the previous hour is still
@@ -255,9 +288,21 @@ function e2_commit!(network, su, date_str, hour)
         sort!(cands; by = g -> cost(g) / add(g))                  # EUR per MW of headroom (P.O. 3.2)
         for g in cands
             have >= need && break
+            gain = add(g)
+            if room !== nothing                                   # fix A: only what the bus can export
+                b = Int(g["gen_bus"])
+                ml = E2_UNITS[String(g["name"])][1] - gain        # the unit's minimum load, MW
+                r = get(room, b, Inf)
+                if r < ml
+                    n_skip += 1
+                    continue
+                end
+                room[b] = r - ml
+                gain = min(gain, room[b])
+            end
             h = held(g)
             pmin_mw, start = su_commit!(su, g)
-            have += add(g)
+            have += gain
             n += 1
             E2_STARTED[String(g["name"])] = (date_str, hour)
             push!(RD_STARTUP_ROWS, (date = date_str, hour = hour, round = -1, unit = g["name"],
@@ -274,7 +319,7 @@ function e2_commit!(network, su, date_str, hour)
                             available_mw = round(a0; digits = 1),
                             shortfall_mw = round(max(req - a0, 0.0); digits = 1), window_mw = round(x; digits = 1),
                             headroom_before_mw = round(have1; digits = 1), started = n,
-                            headroom_after_mw = round(have; digits = 1)))
+                            headroom_after_mw = round(have; digits = 1), undeliverable = n_skip))
     return n
 end
 

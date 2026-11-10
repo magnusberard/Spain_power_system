@@ -2494,7 +2494,11 @@ n_total  = nrow(hourly_rd)
 n_solved = 0
 
 if RD_ENABLED
-if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && !RD_PHASE1_IN_CHAIN   # RD8: phase I/II per day first
+if RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && RD_STARTUPS.phase1.replay_saved
+    RD_FROM_SAVED == "BAL" || error("[redispatch.phase1].replay_saved needs [redispatch].from_saved = \"BAL\"")
+    println("\n── Phase I replayed from the saved week (real time only; phase I is not solved again) ──")
+    rd_phase1_replay!(RESULTS, RD_STARTUPS)
+elseif RD_STARTUPS !== nothing && RD_STARTUPS.phase1 !== nothing && !RD_PHASE1_IN_CHAIN   # RD8: phase I/II per day first
     println("\n── Phase I/II: technical constraints on the day-ahead schedule (DC unit commitment) ──")
     for d in TARGET_DAYS
         run_phase1_day!(RD_STARTUPS, d)

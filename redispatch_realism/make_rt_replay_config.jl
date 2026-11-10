@@ -19,7 +19,8 @@ function main(args)
     rd["phase1"]["replay_saved"] = true
     get!(rd, "reserve", Dict{String,Any}())["e2_deliverable"] = "--deliverable" in args
     open(args[2], "w") do io
-        println(io, "# Written by redispatch_realism/make_rt_replay_config.jl from $(args[1]); comments are not kept.")
+        # no path in the header: merge_runs.py compares config_used.toml byte for byte across the weeks
+        println(io, "# Written by redispatch_realism/make_rt_replay_config.jl from the week's config_inchain.toml; comments are not kept.")
         TOML.print(io, cfg; sorted = true)
     end
     println("wrote $(args[2]) (real-time replay, fix A $("--deliverable" in args ? "on" : "off"))")

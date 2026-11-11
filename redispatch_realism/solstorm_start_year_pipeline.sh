@@ -28,6 +28,10 @@
 #     2024 calendar with weather year 2015, TO defaults to 2024-12-29). Leave GAS, MARKUP and HYDRO out (the scenario
 #     sets its own switches) and PUMPING too (2024's real pumping). EXTRA for 2035: no --offers (REE's 2024 offers),
 #     --offer-rule redispatch_realism/data/phase2_offer_rule.csv instead; --zone-rule; --rt-reserve-e2 --rt-reserve-po15.
+#     And BESS=on (batteries with losses and wear, decided 2 Nov); --p1-time-limit 1800 (phase I without a solution on 8 Jan).
+#   NTC_ONLY=1: only the weeks' hourly NTC caches (hourly_ntc.csv), every week at once (no chaining; 2035 runs: the
+#     NTC depends on the DA profiles only, not on the previous week); NTC_FROM=<folder of such a run>: each week copies
+#     its precomputed hourly_ntc.csv before it starts (the chain reuses a cache only if its inputs match exactly).
 # Watch:   tail -n 2 <out>/lane-*.log ; ls <out>/*/uc_state.json | wc -l (weeks through the markets) ;
 #          ls <out>/*/summary.csv | wc -l (weeks finished)
 # Restart: the same command; finished weeks are skipped, a week with no summary.csv is run again.
@@ -59,6 +63,7 @@ ARGS=()
 [ -n "${PUMPLIMIT:-}" ] && ARGS+=(--pump-limits "$PUMPLIMIT")
 [ -n "${HYDROTOPUP:-}" ] && ARGS+=(--hydro-topup "$HYDROTOPUP")
 [ -n "${IDSTARTS:-}" ] && ARGS+=(--intraday-starts "$IDSTARTS")
+[ -n "${BESS:-}" ] && ARGS+=(--bess "$BESS")          # 2035: BESS=on (decisions 2026-11-02, the six 2035 main runs)
 [ -n "$SCENARIO" ] && ARGS+=(--scenario "$SCENARIO")
 
 # chunks of DAYS days in FROM .. TO (every part computes the same list)
@@ -100,11 +105,27 @@ for lane in $(seq 1 "$LANES"); do
     name="p$K-l$lane"
     launcher="nohup"; command -v setsid >/dev/null 2>&1 && launcher="setsid nohup"
     $launcher bash -c '
-        OUT="$1"; REPO="$2"; IPOPT="$3"; EXTRA="$4"; G="$5"; g="$6"; shift 6; chunks=("$@")
+        OUT="$1"; REPO="$2"; IPOPT="$3"; EXTRA="$4"; G="$5"; g="$6"; NTC_ONLY="$7"; NTC_FROM="$8"; shift 8; chunks=("$@")
         cd "$REPO" && source scripts/solstorm_env.sh "$IPOPT"
         for i in "${!chunks[@]}"; do
             [ $(( i % G )) -eq "$g" ] || continue
             c="${chunks[$i]}"; dir="$OUT/$c"
+            if [ -n "$NTC_ONLY" ]; then                       # NTC cache only: no chaining, no markets
+                from="${c%%_*}"; to="${c##*_}"; mkdir -p "$dir"
+                if [ -f "$dir/hourly_ntc.csv" ] && grep -q "NTC-only run complete" "$dir/run_ntc.log" 2>/dev/null; then
+                    echo "[$c] NTC done already, skipping"; continue
+                fi
+                t0=$(date +%s); echo "[$c] $(date +%H:%M) NTC start"
+                julia redispatch_realism/make_config.jl "$dir/config_ntc.toml" --source "$OUT/config_markets.toml" $EXTRA --in-chain --ntc-only                     > "$dir/make_config_ntc.log" 2>&1 || { echo "[$c] make_config FAILED"; continue; }
+                SPAIN_DAYS="$from:$to" SPAIN_CONFIG="$dir/config_ntc.toml" SPAIN_RESULTS="$dir" IPOPT_LINEAR_SOLVER="$IPOPT"                     julia --project=. run_market_chain.jl > "$dir/run_ntc.log" 2>&1
+                mins=$(( ($(date +%s) - t0 + 30) / 60 ))
+                if grep -q "NTC-only run complete" "$dir/run_ntc.log" && [ -f "$dir/hourly_ntc.csv" ]; then
+                    echo "[$c] NTC finished in $mins min ($(( $(wc -l < "$dir/hourly_ntc.csv") - 1 )) hours)"
+                else
+                    echo "[$c] NTC FAILED after $mins min - see $dir/run_ntc.log"
+                fi
+                continue
+            fi
             if [ -f "$dir/summary.csv" ]; then echo "[$c] done already, skipping"; continue; fi
             prev=""; state=""
             if [ "$i" -gt 0 ]; then
@@ -119,6 +140,9 @@ for lane in $(seq 1 "$LANES"); do
             fi
             from="${c%%_*}"; to="${c##*_}"
             mkdir -p "$dir"; rm -f "$dir/FAILED" "$dir/uc_state.json"
+            if [ -n "$NTC_FROM" ] && [ -f "$NTC_FROM/$c/hourly_ntc.csv" ] && [ ! -f "$dir/hourly_ntc.csv" ]; then
+                cp "$NTC_FROM/$c/hourly_ntc.csv" "$dir/hourly_ntc.csv"      # precomputed NTC (used only if it matches)
+            fi
             t0=$(date +%s)
             echo "[$c] $(date +%H:%M) start${state:+ (state from $(basename "$prev"))}"
             julia redispatch_realism/make_config.jl "$dir/config_inchain.toml" --source "$OUT/config_markets.toml" $EXTRA --in-chain \
@@ -134,7 +158,7 @@ for lane in $(seq 1 "$LANES"); do
             fi
         done
         echo "lane done"
-    ' _ "$OUT" "$REPO" "$IPOPT" "$EXTRA" "$G" "$g" "${chunks[@]}" > "$OUT/lane-$name.log" 2>&1 < /dev/null &
+    ' _ "$OUT" "$REPO" "$IPOPT" "$EXTRA" "$G" "$g" "${NTC_ONLY:-}" "${NTC_FROM:-}" "${chunks[@]}" > "$OUT/lane-$name.log" 2>&1 < /dev/null &
     echo "  $name (pid $!)"
 done
 sleep 2

@@ -172,6 +172,13 @@ function main(args)
         end
         orl = opt("--offer-rule")                               # runs without REE's offers (2035): the rule
         orl === nothing || set!(cfg, "redispatch.bids.offers_rule", orl)       # (build_offer_rule.py)
+        # --p1-time-limit S: phase I's MIP time limit in s (default 600). 2035 Trinity 8 Jan 2024 passed 600 s with no
+        # solution on a busy node (378 s on a quiet PC), which left the day without phase I and shed 15 GWh in real time
+        tl = opt("--p1-time-limit")
+        tl === nothing || set!(cfg, "redispatch.phase1.time_limit_s", parse(Float64, tl))
+        # --ntc-only: compute the weeks' hourly NTC cache (hourly_ntc.csv) and stop (run_market_chain.jl NTC_ONLY);
+        # the year runner's NTC_ONLY=1 uses it to precompute every week in parallel (11 Nov 2026)
+        "--ntc-only" in args && set!(cfg, "weeks.ntc.only", true)
         sq = opt("--sync-q")                                    # synchronous reactive band (P.O. 7.4: 0.15)
         sq === nothing || set!(cfg, "generators.sync_q_frac", parse(Float64, sq))
         r = opt("--res-mvar")                                   # renewables' connection networks

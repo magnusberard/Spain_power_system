@@ -378,7 +378,13 @@ def traded_volume(rdir, hours):
     each unit of the market schedule (load shedding included) and the consumers (minus the stage's
     load forecast). The balance makes the changes from the previous stage sum to zero, so what is
     sold (positions up) equals what is bought (positions down); the sold side is reported. ID3 only
-    trades hours 12-23. Returns None for runs without the intraday schedules."""
+    trades hours 12-23: in hours 0-11 it carries ID2's positions (the model keeps ID2's schedule there
+    and CID's forecast in those hours is blended on ID2's, participation.jl), so CID is measured from
+    ID2 in hours 0-11. With phase I in the chain (phase1_in_chain), ID2 starts from the DA schedule plus
+    phase I/II's changes (REE's PDVP, rd_phase1.csv), not from da_dispatch.csv: phase I is redispatch,
+    not trading (11 Nov 2026: it was 31 of the 39 GWh/day "traded" in ID2 in the 2024 Passive run).
+    rd_phase1.csv leaves out changes below 0.5 MW, so those still count in ID2. Returns None for runs
+    without the intraday schedules."""
     stages = [("DA", "da"), ("ID2", "id2"), ("ID3", "id3"), ("CID", "cid")]
     if not all((rdir / f"{f}_{k}.csv").exists() for _, f in stages for k in ("dispatch", "profiles")):
         return None
@@ -387,6 +393,7 @@ def traded_volume(rdir, hours):
         ids = ch[(ch.date == ch.date.iloc[0]) & (ch.hour == ch.hour.iloc[0])].gen_id.tolist()
         break
     mid = {g: i for i, g in enumerate(ids)}
+    morning = np.arange(hours.H) % 24 < 12
     traded, prev = {}, None
     for name, f in stages:
         _, pos, seen = stream_dispatch(rdir / f"{f}_dispatch.csv", "gen_id", hours, mid, len(ids))
@@ -396,6 +403,15 @@ def traded_volume(rdir, hours):
         load[hours.of(prof)] = prof.load_mw.to_numpy()
         pos = np.vstack([pos, -np.nan_to_num(load)])
         ok = seen & np.isfinite(load)
+        if name == "ID3":
+            pos[:, morning], ok[morning] = prev[0][:, morning], prev[1][morning]
+        if name == "DA" and phase1_in_chain(rdir) and (rdir / "rd_phase1.csv").exists():
+            for ch in pd.read_csv(rdir / "rd_phase1.csv", chunksize=CHUNK, usecols=["date", "hour", "unit", "da_mw", "phase1_mw"]):
+                ch = ch[ch.date.isin(hours.day_i)]
+                ui = ch.unit.map(mid)
+                m = ui.notna().to_numpy()
+                np.add.at(pos, (ui.to_numpy()[m].astype(int), hours.of(ch)[m]), (ch.phase1_mw - ch.da_mw).to_numpy()[m])
+            print("  traded volume: ID2 measured from the DA schedule plus phase I (in the chain)")
         if prev is not None:
             sold = np.clip(pos - prev[0], 0, None).sum(axis=0)
             ok_both = ok & prev[1]

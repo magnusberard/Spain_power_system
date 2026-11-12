@@ -631,6 +631,7 @@ const BAL_ENABLED = get(get(cfg, "balancing",  Dict()), "enabled", true)
 # forecast update the intraday stages trade, and which units may balance.
 const PARTICIPATION = load_participation(cfg)
 const PARTICIPATION_ON = participation_active(PARTICIPATION)
+include("passive_hold.jl")      # [participation].hold_when_passive: all-zero stages keep the previous schedule
 const BAL_ELIGIBLE = [String(x) for x in get(get(cfg, "balancing", Dict()), "eligible", String[])]
 @printf "Participation  : %s
 " (PARTICIPATION_ON ?
@@ -2193,6 +2194,9 @@ if RUN_MARKET && DA_ENABLED
         # DA schedule (minimum-movement adjustment for the ID2 forecast update).
         if ID2_ENABLED
             day_ts = filter(r -> r.date == date_str, hourly_id2)
+            stage_holds("id2") ? hold_stage!(id2_schedule, id2_rows_all, "ID2", date_str, day_ts,
+                                             (d, h) -> get(da_schedule, (d, h), nothing), h -> "DA";
+                                             nuclear_sched = da_schedule) :
             run_copper_plate!(id2_schedule, id2_rows_all, "ID2", date_str, day_ts, bv, "id2";
                               nuclear_sched = da_schedule,
                               prev_schedule = da_schedule)
@@ -2203,6 +2207,10 @@ if RUN_MARKET && DA_ENABLED
         # 12 delivery hours (12–23); hours 0–11 keep their ID2 schedule.
         if ID3_ENABLED
             day_ts = filter(r -> r.date == date_str, hourly_id3)
+            stage_holds("id3") ? hold_stage!(id3_schedule, id3_rows_all, "ID3", date_str, day_ts,
+                                             (d, h) -> ID2_ENABLED ? get(id2_schedule, (d, h), nothing) : da_sched_for(d, h),
+                                             h -> ID2_ENABLED ? "ID2" : "DA";
+                                             nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule) :
             run_copper_plate!(id3_schedule, id3_rows_all, "ID3", date_str, day_ts, bv, "id3";
                               nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
                               free_hours_actual = Set(12:23),
@@ -2218,6 +2226,9 @@ if RUN_MARKET && DA_ENABLED
             cid_anchor_base(d, h) = ID3_ENABLED ? (id3_sched_for(d, h) !== nothing ? id3_sched_for(d, h) :
                                                    ID2_ENABLED ? id2_sched_for(d, h) : da_sched_for(d, h)) :
                                     ID2_ENABLED ? id2_sched_for(d, h) : da_sched_for(d, h)
+            stage_holds("cid") ? hold_stage!(cid_schedule, cid_rows_all, "CID", date_str, day_ts, cid_anchor_base,
+                                             h -> ID3_ENABLED && h >= 12 ? "ID3" : ID2_ENABLED ? "ID2" : "DA";
+                                             nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule) :
             run_cid_rolling!(cid_schedule, cid_rows_all, date_str, day_ts, bv;
                              nuclear_sched = DIAGNOSTIC_OUTPUT ? da_nuclear_schedule : da_schedule,
                              anchor_base = cid_anchor_base)

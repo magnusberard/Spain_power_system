@@ -34,6 +34,7 @@
 #                        ID3 (IDA3) load 0.07, wind 0.15, solar 0.10, CID as
 #                        measured (esios_download/measure_auction_share.py, the
 #                        same slope on the final error as CID; a low estimate),
+#                        passive also sets hold_when_passive (passive_hold.jl),
 #                        passive = 0.0 in ID2, ID3 and CID
 #   --balancing B        [balancing].eligible: all (as in config.toml) or
 #                        qualified = the units REE qualifies for balancing
@@ -74,7 +75,9 @@ const PARTICIPATION = Dict(
     "measured_all" => [("id2", "{ load = 0.32, wind = 0.22, solar = 0.13 }"),
                        ("id3", "{ load = 0.07, wind = 0.15, solar = 0.10 }"),
                        ("cid", "{ load = 0.07, wind = 0.07, solar = 0.06 }")],
-    "passive"  => [(st, "{ load = 0.0, wind = 0.0, solar = 0.0 }") for st in ("id2", "id3", "cid")])
+    # passive also holds the schedule (passive_hold.jl, 11 Nov 2026): no re-clear on an unchanged forecast
+    "passive"  => [[(st, "{ load = 0.0, wind = 0.0, solar = 0.0 }") for st in ("id2", "id3", "cid")];
+                   [("hold_when_passive", "true")]])
 const BAL_QUALIFIED = "[\"Gas:Combined_cycle\", \"Gas:Gas_turbine\", \"Coal\", \"Hydro:reservoir\", \"Hydro:pumped_storage\", \"Battery\"]"
 
 # --scenario: label, EMPIRE run folder

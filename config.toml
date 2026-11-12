@@ -3547,6 +3547,11 @@ soc_max        = 1.0
 id2 = { load = 1.0, wind = 1.0, solar = 1.0 }
 id3 = { load = 1.0, wind = 1.0, solar = 1.0 }
 cid = { load = 1.0, wind = 1.0, solar = 1.0 }
+# true: a stage whose shares are all 0.0 does not clear at all; it keeps the previous
+# stage's schedule (PowerVision's passive case: no re-trading after the day-ahead, every
+# deviation left to balancing). false (default): it re-clears on the unchanged forecast,
+# and the unit commitment / hydro re-solve still moves plants (passive_hold.jl).
+hold_when_passive = false
 
 [crossborder]
 # Fix the market-cleared FR/PT import/export schedule at the border buses.

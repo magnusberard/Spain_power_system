@@ -411,7 +411,16 @@ def traded_volume(rdir, hours):
                 ui = ch.unit.map(mid)
                 m = ui.notna().to_numpy()
                 np.add.at(pos, (ui.to_numpy()[m].astype(int), hours.of(ch)[m]), (ch.phase1_mw - ch.da_mw).to_numpy()[m])
-            print("  traded volume: ID2 measured from the DA schedule plus phase I (in the chain)")
+            # with [redispatch.phase1].ac_check the rows also hold the AC check's own changes, made after the
+            # markets (rd_phase1_ac.csv; real time's anchor): take them out, ID2 started from the DC part only
+            # (2024 Passive: the AC check's +123 MW/h, mostly losses, looked like a surplus ID2 removed)
+            if (rdir / "rd_phase1_ac.csv").exists():
+                for ch in pd.read_csv(rdir / "rd_phase1_ac.csv", chunksize=CHUNK, usecols=["date", "hour", "unit", "ac_mw"]):
+                    ch = ch[ch.date.isin(hours.day_i)]
+                    ui = ch.unit.map(mid)
+                    m = ui.notna().to_numpy()
+                    np.add.at(pos, (ui.to_numpy()[m].astype(int), hours.of(ch)[m]), -ch.ac_mw.to_numpy()[m])
+            print("  traded volume: ID2 measured from the DA schedule plus phase I's DC part (in the chain)")
         if prev is not None:
             sold = np.clip(pos - prev[0], 0, None).sum(axis=0)
             ok_both = ok & prev[1]

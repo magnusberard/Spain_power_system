@@ -231,7 +231,10 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # non-negative discharge/charge legs so the loss is charged to the
     # reservoir: drawdown_h = p_dis_h/η_d − p_chg_h·η_c with η_d = η_c = √η_rt.
     # Running both legs at once always drains the reservoir on net, so the LP
-    # never does it and no complementarity constraint is needed.  Lossless units
+    # avoids it and no complementarity constraint is needed - except where it is
+    # the cheapest way to shed stored energy (e.g. phase I's security limits pin a
+    # battery's output); a frozen hour therefore keeps its legs too, so the next
+    # gate can follow the previous gate's charge path (see below).  Lossless units
     # (the EMPIRE BESS) keep the original single-variable form, leaving the 2035
     # scenario LPs unchanged.
     # [bess] (data_preparation.jl, set_bess_params!) gives the BESS a round-trip
@@ -260,21 +263,22 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             # power limit is enforced on pg itself, which the legs must equal.
             p_nom = Float64(get(g, "installed_mw", 0.0)) / BASEMVA
             draw  = JuMP.AffExpr[]
-            # [bess] batteries in a frozen hour (ID3 hours 0–11, past CID gates): the
-            # output is fixed, so its charge-level change is a number, not legs; legs
-            # bounded by nameplate made the gate infeasible by solver round-off when a
-            # 2-h battery was frozen at full power (NECP, ID3 13 May 2024). Pumped
-            # hydro keeps the legs (unchanged LPs).
+            # [bess] batteries in a frozen hour (ID3 hours 0–11, past CID gates): pg is
+            # fixed at the previous gate's net set-point, but the legs stay variables, so
+            # this gate can reproduce the previous gate's split. Only the net set-point is
+            # passed on; rebuilding the charge level from it alone (the 13 May fix) misses
+            # the energy a gate burns by charging and discharging in one hour, and left
+            # BESS_ES01113 0.26 MWh above full in ID3 2 Jan 2024 (2035 Trinity, phase I's
+            # limits in ID2). The legs' bound gets the frozen-gate slack below: bounded at
+            # nameplate exactly, round-off made a 2-h battery frozen at full power
+            # infeasible (NECP, ID3 13 May 2024). Pumped hydro unchanged.
             bess_cfg = haskey(g, "wear_eur_mwh")
+            leg_tol  = bess_cfg && length(free) < H ? max(1e-6 * e_puh, 5e-5) : 0.0
             for j in 1:H
-                vj = pg_by_name[(j, name)]
-                if bess_cfg && !(j in free) && JuMP.is_fixed(vj)
-                    x = clamp(JuMP.fix_value(vj), -p_nom, p_nom)
-                    push!(draw, JuMP.AffExpr(x > 0 ? x / eta : x * eta))
-                    continue
-                end
-                dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
-                chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
+                vj  = pg_by_name[(j, name)]
+                ub  = bess_cfg && !(j in free) && JuMP.is_fixed(vj) ? p_nom + leg_tol : p_nom
+                dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = ub)
+                chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = ub)
                 legc = JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
                 if IIS_DEBUG
                     JuMP.set_name(dis, "dis[$j,$name]"); JuMP.set_name(chg, "chg[$j,$name]")

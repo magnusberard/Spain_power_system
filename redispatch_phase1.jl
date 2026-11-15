@@ -318,7 +318,7 @@ phase1_sched_for(date_str, hour) =
 
 function phase1_nets(date_str, day_ts)
     bv = day_bellman[date_str]
-    [rd_network_fixes!(prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour), ts.solar_mw, ts.wind_mw;
+    nets = [rd_network_fixes!(prepare_network(ts.load_mw - xb_export_offset(date_str, ts.hour), ts.solar_mw, ts.wind_mw;
                      hydro_reservoir_cost = bv.water_value,
                      crossborder_inj = crossborder_inj_for(date_str, ts.hour),
                      crossborder_exports = WEEKS_ACTIVE || XB_EXPORT_AT_BORDER,
@@ -337,6 +337,13 @@ function phase1_nets(date_str, day_ts)
                      unit_scale_by_id = UNIT_SCALE_ID, extra_units = EXTRA_UNITS, line_scale = LINE_SCALE,
                      rating_scale = RATING_SCALE, extra_lines = EXTRA_LINES))
      for ts in eachrow(day_ts)]
+    # [bess]: phase I's batteries get the markets' losses and range (round trip, soc_min/max, wear;
+    # run_market_chain.jl build_da_nets), so phase1_storage_rule! plans paths ID2–BAL can follow.
+    # Without them phase I saw lossless batteries (eta_rt 1.0) and planned e.g. 2 h at full output
+    # for a 2-h battery; its security limits then made the gates infeasible and were dropped for the
+    # whole gate (2035 Trinity Active: 4,161 gates in 23 weeks; 2024, no batteries: 0-3 a year).
+    BESS_PARAMS === nothing || set_bess_params!(nets, BESS_PARAMS)
+    return nets
 end
 
 function build_phase1_dc(pm::PowerModels.AbstractPowerModel)

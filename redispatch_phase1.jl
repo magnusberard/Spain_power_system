@@ -880,6 +880,11 @@ function phase1_in_chain!(su, date_str, da_schedule)
             for (name, d) in delta
                 pdvp[name] = get(pdvp, name, 0.0) + d
             end
+            # [bess] the copy keeps the DA's charge changes (da.jl, BESS_DRAW) for the batteries
+            # phase I did not move; a moved one has none, so a later frozen hour rebuilds it from
+            # its new set-point (ultrareview of 9967887)
+            rec = get(BESS_DRAW, da_schedule[key], nothing)
+            rec === nothing || (BESS_DRAW[pdvp] = Dict(n => v for (n, v) in rec if !haskey(delta, n)))
             da_schedule[key] = pdvp
             n_moved += length(delta)
             if su.phase1.security_limits

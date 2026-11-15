@@ -2247,6 +2247,7 @@ if RUN_MARKET && DA_ENABLED
                              id2_schedule, id3_schedule, cid_schedule)
         end
     end
+    empty!(BESS_DRAW)   # [bess] the last day's charge changes are not needed after the market stages (da.jl)
 end
 
 # In-chain runs (phase I inside the market chain): the unit-commitment state is final once the market stages

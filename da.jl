@@ -45,6 +45,13 @@ using JuMP
 # SPAIN_IIS=1 (debugging only): name the main variables and constraints, and when a
 # stage is infeasible ask the solver for the conflicting set (IIS) and print it.
 const IIS_DEBUG = get(ENV, "SPAIN_IIS", "") == "1"
+# [bess] each battery's charge change per hour (pu-h, discharge leg / eta - charge leg * eta) as
+# a solved gate left it, keyed by that gate's own per-hour schedule Dict (solve_da's sched[h],
+# passed on by reference as the next gate's prev_sched / CID's committed hours). A later gate
+# freezes the hour at this change instead of rebuilding it from the net set-point, which hides
+# energy burned by charging and discharging in one hour. Emptied at each day's DA (only needed
+# within a day: ID2 → ID3 → CID gates → BAL).
+const BESS_DRAW = IdDict{Any,Dict{String,Float64}}()
 function iis_dump(model; max_lines = 80)
     try
         JuMP.compute_conflict!(model)
@@ -233,8 +240,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # Running both legs at once always drains the reservoir on net, so the LP
     # avoids it and no complementarity constraint is needed - except where it is
     # the cheapest way to shed stored energy (e.g. phase I's security limits pin a
-    # battery's output); a frozen hour therefore keeps its legs too, so the next
-    # gate can follow the previous gate's charge path (see below).  Lossless units
+    # battery's output); the net set-point then hides that loss, so a later gate
+    # takes a frozen hour's charge change from BESS_DRAW (see below).  Lossless units
     # (the EMPIRE BESS) keep the original single-variable form, leaving the 2035
     # scenario LPs unchanged.
     # [bess] (data_preparation.jl, set_bess_params!) gives the BESS a round-trip
@@ -242,6 +249,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # (wear_eur_mwh, on the discharge leg only) and a usable range
     # soc_min…soc_max of energy_mwh (each day still starts and ends half full).
     wear_cost = JuMP.AffExpr(0.0)
+    bess_draw_expr = Dict{String,Vector{JuMP.AffExpr}}()   # [bess] charge change per hour (pu-h), → BESS_DRAW
+    n_draw_missing = 0                                     # frozen battery hours rebuilt from the net set-point
     for (_, g) in nets[1].gens
         haskey(g, "energy_mwh") || continue
         name   = g["name"]                        # stable across hours (unlike key k)
@@ -263,22 +272,33 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             # power limit is enforced on pg itself, which the legs must equal.
             p_nom = Float64(get(g, "installed_mw", 0.0)) / BASEMVA
             draw  = JuMP.AffExpr[]
-            # [bess] batteries in a frozen hour (ID3 hours 0–11, past CID gates): pg is
-            # fixed at the previous gate's net set-point, but the legs stay variables, so
-            # this gate can reproduce the previous gate's split. Only the net set-point is
-            # passed on; rebuilding the charge level from it alone (the 13 May fix) misses
-            # the energy a gate burns by charging and discharging in one hour, and left
-            # BESS_ES01113 0.26 MWh above full in ID3 2 Jan 2024 (2035 Trinity, phase I's
-            # limits in ID2). The legs' bound gets the frozen-gate slack below: bounded at
-            # nameplate exactly, round-off made a 2-h battery frozen at full power
-            # infeasible (NECP, ID3 13 May 2024). Pumped hydro unchanged.
+            # [bess] batteries in a frozen hour (ID3 hours 0–11, past CID gates): the output
+            # is fixed, so its charge-level change is a number, not legs (legs bounded by
+            # nameplate made the gate infeasible by solver round-off when a 2-h battery was
+            # frozen at full power, NECP ID3 13 May 2024; legs with a slack made NECP's CID
+            # numerically infeasible, 11 Mar 2024, 926 mostly kW-scale batteries). The number
+            # is the previous gate's own change (BESS_DRAW, recorded with its schedule), which
+            # includes energy burned by charging and discharging in one hour: rebuilt from the
+            # net set-point alone it left BESS_ES01113 0.26 MWh above full in ID3 2 Jan 2024
+            # (2035 Trinity, phase I's limits in ID2). Without a record: the net rebuild.
+            # Pumped hydro keeps the legs (unchanged LPs).
             bess_cfg = haskey(g, "wear_eur_mwh")
-            leg_tol  = bess_cfg && length(free) < H ? max(1e-6 * e_puh, 5e-5) : 0.0
             for j in 1:H
-                vj  = pg_by_name[(j, name)]
-                ub  = bess_cfg && !(j in free) && JuMP.is_fixed(vj) ? p_nom + leg_tol : p_nom
-                dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = ub)
-                chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = ub)
+                vj = pg_by_name[(j, name)]
+                if bess_cfg && !(j in free) && JuMP.is_fixed(vj)
+                    ps = prev_sched === nothing ? nothing : get(prev_sched, j, nothing)
+                    rec = ps === nothing ? nothing : get(BESS_DRAW, ps, nothing)
+                    d = rec === nothing ? nothing : get(rec, name, nothing)
+                    if d === nothing
+                        x = clamp(JuMP.fix_value(vj), -p_nom, p_nom)
+                        d = x > 0 ? x / eta : x * eta
+                        n_draw_missing += 1
+                    end
+                    push!(draw, JuMP.AffExpr(d))
+                    continue
+                end
+                dis = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
+                chg = JuMP.@variable(model, lower_bound = 0.0, upper_bound = p_nom)
                 legc = JuMP.@constraint(model, pg_by_name[(j, name)] == dis - chg)
                 if IIS_DEBUG
                     JuMP.set_name(dis, "dis[$j,$name]"); JuMP.set_name(chg, "chg[$j,$name]")
@@ -287,6 +307,7 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 push!(draw, dis / eta - chg * eta)
                 wear > 0 && JuMP.add_to_expression!(wear_cost, wear * BASEMVA, dis)
             end
+            bess_cfg && (bess_draw_expr[name] = draw)
         end
         # batteries in a gate with frozen hours: a hair of slack on the charge limits
         # for their round-off (none when every hour is free, e.g. the DA). The round-off of
@@ -302,6 +323,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
         endc = JuMP.@constraint(model, sum(draw) == 0.0)
         IIS_DEBUG && JuMP.set_name(endc, "end_half_full[$name]")
     end
+    n_draw_missing > 0 &&
+        println("    bess: $n_draw_missing frozen battery hour(s) without the previous gate's charge change - rebuilt from the net set-point")
 
     # ── Thermal ramp limits ───────────────────────────────────────────────────
     # |pg[h] − pg[h−1]| ≤ ramp_mw_per_h for every unit carrying the field
@@ -580,6 +603,8 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 d[g["name"]] = JuMP.value(pg[(h, k)]) * BASEMVA
             end
             sched[h] = d
+            isempty(bess_draw_expr) ||
+                (BESS_DRAW[d] = Dict(name => JuMP.value(ex[h]) for (name, ex) in bess_draw_expr))
         end
         if foreign !== nothing
             # Cleared exchange (MW, import into ES positive) and zonal prices.

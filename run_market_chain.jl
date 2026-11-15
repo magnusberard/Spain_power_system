@@ -1833,6 +1833,7 @@ function run_copper_plate!(schedule, rows_acc, label, date_str, day_ts, bv, log_
                             foreign = nothing,
                             hold_sched = nothing)
     nets = build_da_nets(date_str, day_ts; nuclear_sched = nuclear_sched)
+    label == "DA" && empty!(BESS_DRAW)   # [bess] charge changes are passed on within a day only (da.jl)
     reservoir_gen_ids = reservoir_ids_of(nets)
     # [balancing].eligible: units that may not move hold their previous-gate MW
     hold_sched === nothing || hold_units!(nets, day_ts, date_str, hold_sched, BAL_ELIGIBLE, BASEMVA)

@@ -37,6 +37,8 @@ function hold_stage!(schedule, rows_acc, label, date_str, day_ts, base_for, prev
         ps = base_for(date_str, ts.hour)
         ps === nothing && error("[participation].hold_when_passive: no previous schedule for $label $date_str hour $(ts.hour)")
         sched[h_idx] = Dict(String(g["name"]) => get(ps, String(g["name"]), 0.0) for (_, g) in nets[h_idx].gens)
+        rec = get(BESS_DRAW, ps, nothing)            # [bess] the kept schedule keeps its charge changes (da.jl)
+        rec === nothing || (BESS_DRAW[sched[h_idx]] = rec)
     end
     store_stage_result!(schedule, rows_acc, date_str, day_ts, nets, sched)
     # the held hour repeats the previous stage's price and its setter (plant and label), so the

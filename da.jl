@@ -285,8 +285,12 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             end
         end
         # batteries in a gate with frozen hours: a hair of slack on the charge limits
-        # for their round-off (none when every hour is free, e.g. the DA)
-        tol = haskey(g, "wear_eur_mwh") && length(free) < H ? 1e-6 * e_puh : 0.0
+        # for their round-off (none when every hour is free, e.g. the DA). The round-off of
+        # the frozen set-points is absolute (solver tolerance ~1e-6 pu per hour), so the slack
+        # has an absolute floor of 5e-5 pu-h (5 kWh, > 24 hours x 1e-6): a relative 1e-6 x size
+        # was ~0 for the kW-scale batteries the 2035 siting leaves (NECP: 252 under 10 kW), and
+        # ID3 17 Mar 2024 (NECP Active) failed on a 2-kWh battery 1e-6 pu-h outside its range.
+        tol = haskey(g, "wear_eur_mwh") && length(free) < H ? max(1e-6 * e_puh, 5e-5) : 0.0
         for h in 1:H
             socc = JuMP.@constraint(model, s_lo - tol <= soc0 - sum(draw[j] for j in 1:h) <= s_hi + tol)
             IIS_DEBUG && JuMP.set_name(socc, "soc[$h,$name]")

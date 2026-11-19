@@ -215,7 +215,11 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
     # nameplate whenever the water value undercuts gas.  A cap rather than an
     # equality: the day may still use less water if it is not economic.
     if hydro_budget_mwh !== nothing && !isempty(reservoir_gen_ids)
-        JuMP.@constraint(model, total_hydro_puh <= hydro_budget_mwh / BASEMVA)
+        # with frozen hours their fixed water use comes from an earlier gate at its own tolerance:
+        # a round-off slack (1e-6 of the budget, at least 5e-5 pu-h = 5 kWh), none in the DA
+        b_puh = hydro_budget_mwh / BASEMVA
+        b_tol = length(free) < H ? max(1e-6 * abs(b_puh), 5e-5) : 0.0
+        JuMP.@constraint(model, total_hydro_puh <= b_puh + b_tol)
     end
 
     θ_ref = isempty(cuts) ? 0.0 : maximum(c.b + c.a1 * v_es_0 for c in cuts)
@@ -352,6 +356,9 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
                 p_now  = get(pg_by_name, (h, name),     nothing)
                 p_prev = get(pg_by_name, (h - 1, name), nothing)
                 (p_now === nothing || p_prev === nothing) && continue
+                # two frozen hours: both outputs are fixed numbers from earlier gates, so the ramp
+                # only re-checks them, at this solver's tolerance (round-off could tip it over)
+                (h in free || h - 1 in free) || continue
                 JuMP.@constraint(model, -r_puh <= p_now - p_prev <= r_puh)
             end
         end
@@ -550,7 +557,14 @@ function solve_da(nets, reservoir_gen_ids::Vector{Int}, cuts, v_es_0::Float64, o
             on_v = Dict(k => JuMP.value(v) > 0.5 for (k, v) in uc_on)
             st_v = Dict(k => JuMP.value(v) > 0.5 for (k, v) in uc_start)
             sc   = JuMP.value(start_cost_expr)
-            JuMP.fix_discrete_variables(model)
+            # each binary fixed at its ROUNDED value: fix_discrete_variables fixed the raw MIP value,
+            # which Gurobi may return up to IntFeasTol (1e-5) off 0/1, and on = -9.1e-7 made
+            # pg <= pmax*on < 0 <= pg infeasible (2035 NECP Active, ID3 25 Sep 2024, IIS)
+            disc = [(v, round(JuMP.value(v))) for v in JuMP.all_variables(model) if JuMP.is_binary(v) || JuMP.is_integer(v)]
+            for (v, x) in disc
+                JuMP.is_binary(v) ? JuMP.unset_binary(v) : JuMP.unset_integer(v)
+                JuMP.fix(v, x; force = true)
+            end
             JuMP.optimize!(model)
             status = string(JuMP.termination_status(model))
             IIS_DEBUG && status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED") && iis_dump(model)

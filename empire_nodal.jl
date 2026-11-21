@@ -808,6 +808,104 @@ function ccgt_oldest_first!(scale::Dict{String,Float64}, cfg, emp;
     return select(fleet, Not([:outside, :fixed_factor, :fixed_status]))
 end
 
+# Rated capacity [MW] of every branch at each bus as the network model rates it: AC lines
+# √3·V·Imax per circuit and transformers' installed MVA, both × [network].line_rating_factor
+# and the scenario's line_scale; synthetic corridors (new_lines) included, HVDC excluded.
+function _bus_branch_rating_mw(cfg; data_dir, line_scale, new_lines)
+    lrf = Float64(get(get(cfg, "network", Dict()), "line_rating_factor", 0.70))
+    lsc(id) = line_scale === nothing ? 1.0 : get(line_scale, String(id), 1.0)
+    line_df = CSV.read(joinpath(data_dir, "lines.csv"), DataFrame)
+    new_lines !== nothing && nrow(new_lines) > 0 && (line_df = vcat(line_df, new_lines; cols = :intersect))
+    cap = Dict{String,Float64}()
+    add(b, mw) = (cap[b] = get(cap, b, 0.0) + mw)
+    for r in eachrow(line_df)
+        String(r.dc) == "t" && continue
+        mw = sqrt(3) * Float64(r.voltage) * Float64(r.Imax) * max(Float64(r.circuits), 1.0) * lsc(r.line_id) * lrf
+        add(String(r.bus0), mw); add(String(r.bus1), mw)
+    end
+    for r in eachrow(CSV.read(joinpath(data_dir, "transformers_reactance.csv"), DataFrame))
+        mw = Float64(r.installed_MVA) * lsc(r.transformer_id) * lrf
+        add(String(r.bus0), mw); add(String(r.bus1), mw)
+    end
+    return cap
+end
+
+"""
+    cap_frozen_units!(scale, new_units, cfg; data_dir, line_scale, new_lines) -> DataFrame
+
+A scaled unit of a fuel the redispatch cannot move ([redispatch].frozen_fuels, same matching
+as prepare_network) is capped so the frozen units at its bus fit within the bus's rated branch
+capacity; the capacity above the cap goes to the same (fuel, technology) units of its NUTS3
+region in proportion to their scaled size, each within its own bus's room, and what is still
+left to a new unit at the region's best-connected bus. The region's total stays EMPIRE's. The
+same rule as nodal_bess_units ("no bus hosts a battery its lines cannot evacuate"); without
+it NECP 2035 scaled the 50 MW Sogama biomass plant (G0704) to 407 MW behind one 393 MW line
+(LTGES0763), and phase I, which cannot move biomass, was infeasible on ~75 % of the days
+(NECP Active, 23-25 Sep 2024, IIS). Mutates `scale` and `new_units`; returns the changes.
+"""
+function cap_frozen_units!(scale, new_units, cfg; data_dir = joinpath(@__DIR__, "Data"),
+                           line_scale = nothing, new_lines = nothing)
+    ff    = String.(get(get(cfg, "redispatch", Dict()), "frozen_fuels", String[]))
+    bare  = Set(f for f in ff if !occursin(':', f))
+    pairs = Set((String(split(f, ':')[1]), lowercase(String(split(f, ':')[2]))) for f in ff if occursin(':', f))
+    frozen(fuel, tech) = fuel in bare || (fuel, lowercase(tech)) in pairs
+    cap = _bus_branch_rating_mw(cfg; data_dir, line_scale, new_lines)
+    b2r = bus_nuts3(data_dir = data_dir)
+    gen_df = CSV.read(joinpath(data_dir, "generations.csv"), DataFrame)
+    U = [(id = String(r.unit_id), bus = String(r.bus_id), fuel = String(r.primary_fuel), tech = String(r.technology),
+          mw24 = Float64(r.capacity_mw)) for r in eachrow(gen_df) if frozen(String(r.primary_fuel), String(r.technology))]
+    mw(u) = u.mw24 * get(scale, u.id, 1.0)
+    atbus = Dict{String,Float64}()
+    for u in U; atbus[u.bus] = get(atbus, u.bus, 0.0) + mw(u); end
+    for r in eachrow(new_units)
+        frozen(String(r.primary_fuel), String(r.technology)) &&
+            (atbus[String(r.bus_id)] = get(atbus, String(r.bus_id), 0.0) + Float64(r.capacity_mw))
+    end
+    changes = NamedTuple[]
+    for b in sort([b for b in keys(atbus) if atbus[b] > get(cap, b, 0.0) + 1e-6])
+        over = atbus[b] - get(cap, b, 0.0)
+        grown = [u for u in U if u.bus == b && mw(u) > u.mw24 + 1e-6]        # only what the scaling added
+        isempty(grown) && continue
+        room_here = sum(mw(u) - u.mw24 for u in grown)
+        cut = min(over, room_here)
+        for u in grown                                                       # cut in proportion to the growth
+            d = cut * (mw(u) - u.mw24) / room_here
+            new_mw = mw(u) - d
+            scale[u.id] = new_mw / u.mw24
+            atbus[b] -= d
+            reg = get(b2r, b, "")
+            # spread d over the region's same (fuel, tech) units at other buses, within their room
+            peers = [p for p in U if p.fuel == u.fuel && p.tech == u.tech && p.bus != b && get(b2r, p.bus, "") == reg]
+            left = d
+            for _ in 1:20
+                left > 1e-6 || break
+                open = [p for p in peers if get(cap, p.bus, 0.0) - atbus[p.bus] > 1e-6]
+                isempty(open) && break
+                w = sum(max(mw(p), 1e-3) for p in open)
+                give_tot = 0.0
+                for p in open
+                    give = min(left * max(mw(p), 1e-3) / w, get(cap, p.bus, 0.0) - atbus[p.bus])
+                    scale[p.id] = (mw(p) + give) / p.mw24
+                    atbus[p.bus] += give; give_tot += give
+                end
+                left -= give_tot
+            end
+            if left > 1e-6                                                   # no room left: a new unit
+                cand = sort([x for x in keys(cap) if get(b2r, x, "") == reg && x != b], by = x -> get(cap, x, 0.0) - get(atbus, x, 0.0), rev = true)
+                isempty(cand) && error("cap_frozen_units!: no bus in region $reg for $(round(left; digits = 1)) MW of $(u.fuel) from $(u.id)")
+                nb = first(cand)
+                id = "NEW_cap_$(u.id)"
+                push!(new_units, (unit_id = id, bus_id = nb, primary_fuel = u.fuel, technology = u.tech, name = id, capacity_mw = left))
+                atbus[nb] = get(atbus, nb, 0.0) + left
+            end
+            push!(changes, (unit_id = u.id, bus_id = b, fuel = u.fuel, region = reg, mw_before = new_mw + d,
+                            mw_after = new_mw, bus_rating_mw = get(cap, b, 0.0), moved_mw = d, to_new_unit_mw = max(left, 0.0)))
+            @printf "Frozen-unit cap  : %s (%s, %s) %.1f -> %.1f MW: bus %s branches rated %.1f MW; %.1f MW to the region's other %s units%s\n" u.id u.fuel reg new_mw + d new_mw b get(cap, b, 0.0) d - max(left, 0.0) u.fuel (left > 1e-6 ? @sprintf(", %.1f MW to a new unit", left) : "")
+        end
+    end
+    return isempty(changes) ? DataFrame() : DataFrame(changes)
+end
+
 """
     build_nodal_disaggregation(cfg, emp; data_dir) -> NamedTuple
 
@@ -829,6 +927,7 @@ function build_nodal_disaggregation(cfg, emp; data_dir = joinpath(@__DIR__, "Dat
         error("config.toml: [scenario.retirement].ccgt must be \"even\" or \"oldest_first\"")
     ccgt_fleet = rule == "oldest_first" ? ccgt_oldest_first!(g.scale, cfg, emp; data_dir) : nothing
     l = nodal_line_scale(cfg; data_dir)
+    cap_frozen_units!(g.scale, g.new_units, cfg; data_dir, line_scale = l.line_scale, new_lines = l.new_lines)
     b = nodal_bess_units(cfg; data_dir, line_scale = l.line_scale, new_lines = l.new_lines)
     return (unit_scale = g.scale, new_units = g.new_units,
             line_scale = l.line_scale, new_lines = l.new_lines,

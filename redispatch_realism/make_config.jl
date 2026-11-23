@@ -5,7 +5,7 @@
 #                                             [--n1 on] [--bids <bids.toml>] [--no-realism]
 #                                             [--ac-check] [--no-zones] [--hydro-budget]
 #                                             [--res-mvar <total Mvar>] [--dedup-ab] [--sync-q <frac>]
-#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--unit-req] [--rt-reserve-e2] [--rt-markup]
+#                                             [--no-rt-zones] [--sync-reserve] [--down-only] [--biomass-down] [--unit-req] [--rt-reserve-e2] [--rt-markup]
 #                                             [--uprate <csv of line_id,factor>] [--offers <csv>] [--sweep-a]
 #
 # The redispatch has to run with the market-side settings of the run whose
@@ -133,6 +133,17 @@ function main(args)
         if "--down-only" in args                                # may turn down; nuclear also up (5 Nov 2026: REE raised
             set!(cfg, "redispatch.down_only", ["CHP", "CHP_Waste"])            # 3.0 TWh of nuclear in 2024's phase I, I90)
             set!(cfg, "redispatch.both_ways", ["Nuclear"])
+        end
+        # --biomass-down (2035): biomass may also be turned down in the redispatch, to down_only_min_frac of
+        # installed. P.O. 3.2 §6.1 (CNMC resolution 2024) reduces programmes for technical constraints by
+        # contribution factor and, among equal ones, ranks "instalaciones renovables gestionables" (RD 413/2014
+        # annex XV: biomass) third, after conventional units and high-efficiency CHP. NECP puts its biomass
+        # growth (493 -> 5,114 MW) on the 11 existing plants (50 MW Sogama -> 407 MW, Ence Puertollano -> 880 MW
+        # behind 786 MW), and frozen they made phase I infeasible on ~75 % of NECP days (IIS, 23 Sep 2024).
+        if "--biomass-down" in args
+            d = String.(get(get(cfg, "redispatch", Dict()), "down_only", String[]))
+            "Biomass" in d || push!(d, "Biomass")
+            set!(cfg, "redispatch.down_only", d)
         end
         "--unit-req" in args && set!(cfg, "redispatch.phase1.unit_requirement_file",                   # fix 2
                                      "redispatch_realism/data/phase1_unit_requirement.csv")

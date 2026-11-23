@@ -18,7 +18,7 @@ NEED_CORES="${NEED_CORES:-8}"; NEED_GB="${NEED_GB:-30}"
 NODES="${NODES:-$(for i in $(seq 1 40); do printf "compute-5-%d " "$i"; done)}"
 
 E24="--ac-check --hydro-budget --dedup-ab --sync-q 0.15 --no-rt-zones --down-only --zone-rule --sweep-a --offers redispatch_realism/data/phase2_offers_2024_tail.csv --rt-reserve-e2"
-E35="--ac-check --hydro-budget --dedup-ab --sync-q 0.15 --no-rt-zones --down-only --zone-rule --sweep-a --offer-rule redispatch_realism/data/phase2_offer_rule.csv --rt-reserve-e2 --rt-reserve-po15 --p1-time-limit 1800"
+E35="--ac-check --hydro-budget --dedup-ab --sync-q 0.15 --no-rt-zones --down-only --biomass-down --zone-rule --sweep-a --offer-rule redispatch_realism/data/phase2_offer_rule.csv --rt-reserve-e2 --rt-reserve-po15 --p1-time-limit 1800"
 M24="GAS=on MARKUP=on HYDRO=aligned_rc_observed RES=offered PUMPING=removed PUMPLIMIT=on IDSTARTS=on HYDROTOPUP=on BALANCING=qualified"
 M35="BESS=on IDSTARTS=on HYDROTOPUP=on BALANCING=qualified"
 

@@ -172,8 +172,15 @@ def settle(rdir, anchor="auto", bids=None, down_refund="bid", storage_at_da=Fals
     # start-ups (step RD9, rd_startups.csv): REE pays a started unit's start-up cost (P.O. 3.2 Annex I)
     su_file = rdir / "rd_startups.csv"
     if su_file.exists():
-        su = pd.read_csv(su_file).groupby(["date", "hour"]).agg(starts=("unit", "size"),
-                                                                 startup_eur=("start_cost_eur", "sum")).reset_index()
+        su = pd.read_csv(su_file)
+        # phase I's AC check writes its starts here too (zone "phase I AC: …"), but their cost is already in
+        # rd_phase1_summary.csv extra_cost_eur (redispatch_phase1.jl phase1_ac_check_day!), which rd_phases.py
+        # reports as phase I/II; this function settles real time only, so leave them out (27 Nov 2026: counted
+        # twice before, 8.4 MEUR in the 2024 Partial run)
+        if (rdir / "rd_phase1_summary.csv").exists() and "zone" in su.columns:
+            su = su[~su.zone.astype(str).str.startswith("phase I AC")]
+        su = su.groupby(["date", "hour"]).agg(starts=("unit", "size"),
+                                              startup_eur=("start_cost_eur", "sum")).reset_index()
         hourly = hourly.merge(su, on=["date", "hour"], how="left").fillna({"starts": 0, "startup_eur": 0.0})
     else:
         hourly["starts"], hourly["startup_eur"] = 0, 0.0

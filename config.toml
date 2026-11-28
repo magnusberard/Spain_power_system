@@ -254,8 +254,16 @@ file    = "Data/gas_unit_efficiency.csv"
 #   P_coal   quarterly German import price for steam coal, EUR per MWh of coal,
 #            delivered (freight included): BAFA/VDKI, as tabulated by AG
 #            Energiebilanzen, Herbsttagung 25 Oct 2024 ("Steinkohle (BAFA/VDKI)
-#            EUR/MWh": 2024 Q1 21.9, Q2 21.9, Q3 20.77).  Q4 2024 not published
-#            as a number (chart only) → Q3 carried forward (our assumption).
+#            EUR/MWh": 2024 Q1 21.9, Q2 21.9, Q3 20.77).  Q4 2024 from the same
+#            authors' series a year later: Buttermann & Baten, AGEB-Herbsttagung
+#            24 Oct 2025, slide 2 "Einfuhrpreis Kesselkohle (fortgeschriebener
+#            BAFA-Preis)", EUR/t SKE, data to August 2025 (ag-energiebilanzen.de/
+#            wp-content/uploads/03_Steinkohle_AGEB_13Q2025.pdf).  The chart prints no
+#            numbers; read from the PDF's vector line against the axis labels:
+#            2024 Q1 179.2, Q2 177.6, Q3 175.4, Q4 157.8 EUR/t SKE.  Q4 157.8 / 8.141
+#            MWh per t SKE (29.3076 GJ) = 19.38 EUR/MWh.  Q1-Q3 kept from the 2024
+#            table (the 2025 chart has them slightly revised; mark-ups were fitted
+#            with these).  Before 2026-11-28: Q4 = Q3 = 20.77 (no Q4 figure then).
 #            Used as the price Spanish plants pay for imported coal.
 #   P_CO2    the same daily EUA settlement as gas ([costs.gas_srmc]).
 #   co2_t_per_gj_fuel  0.0913 tCO2 per GJ of coal: EMPIRE's coal content × its eta
@@ -267,7 +275,7 @@ file    = "Data/gas_unit_efficiency.csv"
 # Check, 2024 Q1 at EUA ~60: (21.9 + 19.7)/0.435 + 3.3 ≈ 99 EUR/MWh vs the fixed 94.
 # Needs [costs.gas_srmc] on (it reads the EUA series); 2024 path only.
 enabled             = false
-price_eur_mwh_th    = { "2024Q1" = 21.9, "2024Q2" = 21.9, "2024Q3" = 20.77, "2024Q4" = 20.77 }
+price_eur_mwh_th    = { "2024Q1" = 21.9, "2024Q2" = 21.9, "2024Q3" = 20.77, "2024Q4" = 19.38 }
 co2_t_per_gj_fuel   = 0.0913
 eta                 = 0.435
 vom                 = 3.3
